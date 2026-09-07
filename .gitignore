@@ -110,3 +110,4 @@ build.sh
 tools/sunshine-ds5-sidecar/bin/
 tools/sunshine-ds5-sidecar/obj/
 .claude/
+result-dev
