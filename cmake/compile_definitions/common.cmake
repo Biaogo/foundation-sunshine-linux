@@ -267,6 +267,20 @@ list(APPEND SUNSHINE_DEFINITIONS SUNSHINE_PUBLISHER_NAME="${SUNSHINE_PUBLISHER_N
 list(APPEND SUNSHINE_DEFINITIONS SUNSHINE_PUBLISHER_WEBSITE="${SUNSHINE_PUBLISHER_WEBSITE}")
 list(APPEND SUNSHINE_DEFINITIONS SUNSHINE_PUBLISHER_ISSUE_URL="${SUNSHINE_PUBLISHER_ISSUE_URL}")
 
+# The ZakoVDD virtual-display layer (vdd_utils/vdd_ioctl) is Windows-only.
+# On UNIX builds swap the real implementations for stubs so the shared
+# display_device code compiles and reports VDD as "not installed".
+if(UNIX)
+    list(REMOVE_ITEM SUNSHINE_TARGET_FILES
+            "${CMAKE_SOURCE_DIR}/src/display_device/vdd_utils.cpp"
+            "${CMAKE_SOURCE_DIR}/src/display_device/vdd_ioctl.cpp")
+    list(APPEND SUNSHINE_TARGET_FILES
+            "${CMAKE_SOURCE_DIR}/src/display_device/vdd_utils_stubs.cpp"
+            "${CMAKE_SOURCE_DIR}/src/display_device/vdd_ioctl_stubs.cpp"
+            "${CMAKE_SOURCE_DIR}/src/platform/linux/display_device/session_listener.cpp"
+            "${CMAKE_SOURCE_DIR}/src/platform/linux/display_device/session_listener.h")
+endif()
+
 include_directories("${CMAKE_SOURCE_DIR}")
 
 include_directories(

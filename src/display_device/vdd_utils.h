@@ -1,7 +1,5 @@
 #pragma once
 
-#define WIN32_LEAN_AND_MEAN
-
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -11,7 +9,10 @@
 #include <string_view>
 #include <thread>
 #include <vector>
-#include <windows.h>
+#ifdef _WIN32
+  #define WIN32_LEAN_AND_MEAN
+  #include <windows.h>
+#endif
 
 #include <boost/optional.hpp>
 

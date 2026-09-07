@@ -10,8 +10,12 @@
 #include "session.h"
 #include "src/globals.h"
 #include "src/platform/common.h"
-#include "src/platform/windows/display_device/session_listener.h"
-#include "src/platform/windows/display_device/windows_utils.h"
+#ifdef _WIN32
+  #include "src/platform/windows/display_device/session_listener.h"
+  #include "src/platform/windows/display_device/windows_utils.h"
+#else
+  #include "src/platform/linux/display_device/session_listener.h"
+#endif
 #ifdef _WIN32
   #include "src/platform/windows/vulkan_hdr_bridge_session.h"
 #endif
@@ -420,7 +424,13 @@ namespace display_device {
 
     // Parsing is side-effect free. From this point on, parsed_config is the
     // single source of truth for whether this session needs VDD preparation.
+    // RDP session detection is a Windows-only concept (w_utils); on other
+    // platforms there is no RDP session blocking VDD preparation.
+#ifdef _WIN32
     const bool rdp_session_active = display_device::w_utils::is_any_rdp_session_active();
+#else
+    const bool rdp_session_active = false;
+#endif
     const bool is_rdp_blocking_vdd = !is_running_as_system_user && rdp_session_active;
     const bool use_vdd = parsed_config->use_vdd.value_or(false);
     const bool should_prepare_vdd = use_vdd && !is_rdp_blocking_vdd;
