@@ -1,12 +1,34 @@
 // local includes
 #include "src/display_device/settings.h"
+#include "src/logging.h"
+#include "src/platform/common.h"
+#include "src/video.h"
+
+#include <algorithm>
 
 namespace display_device {
 
   device_info_map_t
   enum_available_devices() {
-    // Not implemented
-    return {};
+    // Linux has no Windows-style display topology DB. Populate the map from
+    // the live capture-backend enumeration so that client-picked displays
+    // validate correctly (mirrors the IDs used by kwingrab/kmsgrab: the
+    // output name for kwin capture, numeric ids for kms).
+    device_info_map_t devices;
+#ifdef SUNSHINE_BUILD_KWIN
+    for (const auto &name : platf::kwin_display_names()) {
+      if (name.empty()) {
+        continue;
+      }
+      devices[name] = device_info_t {
+        name,
+        name,
+        device_state_e::active,
+        hdr_state_e::unknown
+      };
+    }
+#endif
+    return devices;
   }
 
   std::string
@@ -17,8 +39,36 @@ namespace display_device {
 
   std::string
   find_one_of_the_available_devices(const std::string &device_id) {
-    // Not implemented
-    (void) device_id;
+    // Match against the live output list of the active capture backend.
+    // Output names double as device ids on Linux (kwin capture uses the
+    // compositor output name; kmsgrab uses numeric ids which we also accept).
+    if (device_id.empty()) {
+      return {};
+    }
+
+#ifdef SUNSHINE_BUILD_KWIN
+    if (config::video.capture == "kwin") {
+      const auto names = platf::kwin_display_names();
+      if (std::find(names.begin(), names.end(), device_id) != names.end()) {
+        return device_id;
+      }
+    }
+#endif
+#ifdef SUNSHINE_BUILD_DRM
+    if (config::video.capture == "kms") {
+      const auto names = platf::display_names(mem_type_e::unknown);
+      if (std::find(names.begin(), names.end(), device_id) != names.end()) {
+        return device_id;
+      }
+    }
+#endif
+
+    // Fall back: accept when the requested id matches any enumerated name of
+    // the auto-selected backend.
+    const auto names = platf::display_names(mem_type_e::unknown);
+    if (std::find(names.begin(), names.end(), device_id) != names.end()) {
+      return device_id;
+    }
     return {};
   }
 
