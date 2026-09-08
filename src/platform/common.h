@@ -857,6 +857,16 @@ namespace platf {
   std::vector<std::string>
   display_names(mem_type_e hwdevice_type);
 
+#ifdef SUNSHINE_BUILD_KWIN
+  // KWin ScreenCast backend (upstream PR #5009): compositor-level output
+  // names, including krfb-virtualmonitor virtual outputs.
+  std::vector<std::string>
+  kwin_display_names();
+
+  std::shared_ptr<display_t>
+  kwin_display(mem_type_e hwdevice_type, const std::string &display_name, const video::config_t &config);
+#endif
+
   // Capability introspection (upstream PR #5009): used by the KWin capture
   // backend to shed CAP_SYS_ADMIN before contacting the compositor.
   bool
