@@ -33,7 +33,15 @@
 // local includes
 #include "cuda.h"
 #include "graphics.h"
+// pipewire.cpp is included textually (upstream PR #5009 pattern) — it provides
+// pipewire::pipewire_display_t used by kwin_t below.
 #include "pipewire.cpp"
+// SUNSHINE_BUILD_VULKAN gate: the fork lacks vulkan_encode.{h,cpp} (its Vulkan
+// encoder lives in video.cpp without the vk:: device factories), so guard the
+// include the same way as the vk:: call sites in pipewire.cpp.
+#ifdef SUNSHINE_BUILD_VULKAN
+#include "vulkan_encode.h"
+#endif
 #include "src/platform/common.h"
 #include "src/video.h"
 

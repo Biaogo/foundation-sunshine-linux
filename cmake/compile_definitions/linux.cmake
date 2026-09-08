@@ -159,13 +159,14 @@ if(GIO_FOUND)
 endif()
 
 # PipeWire (required by the KWin capture backend)
+# NOTE: pipewire.cpp is NOT compiled standalone — kwingrab.cpp includes it
+# textually (upstream pattern). Fork has no portal backend, so a single
+# textual inclusion avoids duplicate-symbol link errors.
 set(PIPEWIRE_FOUND OFF)
 if(${SUNSHINE_ENABLE_KWIN})
     pkg_check_modules(PIPEWIRE libpipewire-0.3 REQUIRED)
     include_directories(SYSTEM ${PIPEWIRE_INCLUDE_DIRS})
     list(APPEND PLATFORM_LIBRARIES ${PIPEWIRE_LIBRARIES})
-    list(APPEND PLATFORM_TARGET_FILES
-            "${CMAKE_SOURCE_DIR}/src/platform/linux/pipewire.cpp")
 endif()
 
 # KWin ScreenCast (direct Wayland protocol, bypasses portal) — backport of

@@ -21,7 +21,11 @@
 #include "src/platform/common.h"
 #include "src/video.h"
 #include "vaapi.h"
+// Fork has no vulkan_encode.{h,cpp} (its Vulkan encoder lives in video.cpp
+// without the vk:: device factories) — guard like the vk:: call site below.
+#ifdef SUNSHINE_BUILD_VULKAN
 #include "vulkan_encode.h"
+#endif
 #include "wayland.h"
 
 namespace {
