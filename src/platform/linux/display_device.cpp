@@ -28,6 +28,40 @@ namespace display_device {
       };
     }
 #endif
+#ifdef SUNSHINE_BUILD_DRM
+    // kmsgrab exposes monitors as numeric ids ("0", "1", ...). Offer them as
+    // additional picks so clients can stream the raw DRM output — required
+    // pre-login (SDDM) where no Wayland compositor (and thus no kwin
+    // capture) exists. Prefer a friendly label when we can correlate the
+    // connector name through the Wayland monitor list.
+    int kms_index = 0;
+    for (const auto &name : platf::display_names(platf::mem_type_e::unknown)) {
+      // kwin names ("HDMI-A-1", "Virtual-...") overlap with nothing here:
+      // kms ids are pure digits, so duplicates in the map can't happen.
+      if (std::find_if(devices.begin(), devices.end(), [&](const auto &entry) {
+            return entry.first == name;
+          }) != devices.end()) {
+        ++kms_index;
+        continue;
+      }
+      std::string label = name;
+#ifdef SUNSHINE_BUILD_KWIN
+      // Best effort: if a KWin output shares the numeric position with the
+      // kms monitor, append its name for readability. Pure cosmetic.
+      const auto kwin_names = platf::kwin_display_names();
+      if (kms_index < static_cast<int>(kwin_names.size())) {
+        label += " (kms: " + kwin_names[kms_index] + ")";
+      }
+#endif
+      devices[name] = device_info_t {
+        label,
+        name,
+        device_state_e::active,
+        hdr_state_e::unknown
+      };
+      ++kms_index;
+    }
+#endif
     return devices;
   }
 
