@@ -56,7 +56,7 @@ namespace display_device {
 #endif
 #ifdef SUNSHINE_BUILD_DRM
     if (config::video.capture == "kms") {
-      const auto names = platf::display_names(mem_type_e::unknown);
+      const auto names = platf::display_names(platf::mem_type_e::unknown);
       if (std::find(names.begin(), names.end(), device_id) != names.end()) {
         return device_id;
       }
@@ -65,7 +65,7 @@ namespace display_device {
 
     // Fall back: accept when the requested id matches any enumerated name of
     // the auto-selected backend.
-    const auto names = platf::display_names(mem_type_e::unknown);
+    const auto names = platf::display_names(platf::mem_type_e::unknown);
     if (std::find(names.begin(), names.end(), device_id) != names.end()) {
       return device_id;
     }
