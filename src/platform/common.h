@@ -848,6 +848,14 @@ namespace platf {
   std::vector<std::string>
   display_names(mem_type_e hwdevice_type);
 
+  // Capability introspection (upstream PR #5009): used by the KWin capture
+  // backend to shed CAP_SYS_ADMIN before contacting the compositor.
+  bool
+  has_elevated_privileges(bool all_caps);
+
+  void
+  drop_elevated_privileges(bool all_caps);
+
   std::vector<std::string>
   adapter_names();
 

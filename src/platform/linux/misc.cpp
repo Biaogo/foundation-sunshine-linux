@@ -22,6 +22,7 @@
 #include <ifaddrs.h>
 #include <netinet/udp.h>
 #include <pwd.h>
+#include <sys/capability.h>
 #include <unistd.h>
 
 // local includes
@@ -1011,6 +1012,61 @@ namespace platf {
 #endif
 
     return nullptr;
+  }
+
+  // Capability helpers (backport of upstream PR #5009 dependency) — the KWin
+  // capture backend must shed CAP_SYS_ADMIN before connecting to KWin so the
+  // compositor's permission check can match the process.
+  static constexpr cap_value_t FULL_CAPS[] = {CAP_SYS_ADMIN, CAP_SYS_NICE};
+  static constexpr cap_value_t ADMIN_CAPS[] = {CAP_SYS_ADMIN};
+
+  static constexpr std::span<const cap_value_t> ELEVATED_PRIVILEGES_FULL {FULL_CAPS};
+  static constexpr std::span<const cap_value_t> ELEVATED_PRIVILEGES_ADMIN {ADMIN_CAPS};
+
+  bool
+  has_elevated_privileges(bool all_caps) {
+    const auto caps_to_check = all_caps ? ELEVATED_PRIVILEGES_FULL : ELEVATED_PRIVILEGES_ADMIN;
+    const cap_t caps = cap_get_proc();
+    if (!caps) {
+      BOOST_LOG(error) << "[misc] has_elevated_privileges failed to get process capabilities."sv;
+      return false;
+    }
+    for (const auto c : caps_to_check) {
+      cap_flag_value_t cap_flags_value;
+      cap_get_flag(caps, c, CAP_EFFECTIVE, &cap_flags_value);
+      if (cap_flags_value == CAP_SET) {
+        cap_free(caps);
+        return true;
+      }
+    }
+    for (const auto c : caps_to_check) {
+      cap_flag_value_t cap_flags_value;
+      cap_get_flag(caps, c, CAP_PERMITTED, &cap_flags_value);
+      if (cap_flags_value == CAP_SET) {
+        cap_free(caps);
+        return true;
+      }
+    }
+    cap_free(caps);
+    return false;
+  }
+
+  void
+  drop_elevated_privileges(bool all_caps) {
+    const auto caps_to_drop = all_caps ? ELEVATED_PRIVILEGES_FULL : ELEVATED_PRIVILEGES_ADMIN;
+    const cap_t caps = cap_get_proc();
+    if (!caps) {
+      BOOST_LOG(error) << "[misc] drop_elevated_privileges failed to get process capabilities"sv;
+      return;
+    }
+
+    cap_set_flag(caps, CAP_EFFECTIVE, caps_to_drop.size(), caps_to_drop.data(), CAP_CLEAR);
+    cap_set_flag(caps, CAP_PERMITTED, caps_to_drop.size(), caps_to_drop.data(), CAP_CLEAR);
+
+    if (cap_set_proc(caps) != 0) {
+      BOOST_LOG(error) << "[misc] drop_elevated_privileges failed to prune capabilities: "sv << std::strerror(errno);
+    }
+    cap_free(caps);
   }
 
   std::unique_ptr<deinit_t>
