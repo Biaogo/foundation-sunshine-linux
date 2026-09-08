@@ -1073,4 +1073,10 @@ namespace platf {
   create_high_precision_timer() {
     return std::make_unique<linux_high_precision_timer>();
   }
+
+  std::vector<std::string>
+  adapter_names() {
+    // Not implemented: this is used by the Windows GPU-adapter listing UI.
+    return {};
+  }
 }  // namespace platf

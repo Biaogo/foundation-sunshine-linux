@@ -136,4 +136,39 @@ namespace display_device {
     // Not implemented
   }
 
+  void
+  settings_t::capture_audio_sink() {
+    // Not implemented: audio sink preservation is Windows-specific.
+  }
+
+  void
+  settings_t::release_audio_sink() {
+    // Not implemented: audio sink preservation is Windows-specific.
+  }
+
+  bool
+  settings_t::has_persistent_data() const {
+    // Not implemented
+    return false;
+  }
+
+  bool
+  settings_t::is_vdd_in_initial_topology() const {
+    // Not implemented: no VDD topology on this platform.
+    return false;
+  }
+
+  void
+  settings_t::remove_vdd_from_initial_topology(const std::string &vdd_id) {
+    // Not implemented: no VDD topology on this platform.
+    (void) vdd_id;
+  }
+
+  void
+  settings_t::replace_vdd_id(const std::string &old_id, const std::string &new_id) {
+    // Not implemented: no VDD topology on this platform.
+    (void) old_id;
+    (void) new_id;
+  }
+
 }  // namespace display_device
