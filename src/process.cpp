@@ -198,6 +198,14 @@ namespace proc {
     _env["SUNSHINE_CLIENT_ENABLE_SOPS"] = launch_session->enable_sops ? "true" : "false";
     _env["SUNSHINE_CLIENT_ENABLE_MIC"] = launch_session->enable_mic ? "true" : "false";
     _env["SUNSHINE_CLIENT_CUSTOM_SCREEN_MODE"] = std::to_string(launch_session->custom_screen_mode);
+    // Forward the client's display pick so global_prep_cmd hooks can decide
+    // whether a virtual display is needed at all (physical pick => skip it).
+    {
+      const auto it = launch_session->env.find("SUNSHINE_CLIENT_DISPLAY_NAME");
+      if (it != launch_session->env.end()) {
+        _env["SUNSHINE_CLIENT_DISPLAY_NAME"] = it->to_string();
+      }
+    }
     int channelCount = launch_session->surround_info & (65535);
     switch (channelCount) {
       case 2:
