@@ -116,6 +116,26 @@ HDR10 静态元数据（Mastering Display Info + Content Light Level）完整透
 
 ---
 
+### ░▒▓ Linux 支持（linux-support 分支）
+
+上游仅发布 Windows 包，但代码保留了完整的 Linux 平台实现。`linux-support` 分支在其基础上修复构建、恢复功能并补齐 Linux 侧缺失的逻辑：
+
+**已可用的功能**
+- **捕获后端**：KWin ScreenCast（直连 Wayland 协议，可抓 krfb-virtualmonitor 虚拟输出）、KMS（kmsgrab）、Wayland wlr-export-dmabuf、X11
+- **编码器**：NVENC（CUDA 动态加载）/ VAAPI / 软件，H.264 · HEVC · AV1
+- **HDR 全链路**：PQ + HLG 双格式、动态元数据、Dolby Vision 8.1/8.4（码流层平台无关）
+- **文件夹共享**、**远程 USB**（usbip 桥 + 反向隧道）、**文本输入桥**、**7.1.4 音频/远程麦克风**
+
+**Windows 专属（Linux 上为语义正确的 stub）**
+- ZakoVDD 虚拟显示器驱动 → 建议用 `krfb-virtualmonitor` 替代（compositor 级虚拟输出，本分支的 KWin capture 可直接抓取，配合 `global_prep_cmd` 可实现"连接即建虚拟屏、断连即销毁"的手机副屏方案）
+- vmouse 虚拟鼠标驱动（Linux 走 uinput，无需驱动）、vsink 虚拟声卡、RTX HDR 后处理、DS5 sidecar 深度增强
+
+**NixOS 打包**：本仓库可通过独立 flake 构建（`nix build github:Biaogo/foundation-sunshine-linux.nix`），包表达式见 [foundation-sunshine-linux.nix](https://github.com/Biaogo/foundation-sunshine-linux.nix)。
+
+<br>
+
+---
+
 ### ░▒▓ 推荐客户端
 
 搭配以下优化版 Moonlight 客户端可获得最佳体验（激活套装属性）
