@@ -112,8 +112,14 @@ namespace display_device {
   }
 
   settings_t::apply_result_t
-  settings_t::apply_config(const parsed_config_t &) {
+  settings_t::apply_config(
+    const parsed_config_t &config,
+    const rtsp_stream::launch_session_t &session,
+    const boost::optional<active_topology_t> &pre_saved_initial_topology) {
     // Not implemented
+    (void) config;
+    (void) session;
+    (void) pre_saved_initial_topology;
     return { apply_result_t::result_e::success };
   }
 
