@@ -28,6 +28,14 @@
 #endif
 #include "wayland.h"
 
+// EGL_EXT_image_dma_buf_import_modifiers — the vendored glad EGL header in
+// this fork does not declare these; load them dynamically like other
+// extensions (mirrors upstream glad.cmake which enables that extension).
+using PFNEGLQUERYDMABUFFORMATSEXTPROC = EGLBoolean (*)(EGLDisplay dpy, EGLint max_formats, EGLint *formats, EGLint *num_formats);
+using PFNEGLQUERYDMABUFMODIFIERSEXTPROC = EGLBoolean (*)(EGLDisplay dpy, EGLint format, EGLint max_modifiers, EGLuint64KHR *modifiers, EGLBoolean *external_only, EGLint *num_modifiers);
+static PFNEGLQUERYDMABUFFORMATSEXTPROC eglQueryDmaBufFormatsEXT = nullptr;
+static PFNEGLQUERYDMABUFMODIFIERSEXTPROC eglQueryDmaBufModifiersEXT = nullptr;
+
 namespace {
   // Buffer and limit constants
   constexpr int SPA_POD_BUFFER_SIZE = 4096;
@@ -990,6 +998,14 @@ namespace pipewire {
       auto egl_display = egl::make_display(wl_display.get());
       if (!egl_display) {
         return -1;
+      }
+
+      // Load the DMA-BUF query extensions (not in this fork's vendored glad)
+      if (!eglQueryDmaBufFormatsEXT || !eglQueryDmaBufModifiersEXT) {
+        eglQueryDmaBufFormatsEXT = reinterpret_cast<PFNEGLQUERYDMABUFFORMATSEXTPROC>(
+          eglGetProcAddress("eglQueryDmaBufFormatsEXT"));
+        eglQueryDmaBufModifiersEXT = reinterpret_cast<PFNEGLQUERYDMABUFMODIFIERSEXTPROC>(
+          eglGetProcAddress("eglQueryDmaBufModifiersEXT"));
       }
 
       // Detect if this is a pure NVIDIA system (not hybrid Intel+NVIDIA)

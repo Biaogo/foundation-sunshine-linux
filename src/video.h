@@ -100,6 +100,7 @@ namespace video {
     int width;  // Video width in pixels
     int height;  // Video height in pixels
     int framerate;  // Requested framerate, used in individual frame bitrate budget calculation
+    int framerateX100 {0};  // Optional NTSC-family rate e.g. 59.94 = 5994 (upstream PR #5009)
     int bitrate;  // Video bitrate in kilobits (1000 bits) for requested framerate
     int slicesPerFrame;  // Number of slices per frame
     int numRefFrames;  // Max number of reference frames
@@ -615,4 +616,23 @@ namespace video {
    */
   int
   probe_encoders(std::optional<probe_target_t> target = std::nullopt);
+
+  // Support for 23.976 film in case someone wants to stream a film at the perfect
+  // framerate. (upstream PR #5009)
+  inline AVRational
+  framerateX100_to_rational(const int framerateX100) {
+    if (framerateX100 % 2997 == 0) {
+      // Multiples of NTSC 29.97 e.g. 59.94, 119.88
+      return AVRational { (framerateX100 / 2997) * 30000, 1001 };
+    }
+    switch (framerateX100) {
+      case 2397:  // the other weird NTSC framerate, assume these want 23.976 film
+      case 2398:
+        return AVRational { 24000, 1001 };
+      default:
+        // any other fractional rate can be reduced by ffmpeg. Max is set to 1 << 26 based on docs:
+        // "rational numbers with |num| <= 1<<26 && |den| <= 1<<26 can be recovered exactly from their double representation"
+        return av_d2q((double) framerateX100 / 100.0f, 1 << 26);
+    }
+  }
 }  // namespace video
