@@ -1808,15 +1808,27 @@ namespace video {
         resolved_display_name = config.display_name;
       }
 
-      // Try to find the display in the list
+      // Try to find the display in the list. The krfb-virtualmonitor output
+      // is created by global_prep_cmd's do-hook concurrently with capture
+      // startup, so poll for it briefly instead of falling back immediately.
       bool found = false;
-      for (int x = 0; x < display_names.size(); ++x) {
-        if (display_names[x] == resolved_display_name) {
-          display_p = x;
-          target_display_name = resolved_display_name;
-          found = true;
-          BOOST_LOG(info) << "Using client-specified display: " << target_display_name;
-          break;
+      for (int attempt = 0; attempt < 40 && !found; ++attempt) {
+        for (int x = 0; x < display_names.size(); ++x) {
+          if (display_names[x] == resolved_display_name) {
+            display_p = x;
+            target_display_name = resolved_display_name;
+            found = true;
+            BOOST_LOG(info) << "Using client-specified display: " << target_display_name;
+            break;
+          }
+        }
+        if (!found) {
+          if (attempt == 0) {
+            BOOST_LOG(info) << "Client-specified display [" << resolved_display_name
+                            << "] not up yet; waiting for prep-cmd virtual output"sv;
+          }
+          std::this_thread::sleep_for(std::chrono::milliseconds { 250 });
+          display_names = platf::display_names(encoder.platform_formats->dev_type);
         }
       }
       if (!found) {
