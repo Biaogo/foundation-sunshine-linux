@@ -13,6 +13,12 @@
 #include <atomic>
 #include <chrono>
 #include <fstream>
+
+// The fork's CMake defines PROJECT_FQDN in CMakeLists.txt but never forwards
+// it to the compiler (upstream does the same via target_compile_definitions).
+#ifndef PROJECT_FQDN
+#define PROJECT_FQDN "sunshine.alkaidlab.com"
+#endif
 #include <memory>
 #include <pwd.h>
 #include <ranges>
@@ -684,7 +690,7 @@ namespace platf {
 
     // Drop CAP_SYS_ADMIN so KWin's permission check (if active) can see and match the executable
     if (!kwin::screencast_permission_helper_t::is_permission_system_deactivated() && has_elevated_privileges(false)) {
-      drop_elevated_privileges();
+      drop_elevated_privileges(false);
     }
 
     auto display = std::make_shared<kwin::kwin_t>();
