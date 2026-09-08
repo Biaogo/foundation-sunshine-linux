@@ -1812,7 +1812,7 @@ namespace video {
       // is created by global_prep_cmd's do-hook concurrently with capture
       // startup, so poll for it briefly instead of falling back immediately.
       bool found = false;
-      for (int attempt = 0; attempt < 40 && !found; ++attempt) {
+      for (int attempt = 0; attempt < 80 && !found; ++attempt) {
         for (int x = 0; x < display_names.size(); ++x) {
           if (display_names[x] == resolved_display_name) {
             display_p = x;
