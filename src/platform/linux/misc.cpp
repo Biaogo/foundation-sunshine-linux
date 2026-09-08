@@ -874,6 +874,9 @@ namespace platf {
 #ifdef SUNSHINE_BUILD_DRM
       KMS,  ///< KMS
 #endif
+#ifdef SUNSHINE_BUILD_KWIN
+      KWIN,  ///< KWin ScreenCast
+#endif
 #ifdef SUNSHINE_BUILD_X11
       X11,  ///< X11
 #endif
@@ -931,6 +934,18 @@ namespace platf {
   }
 #endif
 
+#ifdef SUNSHINE_BUILD_KWIN
+  bool kwin_available();
+  std::vector<std::string> kwin_display_names();
+  std::shared_ptr<display_t> kwin_display(mem_type_e hwdevice_type, const std::string &display_name, const video::config_t &config);
+
+  bool
+  verify_kwin() {
+    // Note: The separate kwin_available check is necessary because with CAP_SYS_ADMIN kwin_display_names is never empty during startup
+    return window_system == window_system_e::WAYLAND && kwin_available() && !kwin_display_names().empty();
+  }
+#endif
+
   std::vector<std::string>
   display_names(mem_type_e hwdevice_type) {
 #ifdef SUNSHINE_BUILD_CUDA
@@ -945,6 +960,9 @@ namespace platf {
 #endif
 #ifdef SUNSHINE_BUILD_X11
     if (sources[source::X11]) return x11_display_names();
+#endif
+#ifdef SUNSHINE_BUILD_KWIN
+    if (sources[source::KWIN]) return kwin_display_names();
 #endif
     return {};
   }
@@ -983,6 +1001,12 @@ namespace platf {
     if (sources[source::X11]) {
       BOOST_LOG(info) << "Screencasting with X11"sv;
       return x11_display(hwdevice_type, display_name, config);
+    }
+#endif
+#ifdef SUNSHINE_BUILD_KWIN
+    if (sources[source::KWIN]) {
+      BOOST_LOG(info) << "Screencasting with KWin ScreenCast"sv;
+      return kwin_display(hwdevice_type, display_name, config);
     }
 #endif
 
@@ -1033,6 +1057,11 @@ namespace platf {
       if (verify_kms()) {
         sources[source::KMS] = true;
       }
+    }
+#endif
+#ifdef SUNSHINE_BUILD_KWIN
+    if (((config::video.capture.empty() && sources.none()) || config::video.capture == "kwin") && verify_kwin()) {
+      sources[source::KWIN] = true;
     }
 #endif
 #ifdef SUNSHINE_BUILD_X11

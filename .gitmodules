@@ -93,3 +93,6 @@
 	path = third-party/moonlight-audio-haptics
 	url = https://github.com/AlkaidLab/moonlight-audio-haptics.git
 	branch = main
+[submodule "third-party/plasma-wayland-protocols"]
+	path = third-party/plasma-wayland-protocols
+	url = https://github.com/KDE/plasma-wayland-protocols.git

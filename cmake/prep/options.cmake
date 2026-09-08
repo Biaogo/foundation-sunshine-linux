@@ -66,6 +66,8 @@ elseif(UNIX)  # Linux
             "Enable building vaapi specific code." ON)
     option(SUNSHINE_ENABLE_WAYLAND
             "Enable building wayland specific code." ON)
+    option(SUNSHINE_ENABLE_KWIN
+            "Enable KWin ScreenCast capture (requires wayland + pipewire)." ON)
     option(SUNSHINE_ENABLE_X11
             "Enable X11 grab if available." ON)
 endif()

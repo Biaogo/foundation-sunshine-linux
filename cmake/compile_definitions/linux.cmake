@@ -151,6 +151,37 @@ if(WAYLAND_FOUND)
             "${CMAKE_SOURCE_DIR}/src/platform/linux/wayland.cpp")
 endif()
 
+# GIO (required by pipewire.cpp used by the KWin capture backend)
+pkg_check_modules(GIO gio-2.0 gio-unix-2.0)
+if(GIO_FOUND)
+    include_directories(SYSTEM ${GIO_INCLUDE_DIRS})
+    list(APPEND PLATFORM_LIBRARIES ${GIO_LIBRARIES})
+endif()
+
+# PipeWire (required by the KWin capture backend)
+set(PIPEWIRE_FOUND OFF)
+if(${SUNSHINE_ENABLE_KWIN})
+    pkg_check_modules(PIPEWIRE libpipewire-0.3 REQUIRED)
+    include_directories(SYSTEM ${PIPEWIRE_INCLUDE_DIRS})
+    list(APPEND PLATFORM_LIBRARIES ${PIPEWIRE_LIBRARIES})
+    list(APPEND PLATFORM_TARGET_FILES
+            "${CMAKE_SOURCE_DIR}/src/platform/linux/pipewire.cpp")
+endif()
+
+# KWin ScreenCast (direct Wayland protocol, bypasses portal) — backport of
+# upstream PR #5009 so the krfb-virtualmonitor virtual output is capturable.
+set(KWIN_FOUND OFF)
+if(PIPEWIRE_FOUND AND WAYLAND_FOUND AND ${SUNSHINE_ENABLE_KWIN})
+    set(KWIN_FOUND ON)
+    add_compile_definitions(SUNSHINE_BUILD_KWIN)
+    GEN_WAYLAND("${CMAKE_SOURCE_DIR}/third-party/plasma-wayland-protocols/src/protocols" "" kde-output-order-v1)
+    GEN_WAYLAND("${CMAKE_SOURCE_DIR}/third-party/plasma-wayland-protocols/src/protocols" "" zkde-screencast-unstable-v1)
+    list(APPEND PLATFORM_TARGET_FILES
+            "${CMAKE_SOURCE_DIR}/src/platform/linux/kwingrab.cpp")
+elseif(${SUNSHINE_ENABLE_KWIN} AND NOT WAYLAND_FOUND)
+    message(FATAL_ERROR "SUNSHINE_ENABLE_KWIN requires SUNSHINE_ENABLE_WAYLAND — KWin capture disabled")
+endif()
+
 # x11
 if(${SUNSHINE_ENABLE_X11})
     find_package(X11)
