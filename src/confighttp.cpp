@@ -1740,10 +1740,12 @@ namespace confighttp {
     if (!authenticate(response, request)) return;
 
     print_req(request);
+#ifdef _WIN32
     if (GetConsoleWindow() == NULL) {
       lifetime::exit_sunshine(ERROR_SHUTDOWN_IN_PROGRESS, true);
       return;
     }
+#endif
     lifetime::exit_sunshine(0, true);
   }
 
