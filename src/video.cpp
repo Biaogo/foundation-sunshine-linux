@@ -36,6 +36,12 @@ extern "C" {
 #include "input.h"
 #include "logging.h"
 #include "nvenc/nvenc_encoder.h"
+#ifndef _WIN32
+  // The Linux nvenc encoder table below references NVENC SDK constants
+  // (NV_ENC_TUNING_INFO_*, NV_ENC_PARAMS_RC_*) directly; include the SDK
+  // headers the same way nvenc_base.h does for the non-namespaced build.
+  #include <ffnvcodec/nvEncodeAPI.h>
+#endif
 #include "amf/amf_encoder.h"
 #include "platform/common.h"
 #include "sync.h"

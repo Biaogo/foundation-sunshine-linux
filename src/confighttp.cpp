@@ -38,6 +38,7 @@
 #include <boost/property_tree/xml_parser.hpp>
 
 #include <boost/algorithm/string.hpp>
+#include <boost/regex.hpp>
 
 #include <boost/filesystem.hpp>
 #include <nlohmann/json.hpp>

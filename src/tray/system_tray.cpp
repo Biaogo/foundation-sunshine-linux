@@ -50,7 +50,9 @@
   #include "src/file_handler.h"
   #include "src/logging.h"
   #include "src/platform/common.h"
-  #include "src/platform/windows/misc.h"
+  #ifdef _WIN32
+    #include "src/platform/windows/misc.h"
+  #endif
   #include "src/process.h"
   #include "src/display_device/display_device.h"
   #include "src/entry_handler.h"
