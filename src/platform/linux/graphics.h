@@ -319,6 +319,12 @@ namespace egl {
 
     // Increment sequence when new rgb_t needs to be created
     std::uint64_t sequence;
+
+    // PipeWire metadata (upstream PR #5009, consumed by pipewire.cpp)
+    std::optional<uint64_t> pts;
+    std::optional<uint64_t> seq;
+    std::optional<bool> pw_damage;
+    std::optional<uint32_t> pw_flags;
   };
 
   class sws_t {

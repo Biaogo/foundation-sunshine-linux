@@ -318,6 +318,9 @@ namespace platf {
   struct touch_port_t {
     int offset_x, offset_y;
     int width, height;
+    // Logical (compositor-scaled) dimensions — used by PipeWire-based capture
+    // backends (upstream PR #5009) to map cursor coordinates.
+    int logical_width, logical_height;
   };
 
   // These values must match Limelight-internal.h's SS_FF_* constants!
@@ -744,10 +747,16 @@ namespace platf {
     virtual ~display_t() = default;
 
     // Offsets for when streaming a specific monitor. By default, they are 0.
-    int offset_x, offset_y;
-    int env_width, env_height;
-
-    int width, height;
+    int offset_x {0};
+    int offset_y {0};
+    int env_width {0};
+    int env_height {0};
+    int env_logical_width {0};
+    int env_logical_height {0};
+    int width {0};
+    int height {0};
+    int logical_width {0};
+    int logical_height {0};
 
   protected:
     // collect capture timing data (at loglevel debug)
