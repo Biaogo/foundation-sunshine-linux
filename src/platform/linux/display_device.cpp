@@ -15,6 +15,20 @@ namespace display_device {
     return value;
   }
 
+  std::string
+  find_one_of_the_available_devices(const std::string &device_id) {
+    // Not implemented
+    (void) device_id;
+    return {};
+  }
+
+  std::string
+  find_device_by_friendlyname(const std::string &friendly_name) {
+    // Not implemented: no Windows display topology on this platform.
+    (void) friendly_name;
+    return {};
+  }
+
   device_display_mode_map_t
   get_current_display_modes(const std::unordered_set<std::string> &) {
     // Not implemented

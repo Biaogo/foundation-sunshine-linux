@@ -250,3 +250,20 @@ list(APPEND PLATFORM_LIBRARIES
 include_directories(
         SYSTEM
         "${CMAKE_SOURCE_DIR}/third-party/glad/include")
+
+# amf
+# The AMF SDK submodule carries the complete header set (Quality VBR /
+# High Quality CBR rate control enums etc.) that src/config.cpp's encoder
+# config enums reference. The prebuilt ffmpeg artifacts (build-deps) also
+# ship an older, trimmed AMF header set, so stage the submodule headers
+# with SYSTEM BEFORE priority (mirroring windows.cmake) to win include
+# order over build-deps.
+set(AMF_SDK_SRC "${CMAKE_SOURCE_DIR}/third-party/AMF/amf/public/include")
+set(AMF_SDK_STAGE "${CMAKE_BINARY_DIR}/amf_include")
+if(NOT EXISTS "${AMF_SDK_SRC}/core/Version.h")
+    message(FATAL_ERROR "AMF submodule not initialized. Run: git submodule update --init third-party/AMF")
+endif()
+file(MAKE_DIRECTORY "${AMF_SDK_STAGE}/AMF")
+file(COPY "${AMF_SDK_SRC}/core" "${AMF_SDK_SRC}/components"
+        DESTINATION "${AMF_SDK_STAGE}/AMF")
+include_directories(BEFORE SYSTEM "${AMF_SDK_STAGE}")

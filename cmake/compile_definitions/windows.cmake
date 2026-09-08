@@ -131,7 +131,7 @@ endif()
 file(MAKE_DIRECTORY "${AMF_SDK_STAGE}/AMF")
 file(COPY "${AMF_SDK_SRC}/core" "${AMF_SDK_SRC}/components"
         DESTINATION "${AMF_SDK_STAGE}/AMF")
-include_directories(SYSTEM BEFORE "${AMF_SDK_STAGE}")
+include_directories(BEFORE SYSTEM "${AMF_SDK_STAGE}")
 file(GLOB_RECURSE AMF_SOURCES CONFIGURE_DEPENDS
         "${CMAKE_SOURCE_DIR}/src/amf/*.h"
         "${CMAKE_SOURCE_DIR}/src/amf/*.cpp")

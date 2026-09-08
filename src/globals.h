@@ -29,7 +29,11 @@ extern bool display_cursor;
  * @brief A global singleton used for NVIDIA control panel modifications.
  */
 extern nvprefs::nvprefs_interface nvprefs_instance;
+#endif
 
+// VDD/Zako globals: referenced by shared display_device/session code on
+// every platform (session.cpp consults ZAKO_NAME and the system-user flag
+// regardless of platform; on non-Windows the values are inert).
 extern const std::string VDD_NAME;
 extern const std::string ZAKO_NAME;
 extern std::string zako_device_id;
@@ -39,7 +43,6 @@ extern std::string zako_device_id;
  * @details This is set once at program startup and never changes during runtime.
  */
 extern bool is_running_as_system_user;
-#endif
 
 /**
  * @brief Handles process-wide communication.
