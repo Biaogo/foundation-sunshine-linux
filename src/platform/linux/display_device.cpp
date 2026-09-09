@@ -89,7 +89,19 @@ namespace display_device {
 
   std::string
   get_display_name(const std::string &value) {
-    // Not implemented, but just passthrough the value
+    // Map virtual picks to their backing capture output names. video.cpp
+    // resolves config.display_name through this before matching against
+    // the live output list — without the translation a disabled eDP-1
+    // makes the poll either fail or grab whichever output comes first.
+    if (value == VDISPLAY_KWIN_ID) {
+      return "eDP-1";
+    }
+    if (value == VDISPLAY_KMS_ID) {
+      // Primary KMS monitor: let video.cpp fall back to the default
+      // display (empty means "no client-specified name").
+      return {};
+    }
+    // Not implemented otherwise — passthrough the value
     return value;
   }
 
