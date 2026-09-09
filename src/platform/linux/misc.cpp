@@ -970,8 +970,8 @@ namespace platf {
       // them from the display list served over /displays. resolve_display_
       // intent() maps them to their real targets; the prep-cmd hooks drive
       // the dynamic monitor lifecycle.
-      names.emplace_back(VDISPLAY_KWIN_ID);
-      names.emplace_back(VDISPLAY_KMS_ID);
+      names.emplace_back(display_device::VDISPLAY_KWIN_ID);
+      names.emplace_back(display_device::VDISPLAY_KMS_ID);
       return names;
     }
 #endif
@@ -984,11 +984,11 @@ namespace platf {
     // outputs plus the virtual picks, regardless of which source won.
     auto names = display_names(hwdevice_type);
     const bool has_virtual = std::find_if(names.begin(), names.end(), [](const auto &n) {
-      return n == VDISPLAY_KWIN_ID;
+      return n == display_device::VDISPLAY_KWIN_ID;
     }) != names.end();
     if (!has_virtual) {
-      names.emplace_back(VDISPLAY_KWIN_ID);
-      names.emplace_back(VDISPLAY_KMS_ID);
+      names.emplace_back(display_device::VDISPLAY_KWIN_ID);
+      names.emplace_back(display_device::VDISPLAY_KMS_ID);
     }
     return names;
   }
