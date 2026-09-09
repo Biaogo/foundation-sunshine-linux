@@ -960,6 +960,7 @@ namespace pipewire {
     }
 
     void query_dmabuf_formats(EGLDisplay egl_display) {
+      n_dmabuf_infos = 0;
       EGLint num_dmabuf_formats = 0;
       std::array<EGLint, MAX_DMABUF_FORMATS> dmabuf_formats = {0};
       eglQueryDmaBufFormatsEXT(egl_display, MAX_DMABUF_FORMATS, dmabuf_formats.data(), &num_dmabuf_formats);
@@ -1057,8 +1058,8 @@ namespace pipewire {
 
     platf::mem_type_e mem_type;
     wl::display_t wl_display;
-    std::array<struct dmabuf_format_info_t, MAX_DMABUF_FORMATS> dmabuf_infos;
-    int n_dmabuf_infos;
+    std::array<struct dmabuf_format_info_t, MAX_DMABUF_FORMATS> dmabuf_infos = {};
+    int n_dmabuf_infos = 0;
     bool display_is_nvidia = false;  // Track if display GPU is NVIDIA
     std::chrono::nanoseconds delay;
     std::optional<std::uint64_t> last_pts {};
