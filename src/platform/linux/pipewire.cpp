@@ -1000,12 +1000,21 @@ namespace pipewire {
         return -1;
       }
 
-      // Load the DMA-BUF query extensions (not in this fork's vendored glad)
-      if (!eglQueryDmaBufFormatsEXT || !eglQueryDmaBufModifiersEXT) {
+      // Load the DMA-BUF query extensions (not in this fork's vendored glad).
+      // These are global function pointers shared across display instances and
+      // threads — initialize them exactly once under a static local guard, and
+      // tolerate a NULL result (extension absent) instead of calling through a
+      // null pointer later.
+      static std::once_flag dmabuf_ext_once;
+      std::call_once(dmabuf_ext_once, [] {
         eglQueryDmaBufFormatsEXT = reinterpret_cast<PFNEGLQUERYDMABUFFORMATSEXTPROC>(
           eglGetProcAddress("eglQueryDmaBufFormatsEXT"));
         eglQueryDmaBufModifiersEXT = reinterpret_cast<PFNEGLQUERYDMABUFMODIFIERSEXTPROC>(
           eglGetProcAddress("eglQueryDmaBufModifiersEXT"));
+      });
+      if (!eglQueryDmaBufFormatsEXT || !eglQueryDmaBufModifiersEXT) {
+        BOOST_LOG(warning) << "[pipewire] EGL_DMA_BUF extensions unavailable — skipping modifier query"sv;
+        return 0;
       }
 
       // Detect if this is a pure NVIDIA system (not hybrid Intel+NVIDIA)
