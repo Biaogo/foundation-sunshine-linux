@@ -857,6 +857,11 @@ namespace platf {
   std::vector<std::string>
   display_names(mem_type_e hwdevice_type);
 
+  // Display list served to clients (/displays): active backend outputs plus
+  // the Linux virtual picks (虚拟-KWin / 虚拟-KMS).
+  std::vector<std::string>
+  client_display_names(mem_type_e hwdevice_type);
+
 #ifdef SUNSHINE_BUILD_KWIN
   // KWin ScreenCast backend (upstream PR #5009): compositor-level output
   // names, including krfb-virtualmonitor virtual outputs.

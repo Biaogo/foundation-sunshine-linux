@@ -29,6 +29,7 @@
 #include "graphics.h"
 #include "misc.h"
 #include "src/config.h"
+#include "src/display_device/display_device.h"
 #include "src/entry_handler.h"
 #include "src/logging.h"
 #include "src/platform/common.h"
@@ -963,9 +964,33 @@ namespace platf {
     if (sources[source::X11]) return x11_display_names();
 #endif
 #ifdef SUNSHINE_BUILD_KWIN
-    if (sources[source::KWIN]) return kwin_display_names();
+    if (sources[source::KWIN]) {
+      auto names = kwin_display_names();
+      // Append the virtual display picks so clients (Moonlight) can select
+      // them from the display list served over /displays. resolve_display_
+      // intent() maps them to their real targets; the prep-cmd hooks drive
+      // the dynamic monitor lifecycle.
+      names.emplace_back(VDISPLAY_KWIN_ID);
+      names.emplace_back(VDISPLAY_KMS_ID);
+      return names;
+    }
 #endif
     return {};
+  }
+
+  std::vector<std::string>
+  client_display_names(mem_type_e hwdevice_type) {
+    // Display list served to clients (/displays): the active backend's
+    // outputs plus the virtual picks, regardless of which source won.
+    auto names = display_names(hwdevice_type);
+    const bool has_virtual = std::find_if(names.begin(), names.end(), [](const auto &n) {
+      return n == VDISPLAY_KWIN_ID;
+    }) != names.end();
+    if (!has_virtual) {
+      names.emplace_back(VDISPLAY_KWIN_ID);
+      names.emplace_back(VDISPLAY_KMS_ID);
+    }
+    return names;
   }
 
   /**

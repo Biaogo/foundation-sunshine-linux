@@ -74,9 +74,14 @@ namespace nvhttp::display_control {
 #ifdef _WIN32
       display_names = platf::display_names(platf::mem_type_e::dxgi);
 #elif defined(__linux__)
-      for (auto mem_type : { platf::mem_type_e::vaapi, platf::mem_type_e::cuda, platf::mem_type_e::system }) {
-        display_names = platf::display_names(mem_type);
-        if (!display_names.empty()) break;
+      // Serve the client-facing list: active backend outputs PLUS the Linux
+      // virtual picks (虚拟-KWin / 虚拟-KMS) — Moonlight's display selector.
+      display_names = platf::client_display_names(platf::mem_type_e::system);
+      if (display_names.empty()) {
+        for (auto mem_type : { platf::mem_type_e::vaapi, platf::mem_type_e::cuda }) {
+          display_names = platf::client_display_names(mem_type);
+          if (!display_names.empty()) break;
+        }
       }
 #elif defined(__APPLE__)
       display_names = platf::display_names(platf::mem_type_e::videotoolbox);
