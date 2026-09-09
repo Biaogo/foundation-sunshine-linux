@@ -697,7 +697,8 @@ namespace nvhttp::stream_start {
     if (auto vit = launch_session.env.find("SUNSHINE_CLIENT_VIRTUAL_DISPLAY"); vit != launch_session.env.end() && !vit->to_string().empty()) {
       BOOST_LOG(info) << "虚拟显示器 pick: running global_prep_cmd do-hook before encoder probe";
       for (const auto &entry : launch_session.env) {
-        const std::string name = entry.key();
+        // boost::process env entries have no .key(); get_name() is the API.
+        const std::string name = entry.get_name();
         if (name.rfind("SUNSHINE_CLIENT_", 0) == 0) {
           setenv(name.c_str(), entry.to_string().c_str(), 1);
         }
