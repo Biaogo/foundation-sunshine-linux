@@ -1189,10 +1189,8 @@ namespace platf {
     // Restore dumpable so /proc/self/exe resolves again — KWin's permission
     // check needs it. Dropping ambient caps clears the raised-privileges
     // reason for dumpable=0, but the flag is sticky: set it back explicitly.
-    // Non-fatal if it fails.
-    if (prctl(PR_SET_DUMPABLE, 1, 0, 0, 0) == 0) {
-      BOOST_LOG(info) << "[misc] process restored as dumpable (/proc/self/exe readable for KWin permission check)"sv;
-    }
+    // Non-fatal if it fails. (Marker logged by kwin_maybe_drop_admin_caps.)
+    prctl(PR_SET_DUMPABLE, 1, 0, 0, 0);
   }
 
   std::unique_ptr<deinit_t>
@@ -1250,6 +1248,14 @@ namespace platf {
     // boot state below via verify_request.
     if (((config::video.capture.empty() && sources.none()) || config::video.capture == "kwin") && verify_kwin()) {
       sources[source::KWIN] = true;
+      // In-session service starts (restart without reboot) verify kwin HERE,
+      // while the ambient/file cap from the setcap wrapper is still set.
+      // reverify_sources_for_session() would never fire (source already
+      // claimed), so shed the caps now — otherwise the first session's hook
+      // children carry the cap (krfb hangs) and KWin can't read our exe
+      // (permission check fails).
+      kwin_maybe_drop_admin_caps();
+      BOOST_LOG(info) << "[platform] CAP_SYS_ADMIN shed for kwin capture (PERMITTED retained for kms)"sv;
     }
 #endif
 #ifdef SUNSHINE_BUILD_DRM

@@ -733,6 +733,7 @@ namespace platf {
     // serving numeric KMS names to clients forever.
     if (!kwin::screencast_permission_helper_t::is_permission_system_deactivated() && has_elevated_privileges(false)) {
       drop_elevated_privileges(false);
+      BOOST_LOG(info) << "[misc] process restored as dumpable (/proc/self/exe readable for KWin permission check)"sv;
     }
   }
 }  // namespace platf
