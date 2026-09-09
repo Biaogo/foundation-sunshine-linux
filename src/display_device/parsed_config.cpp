@@ -743,7 +743,11 @@ namespace display_device {
     parsed_config_t parsed_config;
 
     // 显示器目标、是否为VDD、以及device_prep统一在此解析
-    const auto intent = resolve_display_intent(config, session);
+    // (const copy: resolve_display_intent may inject the virtual-display
+    //  hook env into the mutable original session; parsed_config only
+    //  needs the resolved intent.)
+    rtsp_stream::launch_session_t session_copy = session;
+    const auto intent = resolve_display_intent(config, session_copy);
     if (intent.target == display_intent_t::target_e::unavailable) {
       return boost::none;
     }
