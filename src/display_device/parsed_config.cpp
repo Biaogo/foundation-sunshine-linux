@@ -647,19 +647,32 @@ namespace display_device {
     }
 
     if (!requested_device_exists) {
-      if (client_named_it) {
+      // Virtual picks are exempt: their backing output (eDP-1) is DISABLED
+      // between sessions by design, so it cannot pass a live enumeration
+      // here. The global_prep_cmd do-hook enables it right after this check
+      // and stream startup (video.cpp) waits for it to appear — failing the
+      // launch here would race the very monitor we are about to create.
+      const bool is_virtual_pick = intent.device_id == VDISPLAY_KWIN_ID ||
+                                   intent.device_id == VDISPLAY_KMS_ID;
+      if (client_named_it && !is_virtual_pick) {
         // The client picked this display for this stream, so quietly streaming a
         // different one is worse than telling it the display is gone.
         BOOST_LOG(error) << "客户端指定的物理显示器不存在，拒绝回退到其他显示器: "sv << intent.device_id;
         intent.target = display_intent_t::target_e::unavailable;
         return intent;
       }
+      else if (is_virtual_pick) {
+        BOOST_LOG(info) << "虚拟显示器 "sv << intent.device_id
+                        << " 尚未启用（prep-cmd 将在流启动时拉起），保留 intent";
+      }
 
       // A stale entry in the host config. Aim at the primary display; whether a
       // virtual display is a better answer is decided during stream startup.
       BOOST_LOG(warning) << "配置的显示器不存在，改用主显示器: "sv << intent.device_id;
-      intent.device_id.clear();
-      intent.user_named_display = false;
+      if (!is_virtual_pick) {
+        intent.device_id.clear();
+        intent.user_named_display = false;
+      }
     }
 
     return intent;
