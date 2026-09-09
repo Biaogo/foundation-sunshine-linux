@@ -62,6 +62,28 @@ namespace display_device {
       ++kms_index;
     }
 #endif
+
+    // Virtual display picks (Linux):
+    //   虚拟-KWin — the dynamic virtual monitor. Backed by the force-enabled
+    //     dead internal panel (eDP-1): the global_prep_cmd do-hook enables it
+    //     at stream start and the undo-hook disables it on disconnect, so it
+    //     behaves like a display that appears/disappears per session.
+    //   虚拟-KMS — the same idea served through the KMS capture backend,
+    //     usable pre-login (SDDM) where no Wayland compositor exists.
+    // resolve_display_intent() translates these ids to their real targets
+    // (eDP-1 / primary kms monitor) before validation.
+    devices[VDISPLAY_KWIN_ID] = device_info_t {
+      VDISPLAY_KWIN_ID,
+      VDISPLAY_KWIN_ID,
+      device_state_e::active,
+      hdr_state_e::unknown
+    };
+    devices[VDISPLAY_KMS_ID] = device_info_t {
+      VDISPLAY_KMS_ID,
+      VDISPLAY_KMS_ID,
+      device_state_e::active,
+      hdr_state_e::unknown
+    };
     return devices;
   }
 

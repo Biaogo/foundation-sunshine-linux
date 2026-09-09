@@ -169,6 +169,7 @@ namespace proc {
     // here; they are re-added below from the current launch_session.
     _env.erase("SUNSHINE_CLIENT_DISPLAY_NAME");
     _env.erase("SUNSHINE_CLIENT_PICKED_DISPLAY");
+    _env.erase("SUNSHINE_CLIENT_VIRTUAL_DISPLAY");
 
     auto iter = std::find_if(_apps.begin(), _apps.end(), [&app_id](const auto app) {
       return app.id == std::to_string(app_id);
@@ -214,6 +215,12 @@ namespace proc {
       const auto it = launch_session->env.find("SUNSHINE_CLIENT_DISPLAY_NAME");
       if (it != launch_session->env.end()) {
         _env["SUNSHINE_CLIENT_DISPLAY_NAME"] = it->to_string();
+      }
+      // Hook switch for the dynamic virtual monitor (Linux): only set when
+      // the client actually picked 虚拟-KWin / 虚拟-KMS (see parsed_config).
+      const auto vit = launch_session->env.find("SUNSHINE_CLIENT_VIRTUAL_DISPLAY");
+      if (vit != launch_session->env.end()) {
+        _env["SUNSHINE_CLIENT_VIRTUAL_DISPLAY"] = vit->to_string();
       }
     }
     int channelCount = launch_session->surround_info & (65535);

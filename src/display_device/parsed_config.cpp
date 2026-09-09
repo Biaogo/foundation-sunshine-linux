@@ -554,7 +554,7 @@ namespace display_device {
   }
 
   display_intent_t
-  resolve_display_intent(const config::video_t &config, const rtsp_stream::launch_session_t &session) {
+  resolve_display_intent(const config::video_t &config, rtsp_stream::launch_session_t &session) {
     // The client may pick a display for its own stream; otherwise the host config decides.
     std::string device_id = config.output_name;
     bool client_named_it = false;
@@ -564,6 +564,22 @@ namespace display_device {
         client_named_it = true;
         BOOST_LOG(debug) << "使用客户端指定的显示器: "sv << device_id;
       }
+    }
+
+    // Linux virtual display picks: translate to their real capture targets
+    // and export a hook switch so global_prep_cmd only drives the dynamic
+    // virtual monitor (eDP-1 enable/disable) when it is actually requested.
+    //   虚拟-KWin -> eDP-1 (kwin capture; hook enables it for the session)
+    //   虚拟-KMS -> primary kms monitor (kms capture; pre-login/SDDM)
+    if (device_id == VDISPLAY_KWIN_ID) {
+      device_id = "eDP-1";
+      session.env["SUNSHINE_CLIENT_VIRTUAL_DISPLAY"] = "kwin";
+      BOOST_LOG(info) << "虚拟显示器 (KWin) requested — backing it with eDP-1";
+    }
+    else if (device_id == VDISPLAY_KMS_ID) {
+      device_id.clear();  // empty = primary monitor as seen by kmsgrab
+      session.env["SUNSHINE_CLIENT_VIRTUAL_DISPLAY"] = "kms";
+      BOOST_LOG(info) << "虚拟显示器 (KMS) requested — using primary KMS monitor";
     }
 
     display_intent_t intent {

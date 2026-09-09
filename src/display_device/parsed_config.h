@@ -196,7 +196,7 @@ namespace display_device {
    *          as unavailable instead.
    */
   display_intent_t
-  resolve_display_intent(const config::video_t &config, const rtsp_stream::launch_session_t &session);
+  resolve_display_intent(const config::video_t &config, rtsp_stream::launch_session_t &session);
 
   /**
    * @brief Parse the user configuration and the session information.

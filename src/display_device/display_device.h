@@ -13,6 +13,17 @@
 namespace display_device {
 
   /**
+   * @brief Virtual display picks on Linux.
+   * @note "虚拟-KWin" is the dynamic virtual monitor (backed by the
+   *       force-enabled dead panel eDP-1, driven by prep-cmd hooks);
+   *       "虚拟-KMS" serves the same purpose through the KMS backend
+   *       (pre-login/SDDM). resolve_display_intent() maps them to real
+   *       targets before validation.
+   */
+  inline constexpr auto VDISPLAY_KWIN_ID = "虚拟-KWin";
+  inline constexpr auto VDISPLAY_KMS_ID = "虚拟-KMS";
+
+  /**
    * @brief The device state in the operating system.
    * @note On Windows you can have have multiple primary displays when they are duplicated.
    */
