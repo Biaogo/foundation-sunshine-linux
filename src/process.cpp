@@ -160,6 +160,16 @@ namespace proc {
     // Ensure starting from a clean slate
     terminate();
 
+    // _env is a member that accumulates SUNSHINE_* session variables across
+    // execute() calls (refresh() deliberately preserves them for a running
+    // app). Without pruning, a display pick from a previous session
+    // (SUNSHINE_CLIENT_DISPLAY_NAME=HDMI-A-1 etc.) leaks into the next
+    // launch's prep-cmd environment — the do-hook then wrongly skips the
+    // virtual display for a "default" stream. Drop the per-session keys
+    // here; they are re-added below from the current launch_session.
+    _env.erase("SUNSHINE_CLIENT_DISPLAY_NAME");
+    _env.erase("SUNSHINE_CLIENT_PICKED_DISPLAY");
+
     auto iter = std::find_if(_apps.begin(), _apps.end(), [&app_id](const auto app) {
       return app.id == std::to_string(app_id);
     });
