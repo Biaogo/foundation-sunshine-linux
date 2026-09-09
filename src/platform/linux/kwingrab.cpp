@@ -109,13 +109,7 @@ namespace kwin {
         const auto entry = path.path().string();
         if (entry.starts_with(user_filepathprefix)) {
           auto entry_executablepath = get_executable_from_desktop_file(entry);
-          // NixOS wrapper chain: a permission file whose Exec is the stable
-          // wrapper path matches ANY store-wrapped sunshine build.
-          const bool wrapper_match = !entry_executablepath.empty() &&
-                                     entry_executablepath == "/run/wrappers/bin/sunshine" &&
-                                     std::string_view(executablepath).find("/nix/store/") == 0 &&
-                                     std::string_view(executablepath).find("sunshine") != std::string_view::npos;
-          if (!entry_executablepath.empty() && (entry_executablepath == executablepath || wrapper_match)) {
+          if (!entry_executablepath.empty() && entry_executablepath == executablepath) {
             // This entry is exactly the one we need
             BOOST_LOG(debug) << "[kwingrab] Ignoring current temporary KWin wayland permission file: "sv << entry;
             create_file = false;
@@ -227,12 +221,6 @@ namespace kwin {
     }
 
     static bool check_kwin_system_permissions(const std::string_view &filenameprefix, const std::string_view &executablepath) {
-      // NixOS setcap wrapper: the running exe is a store-wrapped binary whose
-      // path changes on every build, while the stable entry point is
-      // /run/wrappers/bin/sunshine. Accept either path so a permission file
-      // survives package updates.
-      const bool is_wrapper_chain = std::string_view(executablepath).find("/nix/store/") == 0 &&
-                                    std::string_view(executablepath).find("sunshine") != std::string_view::npos;
       // Find data dirs to check from XDG_DATA_DIRS
       std::vector<std::string> xdg_data_dirs;
       if (const std::string e = getenvstr("XDG_DATA_DIRS"); !e.empty()) {
@@ -255,10 +243,6 @@ namespace kwin {
           auto file_executablepath = get_executable_from_desktop_file(filename);
           if (file_executablepath == executablepath) {
             BOOST_LOG(info) << "[kwingrab] Found matching system KWin desktop permission file: "sv << filename;
-            return true;
-          }
-          if (is_wrapper_chain && file_executablepath == "/run/wrappers/bin/sunshine") {
-            BOOST_LOG(info) << "[kwingrab] Found matching system KWin desktop permission file (wrapper path): "sv << filename;
             return true;
           }
         }

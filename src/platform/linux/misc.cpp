@@ -23,6 +23,7 @@
 #include <netinet/udp.h>
 #include <pwd.h>
 #include <sys/capability.h>
+#include <sys/prctl.h>
 #include <unistd.h>
 
 // local includes
@@ -1163,10 +1164,35 @@ namespace platf {
       cap_set_flag(caps, CAP_PERMITTED, caps_to_drop.size(), caps_to_drop.data(), CAP_CLEAR);
     }
 
+    // AMBIENT is never applied by libcap's cap_set_proc() (the CAP_AMBIENT
+    // flag on a cap_t is ignored). Ambient caps are inherited across execve
+    // by EVERY child we spawn (prep-cmd hooks → krfb-virtualmonitor), and a
+    // process carrying an ambient/file cap is non-dumpable:
+    //   1. /proc/<pid>/exe becomes unreadable → KWin's screencast permission
+    //      check (readlinks the client's exe) matches nothing →
+    //      zkde_screencast_unstable_v1 refused → every virtual pick 503s;
+    //   2. the cap-carrying krfb-virtualmonitor hangs silently BEFORE EGL
+    //      init (observed live: every cap-carrying krfb stuck; every plain
+    //      one created its output within seconds).
+    // Lower AMBIENT explicitly and clear INHERITABLE for the dropped caps so
+    // children are plain processes.
+    for (const auto c : caps_to_drop) {
+      cap_set_ambient(c, CAP_CLEAR);
+    }
+    cap_set_flag(caps, CAP_INHERITABLE, caps_to_drop.size(), caps_to_drop.data(), CAP_CLEAR);
+
     if (cap_set_proc(caps) != 0) {
       BOOST_LOG(error) << "[misc] drop_elevated_privileges failed to prune capabilities: "sv << std::strerror(errno);
     }
     cap_free(caps);
+
+    // Restore dumpable so /proc/self/exe resolves again — KWin's permission
+    // check needs it. Dropping ambient caps clears the raised-privileges
+    // reason for dumpable=0, but the flag is sticky: set it back explicitly.
+    // Non-fatal if it fails.
+    if (prctl(PR_SET_DUMPABLE, 1, 0, 0, 0) == 0) {
+      BOOST_LOG(info) << "[misc] process restored as dumpable (/proc/self/exe readable for KWin permission check)"sv;
+    }
   }
 
   std::unique_ptr<deinit_t>
