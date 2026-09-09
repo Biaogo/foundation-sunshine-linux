@@ -740,4 +740,15 @@ namespace platf {
     }
     return true;
   }
+
+  void kwin_maybe_drop_admin_caps() {
+    // Shed CAP_SYS_ADMIN (EFFECTIVE only — PERMITTED is kept so kmsgrab can
+    // re-raise) once the compositor backend becomes usable. While the cap is
+    // effective, kwin_display_names() only returns a placeholder, so a
+    // linger service that re-verified kwin post-login would otherwise keep
+    // serving numeric KMS names to clients forever.
+    if (!kwin::screencast_permission_helper_t::is_permission_system_deactivated() && has_elevated_privileges(false)) {
+      drop_elevated_privileges(false);
+    }
+  }
 }  // namespace platf

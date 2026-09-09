@@ -939,6 +939,7 @@ namespace platf {
 #ifdef SUNSHINE_BUILD_KWIN
   bool kwin_available();
   std::vector<std::string> kwin_display_names();
+  void kwin_maybe_drop_admin_caps();
   std::shared_ptr<display_t> kwin_display(mem_type_e hwdevice_type, const std::string &display_name, const video::config_t &config);
 
   bool
@@ -957,6 +958,12 @@ namespace platf {
     if (!sources[source::KWIN] && (config::video.capture.empty() || config::video.capture == "kwin") && verify_kwin()) {
       BOOST_LOG(info) << "[platform] Wayland session detected — enabling kwin capture backend"sv;
       sources[source::KWIN] = true;
+      // Shed the effective cap now: kwin_display_names() refuses to serve
+      // the real output list while CAP_SYS_ADMIN is effective (permission
+      // system), which would leave clients on numeric KMS names forever.
+      // Only EFFECTIVE is cleared — kmsgrab re-raises from PERMITTED.
+      kwin_maybe_drop_admin_caps();
+      BOOST_LOG(info) << "[platform] CAP_SYS_ADMIN shed for kwin capture (PERMITTED retained for kms)"sv;
     }
 #endif
   }
@@ -970,6 +977,31 @@ namespace platf {
 #endif
 #ifdef SUNSHINE_BUILD_WAYLAND
     if (sources[source::WAYLAND]) return wl_display_names();
+#endif
+#ifdef SUNSHINE_BUILD_KWIN
+    // Prefer the compositor's output list whenever kwin capture is alive —
+    // even when the KMS source is also available (boot happened pre-login
+    // and re-verification enabled kwin after the session appeared). With
+    // linger both sources are typically live in-session; serving the KMS
+    // list made clients see numeric ids ("0", "1") instead of real output
+    // names, and virtual picks appended by client_display_names() could not
+    // be honoured by the KMS backend anyway.
+    // A single empty name is the probing-phase placeholder returned while
+    // the process still holds CAP_SYS_ADMIN — treat it as "kwin not ready"
+    // and fall through to KMS.
+    if (sources[source::KWIN]) {
+      auto names = kwin_display_names();
+      const bool placeholder = names.size() == 1 && names[0].empty();
+      if (!placeholder && !names.empty()) {
+        // Append the virtual display picks so clients (Moonlight) can select
+        // them from the display list served over /displays. resolve_display_
+        // intent() maps them to their real targets; the prep-cmd hooks drive
+        // the dynamic monitor lifecycle.
+        names.emplace_back(display_device::VDISPLAY_KWIN_ID);
+        names.emplace_back(display_device::VDISPLAY_KMS_ID);
+        return names;
+      }
+    }
 #endif
 #ifdef SUNSHINE_BUILD_DRM
     if (sources[source::KMS]) return kms_display_names(hwdevice_type);
@@ -995,15 +1027,20 @@ namespace platf {
   std::vector<std::string>
   client_display_names(mem_type_e hwdevice_type) {
     // Display list served to clients (/displays): the active backend's
-    // outputs plus the virtual picks, regardless of which source won.
+    // outputs plus the virtual picks. The virtual picks are only advertised
+    // when the kwin source is alive — they are krfb Wayland outputs and can
+    // never be served by KMS (e.g. pre-login at SDDM), where advertising
+    // them would only produce instant failures.
     auto names = display_names(hwdevice_type);
+#ifdef SUNSHINE_BUILD_KWIN
     const bool has_virtual = std::find_if(names.begin(), names.end(), [](const auto &n) {
       return n == display_device::VDISPLAY_KWIN_ID;
     }) != names.end();
-    if (!has_virtual) {
+    if (sources[source::KWIN] && !has_virtual) {
       names.emplace_back(display_device::VDISPLAY_KWIN_ID);
       names.emplace_back(display_device::VDISPLAY_KMS_ID);
     }
+#endif
     return names;
   }
 
@@ -1030,6 +1067,22 @@ namespace platf {
     if (sources[source::WAYLAND]) {
       BOOST_LOG(info) << "Screencasting with Wayland's protocol"sv;
       return wl_display(hwdevice_type, display_name, config);
+    }
+#endif
+#ifdef SUNSHINE_BUILD_KWIN
+    // Route every Wayland-side name to kwin when that backend is alive:
+    // virtual-display picks and physical connector names (HDMI-A-1,
+    // Virtual-SunshineVirt) only exist in kwin's enumeration, while KMS
+    // understands numeric ids exclusively ("0", "1", ...). With linger both
+    // sources are alive in-session and the KMS branch below would otherwise
+    // consume kwin's names and fail with "Couldn't find monitor [-N]".
+    // Numeric ids keep flowing to KMS; an empty pick (primary output) goes
+    // to kwin first when a compositor is reachable.
+    if (sources[source::KWIN] &&
+        (display_name.empty() ||
+         display_name.find_first_not_of("0123456789") != std::string::npos)) {
+      BOOST_LOG(info) << "Screencasting with KWin ScreenCast"sv;
+      return kwin_display(hwdevice_type, display_name, config);
     }
 #endif
 #ifdef SUNSHINE_BUILD_DRM
