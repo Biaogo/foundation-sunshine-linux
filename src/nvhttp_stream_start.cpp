@@ -692,8 +692,16 @@ namespace nvhttp::stream_start {
     // execute(), AFTER this function's encoder probe. The probe needs a
     // live display to succeed, so for virtual picks run the do-hook here,
     // BEFORE probing, to create the output in time.
+    // launch_session.env is an internal map, NOT the process environment —
+    // export the session vars with setenv so the hook actually sees them.
     if (auto vit = launch_session.env.find("SUNSHINE_CLIENT_VIRTUAL_DISPLAY"); vit != launch_session.env.end() && !vit->to_string().empty()) {
       BOOST_LOG(info) << "虚拟显示器 pick: running global_prep_cmd do-hook before encoder probe";
+      for (const auto &entry : launch_session.env) {
+        const std::string name = entry.key();
+        if (name.rfind("SUNSHINE_CLIENT_", 0) == 0) {
+          setenv(name.c_str(), entry.to_string().c_str(), 1);
+        }
+      }
       for (const auto &prep : config::sunshine.prep_cmds) {
         if (prep.do_cmd.empty()) {
           continue;
@@ -701,6 +709,8 @@ namespace nvhttp::stream_start {
         int rc = std::system((prep.do_cmd + " 2>>/tmp/sunshine-vdisplay-dbg.log").c_str());
         BOOST_LOG(info) << "Pre-probe do-hook ["sv << prep.do_cmd << "] exited with "sv << rc;
       }
+      // Unset again so the env doesn't leak into unrelated launches.
+      unsetenv("SUNSHINE_CLIENT_VIRTUAL_DISPLAY");
     }
 
     // Display configuration can change the active capture target, so probe
