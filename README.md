@@ -132,6 +132,13 @@ HDR10 静态元数据（Mastering Display Info + Content Light Level）完整透
 
 **NixOS 打包**：本仓库可通过独立 flake 构建（`nix build github:Biaogo/foundation-sunshine-linux.nix`），包表达式见 [foundation-sunshine-linux.nix](https://github.com/Biaogo/foundation-sunshine-linux.nix)。
 
+**预编译产物**：[Releases](https://github.com/Biaogo/foundation-sunshine-linux/releases/tag/v2026.09.07-linux) 提供 x86_64-linux tarball（由 Nix 构建、开启动态 CUDA）。Nix 用户建议直接用上面的 flake（自动处理 CUDA/依赖 closure）；非 NixOS 发行版可用 tarball，解压后运行 `foundation-sunshine-2026.09.07-linux-support/bin/sunshine`（需自行安装 ffmpeg/boost 等运行时依赖，或仅用于参考版本号）。
+
+**Linux 侧已知运维要点（NixOS/包装器部署）**
+- **KWin ScreenCast 权限**：KWin ≥ 6.6 对 `zkde_screencast_unstable_v1` 按客户端白名单放行（读 `/proc/<pid>/exe` 匹配 `.desktop` 文件的 `Exec=`）。经 setcap wrapper / file-capabilities 启动的 sunshine 进程不可转储（non-dumpable），KWin 无法识别 —— 现象为 `zkde_screencast_unstable_v1 not found in registry`。解法：会话环境与服务环境同时设置 `KWIN_WAYLAND_NO_PERMISSION_CHECKS=1`（上游 Sunshine 文档同款 workaround），或在无 file-cap 的环境下运行以生成 `~/.local/share/applications/sunshine.*.kwin*.desktop` 权限文件。
+- **krfb-virtualmonitor 虚拟屏**：`--resolution` 必须是单个无空格参数（`WIDTHxHEIGHT`）；输出默认 disabled，需 `kscreen-doctor output.<uuid>.enable` 后才出现 `wl_output`；配合 `global_prep_cmd` 可实现"连接即建、断连即销"。
+- **systemd 用户服务 + linger**：`/dev/uinput` 的 uaccess ACL 仅在用户有活跃会话时生效 —— 以 linger 服务身份在登录前启动时虚拟鼠标/键盘会 Permission denied。解法：udev 静态规则 `KERNEL=="uinput", GROUP="input", MODE="0660"` 并将用户加入 `input` 组。
+
 <br>
 
 ---
