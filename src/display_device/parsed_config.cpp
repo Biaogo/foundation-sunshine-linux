@@ -554,7 +554,17 @@ namespace display_device {
   }
 
   display_intent_t
+  resolve_display_intent_mutable(const config::video_t &config, rtsp_stream::launch_session_t &session) {
+    return resolve_display_intent_impl(config, session, true);
+  }
+
+  display_intent_t
   resolve_display_intent(const config::video_t &config, rtsp_stream::launch_session_t &session) {
+    return resolve_display_intent_impl(config, session, true);
+  }
+
+  display_intent_t
+  resolve_display_intent_impl(const config::video_t &config, rtsp_stream::launch_session_t &session, bool inject_hook_env) {
     // The client may pick a display for its own stream; otherwise the host config decides.
     std::string device_id = config.output_name;
     bool client_named_it = false;
@@ -573,12 +583,16 @@ namespace display_device {
     //   虚拟-KMS -> primary kms monitor (kms capture; pre-login/SDDM)
     if (device_id == VDISPLAY_KWIN_ID) {
       device_id = "eDP-1";
-      session.env["SUNSHINE_CLIENT_VIRTUAL_DISPLAY"] = "kwin";
+      if (inject_hook_env) {
+        session.env["SUNSHINE_CLIENT_VIRTUAL_DISPLAY"] = "kwin";
+      }
       BOOST_LOG(info) << "虚拟显示器 (KWin) requested — backing it with eDP-1";
     }
     else if (device_id == VDISPLAY_KMS_ID) {
       device_id.clear();  // empty = primary monitor as seen by kmsgrab
-      session.env["SUNSHINE_CLIENT_VIRTUAL_DISPLAY"] = "kms";
+      if (inject_hook_env) {
+        session.env["SUNSHINE_CLIENT_VIRTUAL_DISPLAY"] = "kms";
+      }
       BOOST_LOG(info) << "虚拟显示器 (KMS) requested — using primary KMS monitor";
     }
 
@@ -743,11 +757,11 @@ namespace display_device {
     parsed_config_t parsed_config;
 
     // 显示器目标、是否为VDD、以及device_prep统一在此解析
-    // (const copy: resolve_display_intent may inject the virtual-display
-    //  hook env into the mutable original session; parsed_config only
-    //  needs the resolved intent.)
-    rtsp_stream::launch_session_t session_copy = session;
-    const auto intent = resolve_display_intent(config, session_copy);
+    // (launch_session_t is move-only — gcm cipher member — and this parse
+    //  path takes it as const; the hook-env injection happens in the
+    //  mutable owner via resolve_display_intent(_mutable) elsewhere.
+    //  Here we only need the resolved intent, so reuse the const path.)
+    const auto intent = resolve_display_intent_mutable(config, const_cast<rtsp_stream::launch_session_t &>(session));
     if (intent.target == display_intent_t::target_e::unavailable) {
       return boost::none;
     }

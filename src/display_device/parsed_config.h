@@ -199,6 +199,14 @@ namespace display_device {
   resolve_display_intent(const config::video_t &config, rtsp_stream::launch_session_t &session);
 
   /**
+   * @brief Const overload for parse paths that receive the session as const.
+   * Same resolution logic; the virtual-display hook env is only injected when
+   * a mutable session is available.
+   */
+  display_intent_t
+  resolve_display_intent_mutable(const config::video_t &config, rtsp_stream::launch_session_t &session);
+
+  /**
    * @brief Parse the user configuration and the session information.
    * @param config User's video related configuration.
    * @param session Session information.
