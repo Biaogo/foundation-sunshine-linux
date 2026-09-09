@@ -97,9 +97,11 @@ namespace display_device {
       return "eDP-1";
     }
     if (value == VDISPLAY_KMS_ID) {
-      // Primary KMS monitor: let video.cpp fall back to the default
-      // display (empty means "no client-specified name").
-      return {};
+      // 虚拟-KMS also streams the dynamic virtual monitor. Pre-login (SDDM)
+      // the intent is that KMS capture shows it; in a desktop session KMS
+      // capture grabs the live DRM scanout (the physical screen), which is
+      // the closest KMS can offer.
+      return "eDP-1";
     }
     // Not implemented otherwise — passthrough the value
     return value;

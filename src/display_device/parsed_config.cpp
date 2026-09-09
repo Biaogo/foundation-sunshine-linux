@@ -582,8 +582,10 @@ namespace display_device {
     // Linux virtual display picks: translate to their real capture targets
     // and export a hook switch so global_prep_cmd only drives the dynamic
     // virtual monitor (eDP-1 enable/disable) when it is actually requested.
-    //   虚拟-KWin -> eDP-1 (kwin capture; hook enables it for the session)
-    //   虚拟-KMS -> primary kms monitor (kms capture; pre-login/SDDM)
+    //   虚拟-KWin -> eDP-1 via kwin capture (compositor frames)
+    //   虚拟-KMS -> eDP-1 via kms capture (DRM scanout; the SDDM path —
+    //              no compositor is reachable pre-login, kms is the only
+    //              backend that works there)
     if (device_id == VDISPLAY_KWIN_ID) {
       device_id = "eDP-1";
       if (inject_hook_env) {
@@ -592,11 +594,11 @@ namespace display_device {
       BOOST_LOG(info) << "虚拟显示器 (KWin) requested — backing it with eDP-1";
     }
     else if (device_id == VDISPLAY_KMS_ID) {
-      device_id.clear();  // empty = primary monitor as seen by kmsgrab
+      device_id = "eDP-1";
       if (inject_hook_env) {
         session.env["SUNSHINE_CLIENT_VIRTUAL_DISPLAY"] = "kms";
       }
-      BOOST_LOG(info) << "虚拟显示器 (KMS) requested — using primary KMS monitor";
+      BOOST_LOG(info) << "虚拟显示器 (KMS) requested — backing it with eDP-1 (KMS capture)";
     }
 
     display_intent_t intent {
