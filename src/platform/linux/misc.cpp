@@ -1100,8 +1100,15 @@ namespace platf {
       return;
     }
 
+    // Clear EFFECTIVE always. Keep PERMITTED when dropping only SYS_ADMIN:
+    // kmsgrab needs to re-raise CAP_SYS_ADMIN later (its cap_sys_admin RAII
+    // helper does cap_set_proc with CAP_SET on EFFECTIVE), which requires
+    // the capability to still be in PERMITTED. Wiping PERMITTED permanently
+    // killed KMS after the first kwin capture attempt.
     cap_set_flag(caps, CAP_EFFECTIVE, caps_to_drop.size(), caps_to_drop.data(), CAP_CLEAR);
-    cap_set_flag(caps, CAP_PERMITTED, caps_to_drop.size(), caps_to_drop.data(), CAP_CLEAR);
+    if (all_caps) {
+      cap_set_flag(caps, CAP_PERMITTED, caps_to_drop.size(), caps_to_drop.data(), CAP_CLEAR);
+    }
 
     if (cap_set_proc(caps) != 0) {
       BOOST_LOG(error) << "[misc] drop_elevated_privileges failed to prune capabilities: "sv << std::strerror(errno);
