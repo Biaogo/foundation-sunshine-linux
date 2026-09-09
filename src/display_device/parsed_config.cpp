@@ -601,6 +601,12 @@ namespace display_device {
       }
       BOOST_LOG(info) << "虚拟显示器 (KMS) requested — hooks will create Virtual-SunshineVirt";
     }
+    else if (device_id == "Virtual-SunshineVirt" && inject_hook_env) {
+      // The host config's output_name IS the dynamic virtual monitor
+      // (Moonlight's "默认" pick resolves to it). Make the hooks run for
+      // these streams too, or the output would never be created.
+      session.env["SUNSHINE_CLIENT_VIRTUAL_DISPLAY"] = "kwin";
+    }
 
     display_intent_t intent {
       display_intent_t::target_e::physical,
