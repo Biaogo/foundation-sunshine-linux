@@ -93,15 +93,12 @@ namespace display_device {
     // resolves config.display_name through this before matching against
     // the live output list — without the translation a disabled eDP-1
     // makes the poll either fail or grab whichever output comes first.
-    if (value == VDISPLAY_KWIN_ID) {
-      return "eDP-1";
-    }
-    if (value == VDISPLAY_KMS_ID) {
-      // 虚拟-KMS also streams the dynamic virtual monitor. Pre-login (SDDM)
-      // the intent is that KMS capture shows it; in a desktop session KMS
-      // capture grabs the live DRM scanout (the physical screen), which is
-      // the closest KMS can offer.
-      return "eDP-1";
+    if (value == VDISPLAY_KWIN_ID || value == VDISPLAY_KMS_ID) {
+      // The virtual monitor is created/removed by the prep-cmd do/undo
+      // hooks (krfb-virtualmonitor + kscreen enable) — not a fixed
+      // physical output. video.cpp polls for it by this exact name;
+      // the hooks name the krfb output "Virtual-SunshineVirt".
+      return "Virtual-SunshineVirt";
     }
     // Not implemented otherwise — passthrough the value
     return value;
