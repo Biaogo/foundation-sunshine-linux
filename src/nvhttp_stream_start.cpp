@@ -6,6 +6,7 @@
 // standard includes
 #include <array>
 #include <chrono>
+#include <cstdlib>
 #include <string>
 #include <thread>
 #include <utility>
@@ -684,6 +685,22 @@ namespace nvhttp::stream_start {
     const auto intent = display_device::resolve_display_intent(config::video, launch_session);
     if (!validate_display_intent(tree, intent)) {
       return false;
+    }
+
+    // Virtual display picks: the backing monitor is created by the
+    // global_prep_cmd do-hook — which would normally run inside app
+    // execute(), AFTER this function's encoder probe. The probe needs a
+    // live display to succeed, so for virtual picks run the do-hook here,
+    // BEFORE probing, to create the output in time.
+    if (auto vit = launch_session.env.find("SUNSHINE_CLIENT_VIRTUAL_DISPLAY"); vit != launch_session.env.end() && !vit->to_string().empty()) {
+      BOOST_LOG(info) << "虚拟显示器 pick: running global_prep_cmd do-hook before encoder probe";
+      for (const auto &prep : config::sunshine.prep_cmds) {
+        if (prep.do_cmd.empty()) {
+          continue;
+        }
+        int rc = std::system((prep.do_cmd + " 2>>/tmp/sunshine-vdisplay-dbg.log").c_str());
+        BOOST_LOG(info) << "Pre-probe do-hook ["sv << prep.do_cmd << "] exited with "sv << rc;
+      }
     }
 
     // Display configuration can change the active capture target, so probe
