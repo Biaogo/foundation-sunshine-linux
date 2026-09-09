@@ -1108,16 +1108,24 @@ namespace platf {
       }
     }
 #endif
+#ifdef SUNSHINE_BUILD_KWIN
+    // Prefer the compositor backend in auto mode: KWin capture supports
+    // output-name selection (virtual displays etc.) and works fine while a
+    // Plasma session is up. It must be probed BEFORE kms, because once any
+    // source is claimed the remaining auto branches are skipped, and kms
+    // only understands numeric monitor ids — a kwin output name such as
+    // "Virtual-SunshineHeadless" would otherwise make KMS lookup fail
+    // ("Couldn't find monitor [-N]"). When no compositor is reachable
+    // (pre-login SDDM), verify_kwin() fails and auto falls through to kms.
+    if (((config::video.capture.empty() && sources.none()) || config::video.capture == "kwin") && verify_kwin()) {
+      sources[source::KWIN] = true;
+    }
+#endif
 #ifdef SUNSHINE_BUILD_DRM
     if ((config::video.capture.empty() && sources.none()) || config::video.capture == "kms") {
       if (verify_kms()) {
         sources[source::KMS] = true;
       }
-    }
-#endif
-#ifdef SUNSHINE_BUILD_KWIN
-    if (((config::video.capture.empty() && sources.none()) || config::video.capture == "kwin") && verify_kwin()) {
-      sources[source::KWIN] = true;
     }
 #endif
 #ifdef SUNSHINE_BUILD_X11
