@@ -102,6 +102,12 @@ namespace display_device {
       return {};
     }
 
+    // Virtual picks validate by construction: resolve_display_intent has
+    // already translated them to their real targets (eDP-1 / primary kms).
+    if (device_id == VDISPLAY_KWIN_ID || device_id == VDISPLAY_KMS_ID) {
+      return device_id;
+    }
+
 #ifdef SUNSHINE_BUILD_KWIN
     if (config::video.capture == "kwin") {
       const auto names = platf::kwin_display_names();
