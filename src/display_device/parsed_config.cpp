@@ -554,6 +554,9 @@ namespace display_device {
   }
 
   display_intent_t
+  resolve_display_intent_impl(const config::video_t &config, rtsp_stream::launch_session_t &session, bool inject_hook_env);
+
+  display_intent_t
   resolve_display_intent_mutable(const config::video_t &config, rtsp_stream::launch_session_t &session) {
     return resolve_display_intent_impl(config, session, true);
   }
