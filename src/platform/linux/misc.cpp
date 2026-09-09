@@ -948,8 +948,22 @@ namespace platf {
   }
 #endif
 
+  // Sources are decided at boot; with linger the boot happens at SDDM where
+  // kwin is unreachable. Once a desktop session appears, re-verify kwin so
+  // the compositor backend becomes available without restarting Sunshine.
+  void
+  reverify_sources_for_session() {
+#ifdef SUNSHINE_BUILD_KWIN
+    if (!sources[source::KWIN] && (config::video.capture.empty() || config::video.capture == "kwin") && verify_kwin()) {
+      BOOST_LOG(info) << "[platform] Wayland session detected — enabling kwin capture backend"sv;
+      sources[source::KWIN] = true;
+    }
+#endif
+  }
+
   std::vector<std::string>
   display_names(mem_type_e hwdevice_type) {
+    reverify_sources_for_session();
 #ifdef SUNSHINE_BUILD_CUDA
     // display using NvFBC only supports mem_type_e::cuda
     if (sources[source::NVFBC] && hwdevice_type == mem_type_e::cuda) return nvfbc_display_names();
@@ -1005,6 +1019,7 @@ namespace platf {
 
   std::shared_ptr<display_t>
   display(mem_type_e hwdevice_type, const std::string &display_name, const video::config_t &config) {
+    reverify_sources_for_session();
 #ifdef SUNSHINE_BUILD_CUDA
     if (sources[source::NVFBC] && hwdevice_type == mem_type_e::cuda) {
       BOOST_LOG(info) << "Screencasting with NvFBC"sv;
@@ -1140,14 +1155,22 @@ namespace platf {
     // source is claimed the remaining auto branches are skipped, and kms
     // only understands numeric monitor ids — a kwin output name such as
     // "Virtual-SunshineHeadless" would otherwise make KMS lookup fail
-    // ("Couldn't find monitor [-N]"). When no compositor is reachable
-    // (pre-login SDDM), verify_kwin() fails and auto falls through to kms.
+    // ("Couldn't find monitor [-N]").
+    //
+    // sources are decided ONCE at boot. With linger the service starts at
+    // SDDM where no compositor exists — verify_kwin() fails there. So when
+    // the explicit capture=kwin request fails, fall through to the next
+    // backend instead of leaving no usable source; also re-verify kwin per
+    // boot state below via verify_request.
     if (((config::video.capture.empty() && sources.none()) || config::video.capture == "kwin") && verify_kwin()) {
       sources[source::KWIN] = true;
     }
 #endif
 #ifdef SUNSHINE_BUILD_DRM
-    if ((config::video.capture.empty() && sources.none()) || config::video.capture == "kms") {
+    if ((config::video.capture.empty() && sources.none()) || config::video.capture == "kms" ||
+        // capture=kwin was requested but kwin is unreachable (pre-login):
+        // allow KMS as the fallback so SDDM streaming still works.
+        (config::video.capture == "kwin" && sources.none())) {
       if (verify_kms()) {
         sources[source::KMS] = true;
       }
