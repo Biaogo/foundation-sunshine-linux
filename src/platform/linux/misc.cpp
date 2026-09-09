@@ -1145,6 +1145,18 @@ namespace platf {
     return false;
   }
 
+  bool
+  has_effective_admin() {
+    const cap_t caps = cap_get_proc();
+    if (!caps) {
+      return false;
+    }
+    cap_flag_value_t flag;
+    cap_get_flag(caps, CAP_SYS_ADMIN, CAP_EFFECTIVE, &flag);
+    cap_free(caps);
+    return flag == CAP_SET;
+  }
+
   void
   drop_elevated_privileges(bool all_caps) {
     const auto caps_to_drop = all_caps ? ELEVATED_PRIVILEGES_FULL : ELEVATED_PRIVILEGES_ADMIN;

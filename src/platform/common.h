@@ -877,6 +877,15 @@ namespace platf {
   bool
   has_elevated_privileges(bool all_caps);
 
+  // True only while CAP_SYS_ADMIN is in EFFECTIVE — i.e. we are actively in
+  // the elevated probing phase. PERMITTED is deliberately excluded: the
+  // linger flow keeps the cap in PERMITTED (so kmsgrab can re-raise) for the
+  // process lifetime, and keying the kwin "probing placeholder" off PERMITTED
+  // made kwin_display_names() serve an empty placeholder list forever
+  // (clients saw a bogus "Display 1" entry).
+  bool
+  has_effective_admin();
+
   void
   drop_elevated_privileges(bool all_caps);
 
