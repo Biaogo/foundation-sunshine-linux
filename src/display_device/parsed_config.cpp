@@ -656,7 +656,10 @@ namespace display_device {
       // and stream startup (video.cpp) waits for it to appear — failing the
       // launch here would race the very monitor we are about to create.
       const bool is_virtual_pick = intent.device_id == VDISPLAY_KWIN_ID ||
-                                   intent.device_id == VDISPLAY_KMS_ID;
+                                   intent.device_id == VDISPLAY_KMS_ID ||
+                                   // translated form used by get_display_name
+                                   intent.device_id == "Virtual-SunshineVirt" ||
+                                   session.env.find("SUNSHINE_CLIENT_VIRTUAL_DISPLAY") != session.env.end();
       if (client_named_it && !is_virtual_pick) {
         // The client picked this display for this stream, so quietly streaming a
         // different one is worse than telling it the display is gone.
