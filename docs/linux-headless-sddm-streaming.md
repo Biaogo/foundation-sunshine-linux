@@ -1,5 +1,13 @@
 # Headless & SDDM streaming on Linux — pre-login displays, virtual monitors, and what is (not) possible
 
+> **Scope note: the dynamic virtual display described here is KDE-specific.**
+> It relies on KWin and KDE tooling (`krfb-virtualmonitor`, `kscreen-doctor`,
+> the `zkde_screencast_unstable_v1` protocol). The pre-login section (static
+> login head, forced connector + EDID, vkms) is compositor-agnostic and
+> applies to any Wayland setup; GNOME (Mutter virtual monitors) and
+> wlroots-based compositors (e.g. `wayvnc`'s headless outputs,
+> `wlr-export-dmabuf`) have their own equivalent mechanisms not covered here.
+
 This guide is for anyone streaming a Linux host with Sunshine + Moonlight who
 wants the display to appear/disappear with the client — including the
 question that comes up every time: *"can the virtual display be created

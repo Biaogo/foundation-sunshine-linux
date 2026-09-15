@@ -139,6 +139,7 @@ HDR10 静态元数据（Mastering Display Info + Content Light Level）完整透
 - **krfb-virtualmonitor 虚拟屏**：`--resolution` 必须是单个无空格参数（`WIDTHxHEIGHT`）；输出默认 disabled，需 `kscreen-doctor output.<uuid>.enable` 后才出现 `wl_output`；配合 `global_prep_cmd` 可实现"连接即建、断连即销"。
 - **systemd 用户服务 + linger**：`/dev/uinput` 的 uaccess ACL 仅在用户有活跃会话时生效 —— 以 linger 服务身份在登录前启动时虚拟鼠标/键盘会 Permission denied。解法：udev 静态规则 `KERNEL=="uinput", GROUP="input", MODE="0660"` 并将用户加入 `input` 组。
 - **无头 / SDDM（登录前）串流**：登录管理器阶段无法动态创建虚拟屏（greeter 的合成器属于 sddm/gdm 用户，Wayland 安全模型不允许跨用户捕获），只能流内核级固定显示头 —— 强制点亮连接器 + 自定义 EDID，或 vkms 虚拟 DRM 设备。登录后由 krfb-virtualmonitor 动态虚拟屏接管（分辨率/刷新率跟随客户端）。完整方案与原理见 [docs/linux-headless-sddm-streaming.md](docs/linux-headless-sddm-streaming.md)。
+- **NixOS 完整部署说明**：[docs/nixos-sunshine.md](docs/nixos-sunshine.md) —— 系统级模块片段（setcap wrapper、udev、防火墙）、home-manager 用户服务（linger）、KWin 权限门 workaround、动态虚拟屏 hook 全文与踩坑清单。**仅适用 KDE Plasma (Wayland)**；登录前（SDDM）部分与合成器无关。
 
 <br>
 
