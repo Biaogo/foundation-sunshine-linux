@@ -1076,6 +1076,16 @@ namespace rtsp_stream {
       ss << "a=fmtp:97 surround-params="sv << session.surround_params << std::endl;
     }
 
+    if (config::audio.stream_mic) {
+      // Advertise the microphone stream. Clients that support it send Opus frames to this port;
+      // Sunshine mixes them into the host virtual microphone (see src/mic_stream.*).
+      ss << "m=audio " << net::map_port(stream::MIC_STREAM_PORT) << " RTP/AVP 96" << std::endl;
+      ss << "a=rtpmap:96 opus/48000/2" << std::endl;
+      ss << "a=fmtp:96 minptime=20;useinbandfec=1" << std::endl;
+      ss << "a=ptime:20" << std::endl;
+      ss << "a=maxptime:20" << std::endl;
+    }
+
     for (int x = 0; x < audio::MAX_STREAM_CONFIG; ++x) {
       auto &stream_config = audio::stream_configs[x];
       std::uint8_t mapping[platf::speaker::MAX_SPEAKERS];
@@ -1151,6 +1161,25 @@ namespace rtsp_stream {
       port = net::map_port(stream::VIDEO_STREAM_PORT);
     } else if (type == "control"sv) {
       port = net::map_port(stream::CONTROL_PORT);
+    } else if (type == "mic"sv) {
+      port = net::map_port(stream::MIC_STREAM_PORT);
+
+      if (config::audio.stream_mic) {
+        session.enable_mic = true;
+        session.setup_mic = true;
+
+        boost::system::error_code ec;
+        session.client_address = sock.remote_endpoint(ec).address().to_string();
+        if (ec) {
+          session.client_address.clear();
+        }
+      } else {
+        // Tolerate clients that request the microphone without checking the SDP, but do not grant
+        // them a microphone stream.
+        session.enable_mic = false;
+        session.setup_mic = false;
+        BOOST_LOG(info) << "Ignoring microphone SETUP while microphone streaming is disabled"sv;
+      }
     } else {
       cmd_not_found(sock, session, std::move(req));
 

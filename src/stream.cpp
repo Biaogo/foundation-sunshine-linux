@@ -28,6 +28,7 @@ extern "C" {
 #include "globals.h"
 #include "input.h"
 #include "logging.h"
+#include "mic_stream.h"
 #include "network.h"
 #include "platform/common.h"
 #include "process.h"
@@ -2198,6 +2199,8 @@ namespace stream {
      * @brief Stop the active streaming session and prevent new packets from being queued.
      */
     void stop(session_t &session) {
+      mic_stream::remove_client(session.launch_session_id);
+
       while_starting_do_nothing(session.state);
       auto expected = state_e::RUNNING;
       auto already_stopping = !session.state.compare_exchange_strong(expected, state_e::STOPPING);
@@ -2314,6 +2317,26 @@ namespace stream {
 
       session->shutdown_event = mail->event<bool>(mail::shutdown);
       session->launch_session_id = launch_session.id;
+
+      if (launch_session.setup_mic && launch_session.enable_mic && !launch_session.client_address.empty()) {
+        // Microphone audio arrives on its own port from the client's address; register the session
+        // so the lane routes its frames into the mixer.
+        boost::system::error_code mic_ec;
+        auto mic_address = boost::asio::ip::make_address(launch_session.client_address, mic_ec);
+        if (!mic_ec && mic_stream::start()) {
+          mic_stream::client_t mic_client {
+            launch_session.id,
+            mic_address,
+            launch_session.gcm_key,
+            util::endian::big(*reinterpret_cast<const std::uint32_t *>(launch_session.iv.data())),
+            !launch_session.gcm_key.empty()
+          };
+          mic_stream::add_client(mic_client);
+        }
+        else if (mic_ec) {
+          BOOST_LOG(warning) << "Ignoring microphone for an unparseable client address: "sv << launch_session.client_address;
+        }
+      }
       session->client_cert = launch_session.client_cert;
       session->input_session_id = launch_session.client_cert.empty() ? launch_session.unique_id : launch_session.client_cert;
 

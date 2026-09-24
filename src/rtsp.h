@@ -43,6 +43,10 @@ namespace rtsp_stream {
     std::string display_name;  ///< Display this session should capture (translated pick; empty = `config::video.output_name`).
     std::string virtual_display;  ///< `kwin`/`kms` when the pick targets the hook-managed virtual monitor, else empty.
 
+    bool enable_mic;  ///< Whether this session is allowed to send microphone audio.
+    bool setup_mic;  ///< Whether the client performed RTSP SETUP for the microphone stream.
+    std::string client_address;  ///< Address the client connects from; microphone packets are matched on it.
+
     std::optional<crypto::cipher::gcm_t> rtsp_cipher;  ///< AES-GCM cipher used once encrypted RTSP is negotiated.
     std::string rtsp_url_scheme;  ///< URL scheme selected by the RTSP SETUP flow.
     uint32_t rtsp_iv_counter;  ///< Counter value mixed into encrypted RTSP IVs.

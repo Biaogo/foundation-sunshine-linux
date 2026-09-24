@@ -123,6 +123,30 @@ namespace audio {
   audio_ctx_ref_t get_audio_ctx_ref();
 
   /**
+   * @brief Create the platform virtual microphone that client microphone audio is played into.
+   *
+   * @return 0 when a virtual microphone is available, nonzero otherwise.
+   */
+  int
+  init_mic_redirect_device();
+
+  /**
+   * @brief Write mixed mono microphone PCM to the platform virtual microphone.
+   *
+   * @param samples Pointer to the mixed mono 48 kHz samples.
+   * @param frame_count Number of mono frames to write.
+   * @return Number of bytes written, or -1 when no virtual microphone is available.
+   */
+  int
+  write_mic_pcm(const std::int16_t *samples, std::size_t frame_count);
+
+  /**
+   * @brief Release the platform virtual microphone created by init_mic_redirect_device().
+   */
+  void
+  release_mic_redirect_device();
+
+  /**
    * @brief Check if the audio sink held by audio context is available.
    * @returns True if available (and can probably be restored), false otherwise.
    * @note Useful for delaying the release of audio context shared pointer (which

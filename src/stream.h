@@ -19,6 +19,7 @@ namespace stream {
   constexpr auto VIDEO_STREAM_PORT = 9;  ///< GameStream base-port offset used for the video UDP stream.
   constexpr auto CONTROL_PORT = 10;  ///< GameStream base-port offset used for the control channel.
   constexpr auto AUDIO_STREAM_PORT = 11;  ///< GameStream base-port offset used for the audio UDP stream.
+  constexpr auto MIC_STREAM_PORT = 12;  ///< GameStream base-port offset used for the client microphone UDP stream.
 
   struct session_t;
 

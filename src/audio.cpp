@@ -300,6 +300,36 @@ namespace audio {
     return control_shared.ref();
   }
 
+  int
+  init_mic_redirect_device() {
+    auto ref = get_audio_ctx_ref();
+    if (!ref) {
+      return -1;
+    }
+
+    return ref->control->init_mic_redirect_device();
+  }
+
+  int
+  write_mic_pcm(const std::int16_t *samples, std::size_t frame_count) {
+    auto ref = get_audio_ctx_ref();
+    if (!ref) {
+      return -1;
+    }
+
+    return ref->control->write_mic_pcm(samples, frame_count);
+  }
+
+  void
+  release_mic_redirect_device() {
+    auto ref = get_audio_ctx_ref();
+    if (!ref) {
+      return;
+    }
+
+    ref->control->release_mic_redirect_device();
+  }
+
   bool is_audio_ctx_sink_available(const audio_ctx_t &ctx) {
     if (!ctx.control) {
       return false;

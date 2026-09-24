@@ -1,11 +1,6 @@
 /**
  * @file src/mic_mixer.h
- * @brief Per-source Opus decoding and host microphone mixing.
- *
- * Sunshine can receive microphone audio from several clients at once (one stream per session) while
- * the host only has a single virtual microphone device. This module decodes each source's Opus
- * packets independently and mixes the queued frames into one mono 48 kHz PCM stream that the
- * platform microphone-redirect device can consume.
+ * @brief Per-session Opus decoding and host microphone mixing.
  */
 #pragma once
 
@@ -16,32 +11,32 @@
 #include <vector>
 
 namespace mic_mixer {
-  /**
-   * @brief Identifier of one microphone source, i.e. one client session.
-   */
   using source_id_t = std::uint32_t;
 
-  constexpr std::uint32_t sample_rate = 48000;  ///< Sample rate of every accepted microphone stream.
-  constexpr std::size_t frame_samples = sample_rate / 50;  ///< Samples in one 20 ms mixing frame.
+  constexpr std::uint32_t sample_rate = 48000;
+  constexpr std::size_t frame_samples = sample_rate / 50;
+  constexpr std::size_t jitter_buffer_frames = 2;
+
+  struct stats_t {
+    std::uint64_t duplicate_packets {0};
+    std::uint64_t late_packets {0};
+    std::uint64_t buffer_overflow_packets {0};
+    std::uint64_t timeline_reanchors {0};
+    std::uint64_t plc_frames {0};
+    std::uint64_t decode_failures {0};
+    std::uint64_t skipped_playout_frames {0};
+  };
 
   /**
-   * @brief Validate that a payload is a decodable single Opus frame of the expected duration.
-   *
-   * @param data Pointer to the Opus packet payload.
-   * @param size Size of the payload in bytes.
-   * @return True when the packet decodes to exactly one 20 ms frame at \ref sample_rate.
+   * @brief Validate that a payload contains a decodable Opus packet shape.
    */
   bool
   is_valid_opus_packet(const std::uint8_t *data, std::size_t size);
 
-  /**
-   * @brief Decodes several microphone sources and mixes them into a single PCM stream.
-   *
-   * @note This type performs no internal locking: every member function must be called serially from
-   * the microphone receive thread.
-   */
   class mixer_t {
   public:
+    // This type performs no internal synchronization: every member function must be called
+    // serially from the microphone receive thread.
     mixer_t();
     ~mixer_t();
 
@@ -50,17 +45,12 @@ namespace mic_mixer {
 
     /**
      * @brief Add an independently decoded microphone source.
-     *
-     * @param source_id Identifier of the source, usually the session id.
-     * @return True when the source exists after the call, false when no decoder could be created.
      */
     bool
     add_source(source_id_t source_id);
 
     /**
      * @brief Remove a microphone source and its queued audio.
-     *
-     * @param source_id Identifier of the source to remove.
      */
     void
     remove_source(source_id_t source_id);
@@ -72,27 +62,38 @@ namespace mic_mixer {
     clear();
 
     /**
-     * @brief Decode and queue one Opus packet for a source.
-     *
-     * @param source_id Identifier of the source the packet belongs to.
-     * @param data Pointer to the Opus packet payload.
-     * @param size Size of the payload in bytes.
-     * @param sequence_number RTP sequence number of the packet, used for restart detection.
-     * @return True when the packet was decoded and queued, false when it was rejected.
+     * @brief Queue one Opus packet for a source's playout timeline.
      */
     bool
-    push_packet(source_id_t source_id, const std::uint8_t *data, std::size_t size, std::uint16_t sequence_number);
+    push_packet(
+      source_id_t source_id,
+      const std::uint8_t *data,
+      std::size_t size,
+      std::uint16_t sequence_number,
+      std::optional<std::uint32_t> timestamp_ms
+    );
 
     /**
      * @brief Mix one queued frame from every source into a mono PCM frame.
-     *
-     * @return The mixed 20 ms frame, or an empty optional when no source has audio queued.
+     * @return An empty optional when no source currently has audio queued.
      */
     std::optional<std::vector<std::int16_t>>
     mix_next_frame();
 
+    /**
+     * @brief Advance the playout clock without decoding missed frames.
+     */
+    void
+    skip_playout_frames(std::size_t frame_count);
+
+    /**
+     * @brief Return and reset diagnostics accumulated by the mixer thread.
+     */
+    stats_t
+    take_stats();
+
   private:
-    struct impl_t;  ///< Implementation detail holding the per-source decoders and frame queues.
-    std::unique_ptr<impl_t> impl_;  ///< Owning pointer to the implementation.
+    struct impl_t;
+    std::unique_ptr<impl_t> impl_;
   };
 }  // namespace mic_mixer

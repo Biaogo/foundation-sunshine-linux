@@ -896,6 +896,31 @@ supported on the current platform.
     </tr>
 </table>
 
+### stream_mic
+
+<table>
+    <tr>
+        <td>Description</td>
+        <td colspan="2">
+            Whether Sunshine accepts microphone audio from compatible clients (Moonlight VPlus and
+            other clients implementing the microphone protocol) and mixes it into the host's virtual
+            microphone, so games and chat applications can capture it.
+        </td>
+    </tr>
+    <tr>
+        <td>Default</td>
+        <td colspan="2">@code{}
+            enabled
+            @endcode</td>
+    </tr>
+    <tr>
+        <td>Example</td>
+        <td colspan="2">@code{}
+            stream_mic = disabled
+            @endcode</td>
+    </tr>
+</table>
+
 ### install_steam_audio_drivers
 
 <table>

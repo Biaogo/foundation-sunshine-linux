@@ -75,6 +75,14 @@ const config = ref(props.config)
               default="true"
     ></Checkbox>
 
+    <!-- Microphone redirection (clients -> host virtual microphone) -->
+    <Checkbox class="mb-3"
+              id="stream_mic"
+              locale-prefix="config"
+              v-model="config.stream_mic"
+              default="true"
+    ></Checkbox>
+
     <AdapterNameSelector
         :platform="platform"
         :config="config"

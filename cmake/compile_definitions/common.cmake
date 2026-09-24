@@ -179,6 +179,8 @@ set(SUNSHINE_TARGET_FILES
         "${CMAKE_SOURCE_DIR}/src/audio.h"
         "${CMAKE_SOURCE_DIR}/src/mic_mixer.cpp"
         "${CMAKE_SOURCE_DIR}/src/mic_mixer.h"
+        "${CMAKE_SOURCE_DIR}/src/mic_stream.cpp"
+        "${CMAKE_SOURCE_DIR}/src/mic_stream.h"
         "${CMAKE_SOURCE_DIR}/src/platform/common.h"
         "${CMAKE_SOURCE_DIR}/src/process.cpp"
         "${CMAKE_SOURCE_DIR}/src/process.h"
