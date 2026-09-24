@@ -34,6 +34,11 @@ namespace platf {
     PA_CHANNEL_POSITION_REAR_RIGHT,
     PA_CHANNEL_POSITION_SIDE_LEFT,
     PA_CHANNEL_POSITION_SIDE_RIGHT,
+    PA_CHANNEL_POSITION_TOP_FRONT_LEFT,
+    PA_CHANNEL_POSITION_TOP_FRONT_RIGHT,
+    // PulseAudio names the top-back pair "TOP_REAR_*" (channelmap.h)
+    PA_CHANNEL_POSITION_TOP_REAR_LEFT,
+    PA_CHANNEL_POSITION_TOP_REAR_RIGHT,
   };
 
   /**
@@ -297,6 +302,7 @@ namespace platf {
         std::uint32_t stereo = PA_INVALID_INDEX;  ///< PulseAudio module index for the stereo null sink.
         std::uint32_t surround51 = PA_INVALID_INDEX;  ///< PulseAudio module index for the 5.1 null sink.
         std::uint32_t surround71 = PA_INVALID_INDEX;  ///< PulseAudio module index for the 7.1 null sink.
+        std::uint32_t surround714 = PA_INVALID_INDEX;  ///< PulseAudio module index for the 7.1.4 null sink.
       } index;  ///< PulseAudio module indexes for Sunshine-created null sinks.
 
       std::unique_ptr<safe::event_t<ctx_event_e>> events;  ///< Event queue receiving PulseAudio context state changes.
@@ -427,6 +433,7 @@ namespace platf {
         constexpr auto stereo = "sink-sunshine-stereo";
         constexpr auto surround51 = "sink-sunshine-surround51";
         constexpr auto surround71 = "sink-sunshine-surround71";
+        constexpr auto surround714 = "sink-sunshine-surround714";
 
         auto alarm = safe::make_alarm<int>();
 
@@ -458,6 +465,10 @@ namespace platf {
             ++nullcount;
           } else if (!std::strcmp(sink_info->name, surround71)) {
             index.surround71 = sink_info->owner_module;
+
+            ++nullcount;
+          } else if (!std::strcmp(sink_info->name, surround714)) {
+            index.surround714 = sink_info->owner_module;
 
             ++nullcount;
           }
@@ -507,12 +518,28 @@ namespace platf {
           }
         }
 
+        if (index.surround714 == PA_INVALID_INDEX) {
+          index.surround714 = load_null(surround714, speaker::map_surround714.data(), static_cast<int>(speaker::map_surround714.size()));
+          if (index.surround714 == PA_INVALID_INDEX) {
+            BOOST_LOG(warning) << "Couldn't create virtual sink for surround-714: "sv << pa_strerror(pa_context_errno(ctx.get()));
+          } else {
+            ++nullcount;
+          }
+        }
+
         if (sink_name.empty()) {
           BOOST_LOG(warning) << "Couldn't find an active default sink. Continuing with virtual audio only."sv;
         }
 
-        if (nullcount == 3) {
-          sink.null = std::make_optional(sink_t::null_t {stereo, surround51, surround71});
+        if (nullcount >= 3) {
+          // 7.1.4 is optional: leave the name empty when the backend could not create that sink
+          // (audio.cpp only offers the layout when the name is set).
+          sink.null = std::make_optional(sink_t::null_t {
+            stereo,
+            surround51,
+            surround71,
+            index.surround714 != PA_INVALID_INDEX ? surround714 : std::string {}
+          });
         }
 
         return std::make_optional(std::move(sink));
@@ -657,6 +684,7 @@ namespace platf {
         unload_null(index.stereo);
         unload_null(index.surround51);
         unload_null(index.surround71);
+        unload_null(index.surround714);
 
         if (worker.joinable()) {
           pa_context_disconnect(ctx.get());

@@ -22,6 +22,8 @@ namespace audio {
     HIGH_SURROUND51,  ///< High surround 5.1
     SURROUND71,  ///< Surround 7.1
     HIGH_SURROUND71,  ///< High surround 7.1
+    SURROUND714,  ///< Surround 7.1.4 (12 channel)
+    HIGH_SURROUND714,  ///< High surround 7.1.4 (12 channel)
     MAX_STREAM_CONFIG  ///< Maximum audio stream configuration
   };
 
@@ -44,7 +46,7 @@ namespace audio {
     int channelCount;  ///< Number of audio channels in the Opus layout.
     int streams;  ///< Number of Opus streams in the custom layout.
     int coupledStreams;  ///< Number of stereo-coupled Opus streams.
-    std::uint8_t mapping[8];  ///< Channel mapping table for up to eight speakers.
+    std::uint8_t mapping[platf::speaker::MAX_SPEAKERS];  ///< Channel mapping table for every supported speaker.
   };
 
   extern opus_stream_config_t stream_configs[MAX_STREAM_CONFIG];

@@ -97,6 +97,22 @@ namespace audio {
       platf::speaker::map_surround71.data(),
       2048000,
     },
+    {
+      SAMPLE_RATE,
+      12,
+      8,
+      4,
+      platf::speaker::map_surround714.data(),
+      600000,
+    },
+    {
+      SAMPLE_RATE,
+      12,
+      12,
+      0,
+      platf::speaker::map_surround714.data(),
+      3072000,
+    },
   };
 
   /**
@@ -205,6 +221,12 @@ namespace audio {
         case 8:
           sink = &null.surround71;
           break;
+        case 12:
+          // Only offered when the backend actually created the 7.1.4 virtual sink.
+          if (!null.surround714.empty()) {
+            sink = &null.surround714;
+          }
+          break;
       }
     }
 
@@ -303,6 +325,19 @@ namespace audio {
         return SURROUND51 + shift;
       case 8:
         return SURROUND71 + shift;
+      case 12:
+        return SURROUND714 + shift;
+    }
+    // Clients may request a layout we do not have an exact match for; fall back to the next
+    // smaller surround layout instead of stereo.
+    if (channels >= 12) {
+      return SURROUND714 + shift;
+    }
+    if (channels >= 8) {
+      return SURROUND71 + shift;
+    }
+    if (channels >= 6) {
+      return SURROUND51 + shift;
     }
     return STEREO;
   }

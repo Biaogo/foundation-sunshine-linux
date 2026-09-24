@@ -285,6 +285,10 @@ namespace platf {
       BACK_RIGHT,  ///< Back right
       SIDE_LEFT,  ///< Side left
       SIDE_RIGHT,  ///< Side right
+      TOP_FRONT_LEFT,  ///< Top front left
+      TOP_FRONT_RIGHT,  ///< Top front right
+      TOP_BACK_LEFT,  ///< Top back left
+      TOP_BACK_RIGHT,  ///< Top back right
       MAX_SPEAKERS,  ///< Maximum number of speakers
     };
 
@@ -318,6 +322,23 @@ namespace platf {
       BACK_RIGHT,
       SIDE_LEFT,
       SIDE_RIGHT,
+    };
+    /**
+     * @brief Moonlight speaker order for 7.1.4 (12 channel) surround audio.
+     */
+    constexpr std::array<std::uint8_t, 12> map_surround714 {
+      FRONT_LEFT,
+      FRONT_RIGHT,
+      FRONT_CENTER,
+      LOW_FREQUENCY,
+      BACK_LEFT,
+      BACK_RIGHT,
+      SIDE_LEFT,
+      SIDE_RIGHT,
+      TOP_FRONT_LEFT,
+      TOP_FRONT_RIGHT,
+      TOP_BACK_LEFT,
+      TOP_BACK_RIGHT,
     };
   }  // namespace speaker
 
@@ -562,6 +583,7 @@ namespace platf {
       std::string stereo;  ///< Virtual sink name for stereo audio.
       std::string surround51;  ///< Virtual sink name for 5.1 surround audio.
       std::string surround71;  ///< Virtual sink name for 7.1 surround audio.
+      std::string surround714;  ///< Virtual sink name for 7.1.4 surround audio (empty when unsupported).
     };
 
     std::optional<null_t> null;  ///< Optional virtual sink names for monitor capture.
