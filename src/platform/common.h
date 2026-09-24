@@ -930,6 +930,19 @@ namespace platf {
   std::vector<std::string> display_names(mem_type_e hwdevice_type);
 
   /**
+   * @brief Display list to serve to clients (the `/displays` endpoint).
+   *
+   * Like display_names(), but this is the client-facing view: it may additionally advertise the
+   * ids a client can select that are not raw capture outputs (Linux virtual displays). Kept
+   * separate from display_names() on purpose — capture/validation must keep seeing real outputs
+   * only.
+   *
+   * @param hwdevice_type Hardware device type requested for capture or encode.
+   * @return Display names a client may select.
+   */
+  std::vector<std::string> client_display_names(mem_type_e hwdevice_type);
+
+  /**
    * @brief Check if GPUs/drivers have changed since the last call to this function.
    * @return `true` if a change has occurred or if it is unknown whether a change occurred.
    */
