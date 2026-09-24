@@ -21,6 +21,7 @@
 #include <boost/property_tree/ptree.hpp>
 #include <boost/property_tree/xml_parser.hpp>
 #include <Simple-Web-Server/server_http.hpp>
+#include <nlohmann/json.hpp>
 
 // local includes
 #include "config.h"
@@ -935,6 +936,87 @@ namespace nvhttp {
   }
 
   /**
+   * @brief Serve the client-facing display list.
+   *
+   * Backs the `/displays` route a Moonlight client queries to populate its display selector. The
+   * list is `platf::client_display_names()` — the active capture backend's real outputs plus the
+   * Linux virtual-display ids when that feature is offered (see
+   * `src/platform/linux/virtual_display.h`).
+   *
+   * @param response HTTP response object to populate.
+   * @param request HTTP request data from the client.
+   */
+  template<class T>
+  void get_displays(std::shared_ptr<typename SimpleWeb::ServerBase<T>::Response> response, std::shared_ptr<typename SimpleWeb::ServerBase<T>::Request> request) {
+    print_req<T>(request);
+
+    nlohmann::json response_json;
+    response_json["status_code"] = 200;
+    response_json["status_message"] = "OK";
+    auto response_status = SimpleWeb::StatusCode::success_ok;
+
+    try {
+      std::vector<std::string> display_names;
+
+#if defined(_WIN32)
+      display_names = platf::display_names(platf::mem_type_e::dxgi);
+#elif defined(__linux__)
+      // Client-facing list: the active backend's outputs plus the virtual display ids (当上架条件满足时).
+      display_names = platf::client_display_names(platf::mem_type_e::system);
+      if (display_names.empty()) {
+        for (auto mem_type : { platf::mem_type_e::vaapi, platf::mem_type_e::cuda }) {
+          display_names = platf::client_display_names(mem_type);
+          if (!display_names.empty()) {
+            break;
+          }
+        }
+      }
+#elif defined(__APPLE__)
+      display_names = platf::display_names(platf::mem_type_e::videotoolbox);
+#else
+      display_names = platf::display_names(platf::mem_type_e::system);
+#endif
+
+      auto displays_array = nlohmann::json::array();
+      for (std::size_t i = 0; i < display_names.size(); ++i) {
+        const auto &name = display_names[i];
+        displays_array.push_back({
+          { "index", static_cast<int>(i) },
+          { "display_name", name },
+          { "device_id", name },
+          { "friendly_name", name },
+          { "is_primary", false },
+          { "current_scale_percent", nullptr },
+          { "recommended_scale_percent", nullptr },
+          { "supported_scale_percents", nlohmann::json::array() },
+          { "scale_set_supported", false },
+        });
+      }
+
+      response_json["displays"] = std::move(displays_array);
+      response_json["count"] = static_cast<int>(display_names.size());
+      // Shape parity with the Windows/VDD build: this platform has no virtual display driver to
+      // query, so report it as unsupported instead of omitting the member.
+      response_json["vdd"] = {
+        { "capability_version", 0 },
+        { "state", "unsupported" },
+      };
+    }
+    catch (const std::exception &e) {
+      BOOST_LOG(error) << "Error getting display list: "sv << e.what();
+      response_json["status_code"] = 500;
+      response_json["status_message"] = "Internal server error";
+      response_json["displays"] = nlohmann::json::array();
+      response_json["count"] = 0;
+      response_status = SimpleWeb::StatusCode::server_error_internal_server_error;
+    }
+
+    SimpleWeb::CaseInsensitiveMultimap headers;
+    headers.emplace("Content-Type", "application/json");
+    response->write(response_status, response_json.dump(), headers);
+  }
+
+  /**
    * @brief Return a GameStream HTTP not-found response.
    *
    * @param response HTTP response object to populate.
@@ -1709,6 +1791,9 @@ namespace nvhttp {
       resume(host_audio, resp, req);
     };
     https_server.resource["^/cancel$"]["GET"] = cancel;
+    // Client-facing display list (Moonlight's display selector). Serves the active capture
+    // backend's outputs, plus the Linux virtual-display ids once that feature is offered.
+    https_server.resource["^/displays$"]["GET"] = get_displays<SunshineHTTPS>;
 
     https_server.config.reuse_address = true;
     https_server.config.address = net::get_bind_address(address_family);
