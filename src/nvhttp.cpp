@@ -1503,7 +1503,7 @@ namespace nvhttp {
       // `output_name` names it) does not exist until the global prep-command do-hook has run, while
       // the encoder probe below runs before the app/prep execution further down. Run the global
       // prep commands first for those sessions; proc::execute() skips them afterwards.
-      if (!launch_session->virtual_display.empty()) {
+      if (!launch_session->virtual_display.empty() && launch_session->appid > 0) {
         if (const auto err = proc::proc.run_global_prep_cmds(launch_session)) {
           BOOST_LOG(error) << "Failed to run the global prep commands for the virtual display"sv;
           tree.put("root.<xmlattr>.status_code", err);
@@ -1629,7 +1629,7 @@ namespace nvhttp {
       // `output_name` names it) does not exist until the global prep-command do-hook has run, while
       // the encoder probe below runs before the app/prep execution further down. Run the global
       // prep commands first for those sessions; proc::execute() skips them afterwards.
-      if (!launch_session->virtual_display.empty()) {
+      if (!launch_session->virtual_display.empty() && launch_session->appid > 0) {
         if (const auto err = proc::proc.run_global_prep_cmds(launch_session)) {
           BOOST_LOG(error) << "Failed to run the global prep commands for the virtual display"sv;
           tree.put("root.<xmlattr>.status_code", err);
