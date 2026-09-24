@@ -111,26 +111,38 @@ merged upstream back, since 2024-08-26) stops compounding.
 
 Costs and risks accepted with lane A:
 
-1. **Build harness must be rebuilt** (the gating task of the lane, not the patches). Measured
-   against the current derivation (`Biaogo/foundation-sunshine-linux.nix`,
-   `pkgs/foundation-sunshine/default.nix`):
-   - `postPatch` patches *fork* CMake filenames that upstream does not have
-     (`cmake/dependencies/Boost_Sunshine.cmake`, `cmake/packaging/linux.cmake`,
-     `cmake/targets/common.cmake`); upstream pulls Boost through CPM
-     (`cmake/cpm/CPM.cmake`, `package-lock.cmake` declares `Boost` and nothing else — verified;
-     the rest of the deps come from `pkg-config`/`find_package` on the system). CPM supports
-     `CPM_USE_LOCAL_PACKAGES`, so nixpkgs' Boost can be substituted for upstream's pinned 1.92.
-   - the `submodules` attr (and `postPatch`'s gitlink staging) must be replaced by upstream's
-     16-pin set: `build-deps`, `dockle`, `glad`, `libdisplaydevice`, `libvirtualhid`,
-     `lizardbyte-common`, `moonlight-common-c`, `nvapi`, `plasma-wayland-protocols`,
-     `Simple-Web-Server`, `TPCircularBuffer`, `tray`, `ViGEmClient`, `wayland-protocols`,
-     `wlr-protocols`, flatpak deps — and the AlkaidLab `build-deps@dist` prebuilt
-     ffmpeg/boost tarball can go away if upstream's own build-deps path is used.
-   - `cmakeFlags` and `buildInputs` are already close to upstream's Linux dependency list
-     (boost, pipewire, glib/GIO, libdrm, libva, vulkan-loader, libcap, avahi, pulse, wayland, X11);
-     upstream adds `libevdev`-adjacent `libvirtualhid` deps and `glad`; it drops inputtino.
-   - current state on this branch: upstream's 16 submodules are checked out under
-     `~/Downloads/fsl-refork` (working tree, not committed).
+1. **Build harness — PROVEN 2026-09-25** (`packaging/nix/upstream-build.nix` on this branch; model:
+   nixpkgs' `pkgs/by-name/su/sunshine/package.nix`). A full cmake configuration of the
+   upstream-shaped 2026-09 tree with nixpkgs dependencies succeeds — verified:
+   `-- Boost libraries: Boost::filesystem;Boost::log;Boost::program_options;Boost::locale`,
+   `-- Found Wayland`, `-- Found libdrm/libcap/libevdev/libva/Opus/libcurl/miniupnpnc`,
+   `-- Glad Library 'glad_egl'`/`'glad_gl'`, `-- Generating done`. The pieces that mattered:
+   - **Boost**: upstream's `cmake/dependencies/Boost_Sunshine.cmake` tries
+     `find_package(Boost 1.89 CONFIG ...)` first. nixpkgs' boost ships the CMake config in its
+     **`dev` output** (`lib/cmake/Boost-1.89.0/BoostConfig.cmake`), so `boost.dev` must be in
+     `buildInputs` and `BOOST_USE_STATIC=OFF` (nixpkgs boost has no static libs) — no CPM/network
+     fallback is ever reached.
+   - **ffmpeg**: upstream downloads `Linux-x86_64-ffmpeg.tar.gz` from `LizardByte/build-deps` at the
+     tag matching the pinned `third-party/build-deps` submodule. Fetched as a fixed-output
+     derivation and passed via `FFMPEG_PREPARED_BINARIES`:
+     tag `v2026.910.121303`, `sha256-1S57XfkJa+qEYQLmifWyT9ul0SASFhSk1lkk2timnOY=`
+     (unpacked layout `include/` + `lib/{libavcodec,libavutil,libcbs,libhdr10plus}.a`).
+   - **Vulkan headers** must come from the system: `SUNSHINE_SYSTEM_VULKAN_HEADERS=ON` + nixpkgs
+     `vulkan-headers` (otherwise `cmake/compile_definitions/linux.cmake` requires them inside the
+     build-deps submodule).
+   - `third-party/moonlight-common-c` needs its **nested** submodules too
+     (`git submodule update --init --recursive third-party/moonlight-common-c` — `enet`, `nanors`);
+     a top-level `--init` only leaves `enet/` without a `CMakeLists.txt` and configure dies at
+     `cmake/dependencies/common.cmake:14`.
+   - everything else follows nixpkgs' package: npm substitution in `cmake/targets/common.cmake`,
+     systemd/udev `find_package` removal, `GLAD_SKIP_PIP_INSTALL=ON` + python3 with jinja2/setuptools,
+     `shaderc` (glslc), `wayland-scanner`, the ffmpeg `autoPatchelfHook`, the `SUNSHINE_ENABLE_*`
+     matrix incl. `SUNSHINE_ENABLE_PORTAL`/`KWIN`/`VULKAN`, the UDEV/SYSTEMD install dirs, and the
+     publisher/`SUNSHINE_EXECUTABLE_PATH` features.
+   - `libdisplaydevice` warns `Linux is not supported yet` at configure time — expected, it is the
+     Windows display-config layer; the Linux capture path does not use it.
+   - still to do: the real compile+link and the deployment path (web UI + tag/pin), i.e. the
+     `--arg cudaSupport true` build.
 2. **AlkaidLab's Windows product surface is not carried over** to this branch (it does not build
    on Linux anyway). If a Windows build of the fork is ever needed again, it stays on
    `linux-support`/`master`.
