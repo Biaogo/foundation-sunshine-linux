@@ -1,0 +1,1006 @@
+[2026-09-25 04:54:56.192805] [0x0000753f81426000] [info]    config: 'port' = 49000
+[2026-09-25 04:54:56.192836] [0x0000753f81426000] [info]    config: 'global_prep_cmd' = [{"do":"/home/biaogo/.local/bin/sunshine-vdisplay-do.sh","undo":"/home/biaogo/.local/bin/sunshine-vdisplay-undo.sh","elevated":"false"}]
+[2026-09-25 04:54:56.192842] [0x0000753f81426000] [info]    config: 'output_name' = Virtual-SunshineVirt
+[2026-09-25 04:54:56.192844] [0x0000753f81426000] [info]    config: 'setup_wizard_completed' = true
+[2026-09-25 04:54:56.192846] [0x0000753f81426000] [info]    config: 'resolutions' = [1280x720,1920x1080,2560x1080,2560x1440,2560x1600,3440x1440,3840x2160]
+[2026-09-25 04:54:56.192849] [0x0000753f81426000] [info]    config: 'locale' = zh
+[2026-09-25 04:54:56.192851] [0x0000753f81426000] [info]    config: 'fps' = [60,90,120,144]
+Warning: Unrecognized configurable option [setup_wizard_completed]
+Warning: Unrecognized configurable option [resolutions]
+Warning: Unrecognized configurable option [fps]
+[2026-09-25 04:54:56.193]: Info: Sunshine version: 2026.09.25 commit: refork01
+[2026-09-25 04:54:56.193]: Info: Package Publisher: Biaogo
+[2026-09-25 04:54:56.193]: Info: Publisher Website: https://github.com/Biaogo/foundation-sunshine-linux
+[2026-09-25 04:54:56.193]: Info: Get support: https://github.com/Biaogo/foundation-sunshine-linux/issues
+[2026-09-25 04:54:56.193]: Info: config: 'fps' = [60,90,120,144]
+[2026-09-25 04:54:56.193]: Info: config: 'locale' = zh
+[2026-09-25 04:54:56.193]: Info: config: 'resolutions' = [1280x720,1920x1080,2560x1080,2560x1440,2560x1600,3440x1440,3840x2160]
+[2026-09-25 04:54:56.193]: Info: config: 'setup_wizard_completed' = true
+[2026-09-25 04:54:56.193]: Info: config: 'output_name' = Virtual-SunshineVirt
+[2026-09-25 04:54:56.193]: Info: config: 'global_prep_cmd' = [{"do":"/home/biaogo/.local/bin/sunshine-vdisplay-do.sh","undo":"/home/biaogo/.local/bin/sunshine-vdisplay-undo.sh","elevated":"false"}]
+[2026-09-25 04:54:56.193]: Info: config: 'port' = 49000
+[2026-09-25 04:54:56.210]: Error: Failed to create session: 
+[2026-09-25 04:54:56.210]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:54:56.211]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:54:56.211]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:54:56.211]: Info: [wayland] Found interface: wl_output(103) version 4
+[2026-09-25 04:54:56.211]: Warning: [wlgrab] Missing Wayland wire for wlr-export-dmabuf
+[2026-09-25 04:54:56.212]: Info: [kwingrab] No permission desktop file necessary. KWin permission system deactivated.
+[2026-09-25 04:54:56.212]: Info: [kwingrab] Found output: Virtual-SunshineVirt order: 0 position: 0x0 resolution: 2376x1080
+[2026-09-25 04:54:56.212]: Info: [portalgrab] Loaded portal restore token from disk
+[2026-09-25 04:54:56.222]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:54:56.222]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:54:56.222]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:54:56.222]: Info: [wayland] Found interface: wl_output(103) version 4
+[2026-09-25 04:54:56.222]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:54:56.222]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:54:56.222]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:54:56.222]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:54:56.222]: Info: [wayland] Found monitor:  
+[2026-09-25 04:54:56.224]: Info: [portalgrab] Found stream for display id/name: 'Virtual-SunshineVirt' position: 0x0 resolution: 1584x720
+[2026-09-25 04:54:56.265]: Info: // Testing for available encoders, this may generate errors. You can safely ignore those errors. //
+[2026-09-25 04:54:56.265]: Info: Trying encoder [nvenc]
+[2026-09-25 04:54:56.265]: Info: Screencasting with KWin ScreenCast
+[2026-09-25 04:54:56.269]: Info: [pipewire] Requested variable frame rate (Sunshine pacing required: 16.6667ms)
+[2026-09-25 04:54:56.269]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:54:56.282]: Info: [pipewire] Pure NVIDIA system - DMA-BUF will be enabled for CUDA
+[2026-09-25 04:54:56.284]: Info: [kwingrab] Pipewire stream created: node=213
+[2026-09-25 04:54:56.284]: Info: [kwingrab] Screencasting output name Virtual-SunshineVirt position 0x0 resolution 2376x1080
+[2026-09-25 04:54:56.284]: Info: [pipewire] Streaming display 'Virtual-SunshineVirt' offset: 0x0 resolution: 2376x1080
+[2026-09-25 04:54:56.284]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:54:56.284]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:54:56.284]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:54:56.284]: Info: [wayland] Found interface: wl_output(103) version 4
+[2026-09-25 04:54:56.285]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:54:56.285]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:54:56.285]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:54:56.285]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:54:56.285]: Info: [wayland] Found monitor:  
+[2026-09-25 04:54:56.288]: Info: [pipewire] PipeWire stream state: unconnected -> connecting
+[2026-09-25 04:54:56.294]: Info: [pipewire] Connected to pipewire version 1.6.6
+[2026-09-25 04:54:56.294]: Info: [pipewire] PipeWire stream state: connecting -> paused
+[2026-09-25 04:54:56.298]: Info: [pipewire] Video format: 12
+[2026-09-25 04:54:56.298]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:54:56.298]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:54:56.298]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:54:56.298]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:54:56.298]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:54:56.299]: Info: [pipewire] Video format: 12
+[2026-09-25 04:54:56.299]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:54:56.299]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:54:56.299]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:54:56.299]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:54:56.299]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:54:56.300]: Info: [pipewire] PipeWire stream state: paused -> streaming
+[2026-09-25 04:54:56.304]: Info: Creating encoder [h264_nvenc]
+[2026-09-25 04:54:56.304]: Info: Color coding: SDR (Rec. 601)
+[2026-09-25 04:54:56.304]: Info: Color depth: 8-bit
+[2026-09-25 04:54:56.304]: Info: Color range: JPEG
+[2026-09-25 04:54:56.304]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:54:56.316]: Warning: EGL: context priority set to HIGH but CAP_SYS_NICE capability is missing
+[2026-09-25 04:54:56.474]: Info: Streaming bitrate is 1000000
+[2026-09-25 04:54:56.544]: Info: Creating encoder [hevc_nvenc]
+[2026-09-25 04:54:56.544]: Info: Color coding: SDR (Rec. 601)
+[2026-09-25 04:54:56.544]: Info: Color depth: 8-bit
+[2026-09-25 04:54:56.544]: Info: Color range: JPEG
+[2026-09-25 04:54:56.544]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:54:56.545]: Warning: EGL: context priority set to HIGH but CAP_SYS_NICE capability is missing
+[2026-09-25 04:54:56.547]: Info: Streaming bitrate is 1000000
+[2026-09-25 04:54:56.594]: Info: Creating encoder [av1_nvenc]
+[2026-09-25 04:54:56.594]: Info: Color coding: SDR (Rec. 601)
+[2026-09-25 04:54:56.594]: Info: Color depth: 8-bit
+[2026-09-25 04:54:56.594]: Info: Color range: JPEG
+[2026-09-25 04:54:56.594]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:54:56.595]: Warning: EGL: context priority set to HIGH but CAP_SYS_NICE capability is missing
+[2026-09-25 04:54:56.597]: Info: Streaming bitrate is 1000000
+[2026-09-25 04:54:56.604]: Warning: [av1_nvenc @ 0x5b7c99512fc0] Codec not supported
+[2026-09-25 04:54:56.604]: Error: [av1_nvenc @ 0x5b7c99512fc0] Provided device doesn't support required NVENC features
+[2026-09-25 04:54:56.607]: Error: Could not open codec [av1_nvenc]: Function not implemented
+[2026-09-25 04:54:56.607]: Info: [pipewire] PipeWire stream state: streaming -> paused
+[2026-09-25 04:54:56.608]: Info: [pipewire] PipeWire stream state: paused -> unconnected
+[2026-09-25 04:54:56.609]: Info: Screencasting with KWin ScreenCast
+[2026-09-25 04:54:56.609]: Info: [pipewire] Requested variable frame rate (Sunshine pacing required: 16.6667ms)
+[2026-09-25 04:54:56.609]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:54:56.611]: Info: [pipewire] Pure NVIDIA system - DMA-BUF will be enabled for CUDA
+[2026-09-25 04:54:56.614]: Info: [kwingrab] Pipewire stream created: node=229
+[2026-09-25 04:54:56.614]: Info: [kwingrab] Screencasting output name Virtual-SunshineVirt position 0x0 resolution 2376x1080
+[2026-09-25 04:54:56.614]: Info: [pipewire] Streaming display 'Virtual-SunshineVirt' offset: 0x0 resolution: 2376x1080
+[2026-09-25 04:54:56.614]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:54:56.614]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:54:56.614]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:54:56.614]: Info: [wayland] Found interface: wl_output(103) version 4
+[2026-09-25 04:54:56.614]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:54:56.614]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:54:56.614]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:54:56.614]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:54:56.614]: Info: [wayland] Found monitor:  
+[2026-09-25 04:54:56.616]: Info: [pipewire] PipeWire stream state: unconnected -> connecting
+[2026-09-25 04:54:56.620]: Info: [pipewire] Connected to pipewire version 1.6.6
+[2026-09-25 04:54:56.620]: Info: [pipewire] PipeWire stream state: connecting -> paused
+[2026-09-25 04:54:56.627]: Info: [pipewire] Video format: 12
+[2026-09-25 04:54:56.627]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:54:56.627]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:54:56.627]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:54:56.627]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:54:56.627]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:54:56.627]: Info: [pipewire] Video format: 12
+[2026-09-25 04:54:56.627]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:54:56.627]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:54:56.627]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:54:56.627]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:54:56.627]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:54:56.629]: Info: [pipewire] PipeWire stream state: paused -> streaming
+[2026-09-25 04:54:56.629]: Info: Creating encoder [h264_nvenc]
+[2026-09-25 04:54:56.630]: Info: Color coding: SDR (Rec. 601)
+[2026-09-25 04:54:56.630]: Info: Color depth: 8-bit
+[2026-09-25 04:54:56.630]: Info: Color range: JPEG
+[2026-09-25 04:54:56.630]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:54:56.631]: Warning: EGL: context priority set to HIGH but CAP_SYS_NICE capability is missing
+[2026-09-25 04:54:56.633]: Info: Streaming bitrate is 1000000
+[2026-09-25 04:54:56.686]: Info: [pipewire] PipeWire stream state: streaming -> paused
+[2026-09-25 04:54:56.686]: Info: [pipewire] PipeWire stream state: paused -> unconnected
+[2026-09-25 04:54:56.687]: Info: Screencasting with KWin ScreenCast
+[2026-09-25 04:54:56.687]: Info: [pipewire] Requested variable frame rate (Sunshine pacing required: 16.6667ms)
+[2026-09-25 04:54:56.687]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:54:56.690]: Info: [pipewire] Pure NVIDIA system - DMA-BUF will be enabled for CUDA
+[2026-09-25 04:54:56.693]: Info: [kwingrab] Pipewire stream created: node=229
+[2026-09-25 04:54:56.693]: Info: [kwingrab] Screencasting output name Virtual-SunshineVirt position 0x0 resolution 2376x1080
+[2026-09-25 04:54:56.693]: Info: [pipewire] Streaming display 'Virtual-SunshineVirt' offset: 0x0 resolution: 2376x1080
+[2026-09-25 04:54:56.693]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:54:56.693]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:54:56.693]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:54:56.693]: Info: [wayland] Found interface: wl_output(103) version 4
+[2026-09-25 04:54:56.693]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:54:56.693]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:54:56.693]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:54:56.693]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:54:56.693]: Info: [wayland] Found monitor:  
+[2026-09-25 04:54:56.694]: Info: [pipewire] PipeWire stream state: unconnected -> connecting
+[2026-09-25 04:54:56.698]: Info: [pipewire] Connected to pipewire version 1.6.6
+[2026-09-25 04:54:56.698]: Info: [pipewire] PipeWire stream state: connecting -> paused
+[2026-09-25 04:54:56.705]: Info: [pipewire] Video format: 12
+[2026-09-25 04:54:56.705]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:54:56.705]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:54:56.705]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:54:56.705]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:54:56.705]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:54:56.705]: Info: [pipewire] Video format: 12
+[2026-09-25 04:54:56.705]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:54:56.705]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:54:56.705]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:54:56.705]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:54:56.705]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:54:56.706]: Info: [pipewire] PipeWire stream state: paused -> streaming
+[2026-09-25 04:54:56.708]: Info: Creating encoder [hevc_nvenc]
+[2026-09-25 04:54:56.708]: Info: Color coding: SDR (Rec. 601)
+[2026-09-25 04:54:56.708]: Info: Color depth: 8-bit
+[2026-09-25 04:54:56.708]: Info: Color range: JPEG
+[2026-09-25 04:54:56.708]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:54:56.709]: Warning: EGL: context priority set to HIGH but CAP_SYS_NICE capability is missing
+[2026-09-25 04:54:56.711]: Info: Streaming bitrate is 1000000
+[2026-09-25 04:54:56.763]: Info: [pipewire] PipeWire stream state: streaming -> paused
+[2026-09-25 04:54:56.763]: Info: [pipewire] PipeWire stream state: paused -> unconnected
+[2026-09-25 04:54:56.770]: Info: Screencasting with KWin ScreenCast
+[2026-09-25 04:54:56.770]: Info: [pipewire] Requested variable frame rate (Sunshine pacing required: 16.6667ms)
+[2026-09-25 04:54:56.770]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:54:56.770]: Info: [pipewire] Pure NVIDIA system - DMA-BUF will be enabled for CUDA
+[2026-09-25 04:54:56.770]: Info: [kwingrab] Pipewire stream created: node=227
+[2026-09-25 04:54:56.770]: Info: [kwingrab] Screencasting output name Virtual-SunshineVirt position 0x0 resolution 2376x1080
+[2026-09-25 04:54:56.770]: Info: [pipewire] Streaming display 'Virtual-SunshineVirt' offset: 0x0 resolution: 2376x1080
+[2026-09-25 04:54:56.770]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:54:56.770]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:54:56.770]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:54:56.770]: Info: [wayland] Found interface: wl_output(103) version 4
+[2026-09-25 04:54:56.770]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:54:56.770]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:54:56.770]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:54:56.770]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:54:56.770]: Info: [wayland] Found monitor:  
+[2026-09-25 04:54:56.772]: Info: [pipewire] PipeWire stream state: unconnected -> connecting
+[2026-09-25 04:54:56.777]: Info: [pipewire] Connected to pipewire version 1.6.6
+[2026-09-25 04:54:56.777]: Info: [pipewire] PipeWire stream state: connecting -> paused
+[2026-09-25 04:54:56.782]: Info: [pipewire] Video format: 12
+[2026-09-25 04:54:56.782]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:54:56.782]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:54:56.782]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:54:56.782]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:54:56.782]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:54:56.783]: Info: [pipewire] Video format: 12
+[2026-09-25 04:54:56.783]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:54:56.783]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:54:56.783]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:54:56.783]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:54:56.783]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:54:56.784]: Info: [pipewire] PipeWire stream state: paused -> streaming
+[2026-09-25 04:54:56.784]: Info: Creating encoder [hevc_nvenc]
+[2026-09-25 04:54:56.784]: Info: Color coding: SDR (Rec. 709)
+[2026-09-25 04:54:56.784]: Info: Color depth: 10-bit
+[2026-09-25 04:54:56.784]: Info: Color range: JPEG
+[2026-09-25 04:54:56.784]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:54:56.785]: Warning: EGL: context priority set to HIGH but CAP_SYS_NICE capability is missing
+[2026-09-25 04:54:56.787]: Info: Streaming bitrate is 1000000
+[2026-09-25 04:54:56.839]: Info: [pipewire] PipeWire stream state: streaming -> paused
+[2026-09-25 04:54:56.839]: Info: [pipewire] PipeWire stream state: paused -> unconnected
+[2026-09-25 04:54:56.841]: Info: Screencasting with KWin ScreenCast
+[2026-09-25 04:54:56.841]: Info: [pipewire] Requested variable frame rate (Sunshine pacing required: 16.6667ms)
+[2026-09-25 04:54:56.841]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:54:56.844]: Info: [pipewire] Pure NVIDIA system - DMA-BUF will be enabled for CUDA
+[2026-09-25 04:54:56.848]: Info: [kwingrab] Pipewire stream created: node=226
+[2026-09-25 04:54:56.848]: Info: [kwingrab] Screencasting output name Virtual-SunshineVirt position 0x0 resolution 2376x1080
+[2026-09-25 04:54:56.848]: Info: [pipewire] Streaming display 'Virtual-SunshineVirt' offset: 0x0 resolution: 2376x1080
+[2026-09-25 04:54:56.848]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:54:56.848]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:54:56.848]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:54:56.848]: Info: [wayland] Found interface: wl_output(103) version 4
+[2026-09-25 04:54:56.848]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:54:56.848]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:54:56.848]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:54:56.848]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:54:56.848]: Info: [wayland] Found monitor:  
+[2026-09-25 04:54:56.850]: Info: [pipewire] PipeWire stream state: unconnected -> connecting
+[2026-09-25 04:54:56.854]: Info: [pipewire] Connected to pipewire version 1.6.6
+[2026-09-25 04:54:56.854]: Info: [pipewire] PipeWire stream state: connecting -> paused
+[2026-09-25 04:54:56.859]: Info: [pipewire] Video format: 12
+[2026-09-25 04:54:56.859]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:54:56.859]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:54:56.859]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:54:56.859]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:54:56.859]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:54:56.860]: Info: [pipewire] Video format: 12
+[2026-09-25 04:54:56.860]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:54:56.860]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:54:56.860]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:54:56.860]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:54:56.860]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:54:56.861]: Info: [pipewire] PipeWire stream state: paused -> streaming
+[2026-09-25 04:54:56.863]: Info: Creating encoder [hevc_nvenc]
+[2026-09-25 04:54:56.863]: Info: Color coding: SDR (Rec. 709)
+[2026-09-25 04:54:56.864]: Info: Color depth: 10-bit
+[2026-09-25 04:54:56.864]: Info: Color range: JPEG
+[2026-09-25 04:54:56.864]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:54:56.864]: Warning: EGL: context priority set to HIGH but CAP_SYS_NICE capability is missing
+[2026-09-25 04:54:56.866]: Info: Streaming bitrate is 1000000
+[2026-09-25 04:54:56.920]: Info: [pipewire] PipeWire stream state: streaming -> paused
+[2026-09-25 04:54:56.920]: Info: [pipewire] PipeWire stream state: paused -> unconnected
+[2026-09-25 04:54:56.921]: Info: Screencasting with KWin ScreenCast
+[2026-09-25 04:54:56.921]: Info: [pipewire] Requested variable frame rate (Sunshine pacing required: 16.6667ms)
+[2026-09-25 04:54:56.921]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:54:56.925]: Info: [pipewire] Pure NVIDIA system - DMA-BUF will be enabled for CUDA
+[2026-09-25 04:54:56.927]: Info: [kwingrab] Pipewire stream created: node=239
+[2026-09-25 04:54:56.927]: Info: [kwingrab] Screencasting output name Virtual-SunshineVirt position 0x0 resolution 2376x1080
+[2026-09-25 04:54:56.927]: Info: [pipewire] Streaming display 'Virtual-SunshineVirt' offset: 0x0 resolution: 2376x1080
+[2026-09-25 04:54:56.927]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:54:56.927]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:54:56.927]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:54:56.927]: Info: [wayland] Found interface: wl_output(103) version 4
+[2026-09-25 04:54:56.927]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:54:56.927]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:54:56.927]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:54:56.927]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:54:56.927]: Info: [wayland] Found monitor:  
+[2026-09-25 04:54:56.929]: Info: [pipewire] PipeWire stream state: unconnected -> connecting
+[2026-09-25 04:54:56.933]: Info: [pipewire] Connected to pipewire version 1.6.6
+[2026-09-25 04:54:56.933]: Info: [pipewire] PipeWire stream state: connecting -> paused
+[2026-09-25 04:54:56.940]: Info: [pipewire] Video format: 12
+[2026-09-25 04:54:56.940]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:54:56.940]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:54:56.940]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:54:56.940]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:54:56.940]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:54:56.941]: Info: [pipewire] Video format: 12
+[2026-09-25 04:54:56.941]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:54:56.941]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:54:56.941]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:54:56.941]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:54:56.941]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:54:56.942]: Info: [pipewire] PipeWire stream state: paused -> streaming
+[2026-09-25 04:54:56.943]: Info: [pipewire] PipeWire stream state: streaming -> paused
+[2026-09-25 04:54:56.943]: Info: [pipewire] PipeWire stream state: paused -> unconnected
+[2026-09-25 04:54:56.943]: Info: Screencasting with KWin ScreenCast
+[2026-09-25 04:54:56.943]: Info: [pipewire] Requested variable frame rate (Sunshine pacing required: 16.6667ms)
+[2026-09-25 04:54:56.943]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:54:56.948]: Info: [pipewire] Pure NVIDIA system - DMA-BUF will be enabled for CUDA
+[2026-09-25 04:54:56.950]: Info: [kwingrab] Pipewire stream created: node=239
+[2026-09-25 04:54:56.950]: Info: [kwingrab] Screencasting output name Virtual-SunshineVirt position 0x0 resolution 2376x1080
+[2026-09-25 04:54:56.950]: Info: [pipewire] Streaming display 'Virtual-SunshineVirt' offset: 0x0 resolution: 2376x1080
+[2026-09-25 04:54:56.950]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:54:56.950]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:54:56.950]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:54:56.950]: Info: [wayland] Found interface: wl_output(103) version 4
+[2026-09-25 04:54:56.950]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:54:56.950]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:54:56.950]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:54:56.950]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:54:56.950]: Info: [wayland] Found monitor:  
+[2026-09-25 04:54:56.952]: Info: [pipewire] PipeWire stream state: unconnected -> connecting
+[2026-09-25 04:54:56.956]: Info: [pipewire] Connected to pipewire version 1.6.6
+[2026-09-25 04:54:56.956]: Info: [pipewire] PipeWire stream state: connecting -> paused
+[2026-09-25 04:54:56.961]: Info: [pipewire] Video format: 12
+[2026-09-25 04:54:56.961]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:54:56.961]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:54:56.961]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:54:56.961]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:54:56.961]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:54:56.961]: Info: [pipewire] Video format: 12
+[2026-09-25 04:54:56.962]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:54:56.962]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:54:56.962]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:54:56.962]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:54:56.962]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:54:56.963]: Info: [pipewire] PipeWire stream state: paused -> streaming
+[2026-09-25 04:54:56.965]: Info: [pipewire] PipeWire stream state: streaming -> paused
+[2026-09-25 04:54:56.966]: Info: [pipewire] PipeWire stream state: paused -> unconnected
+[2026-09-25 04:54:56.966]: Info: Screencasting with KWin ScreenCast
+[2026-09-25 04:54:56.966]: Info: [pipewire] Requested variable frame rate (Sunshine pacing required: 16.6667ms)
+[2026-09-25 04:54:56.966]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:54:56.971]: Info: [pipewire] Pure NVIDIA system - DMA-BUF will be enabled for CUDA
+[2026-09-25 04:54:56.972]: Info: [kwingrab] Pipewire stream created: node=239
+[2026-09-25 04:54:56.972]: Info: [kwingrab] Screencasting output name Virtual-SunshineVirt position 0x0 resolution 2376x1080
+[2026-09-25 04:54:56.972]: Info: [pipewire] Streaming display 'Virtual-SunshineVirt' offset: 0x0 resolution: 2376x1080
+[2026-09-25 04:54:56.972]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:54:56.972]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:54:56.972]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:54:56.972]: Info: [wayland] Found interface: wl_output(103) version 4
+[2026-09-25 04:54:56.973]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:54:56.973]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:54:56.973]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:54:56.973]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:54:56.973]: Info: [wayland] Found monitor:  
+[2026-09-25 04:54:56.974]: Info: [pipewire] PipeWire stream state: unconnected -> connecting
+[2026-09-25 04:54:56.978]: Info: [pipewire] Connected to pipewire version 1.6.6
+[2026-09-25 04:54:56.978]: Info: [pipewire] PipeWire stream state: connecting -> paused
+[2026-09-25 04:54:56.988]: Info: [pipewire] Video format: 12
+[2026-09-25 04:54:56.988]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:54:56.988]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:54:56.988]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:54:56.988]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:54:56.988]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:54:56.989]: Info: [pipewire] Video format: 12
+[2026-09-25 04:54:56.989]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:54:56.989]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:54:56.989]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:54:56.989]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:54:56.989]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:54:56.990]: Info: [pipewire] PipeWire stream state: paused -> streaming
+[2026-09-25 04:54:56.998]: Info: [pipewire] PipeWire stream state: streaming -> paused
+[2026-09-25 04:54:56.998]: Info: [pipewire] PipeWire stream state: paused -> unconnected
+[2026-09-25 04:54:56.999]: Info: 
+[2026-09-25 04:54:56.999]: Info: // Ignore any errors mentioned above, they are not relevant. //
+[2026-09-25 04:54:56.999]: Info: 
+[2026-09-25 04:54:56.999]: Info: Found H.264 encoder: h264_nvenc [nvenc]
+[2026-09-25 04:54:56.999]: Info: Found HEVC encoder: hevc_nvenc [nvenc]
+[2026-09-25 04:54:56.999]: Info: No main thread features enabled, skipping event loop
+[2026-09-25 04:54:57.000]: Error: avahi::entry_group_new() failed: Not permitted
+[2026-09-25 04:54:57.000]: Info: Configuration UI available at [https://localhost:49001]
+[2026-09-25 04:55:52.337]: Info: Executing global Do Cmd before encoder probing: [/home/biaogo/.local/bin/sunshine-vdisplay-do.sh]
+[2026-09-25 04:55:53.670]: Info: Display device configuration is disabled. Reverting any active display device configuration.
+[2026-09-25 04:55:53.670]: Info: // Testing for available encoders, this may generate errors. You can safely ignore those errors. //
+[2026-09-25 04:55:53.670]: Info: Trying encoder [nvenc]
+[2026-09-25 04:55:53.670]: Info: Screencasting with KWin ScreenCast
+[2026-09-25 04:55:53.670]: Info: [pipewire] Requested variable frame rate (Sunshine pacing required: 16.6667ms)
+[2026-09-25 04:55:53.670]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:55:53.673]: Info: [pipewire] Pure NVIDIA system - DMA-BUF will be enabled for CUDA
+[2026-09-25 04:55:53.674]: Info: [kwingrab] Pipewire stream created: node=211
+[2026-09-25 04:55:53.674]: Info: [kwingrab] Screencasting output name Virtual-SunshineVirt position 0x0 resolution 2376x1080
+[2026-09-25 04:55:53.674]: Info: [pipewire] Streaming display 'Virtual-SunshineVirt' offset: 0x0 resolution: 2376x1080
+[2026-09-25 04:55:53.674]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:55:53.675]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:55:53.675]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:55:53.675]: Info: [wayland] Found interface: wl_output(106) version 4
+[2026-09-25 04:55:53.675]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:55:53.675]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:55:53.675]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:55:53.675]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:55:53.675]: Info: [wayland] Found monitor:  
+[2026-09-25 04:55:53.676]: Info: [pipewire] PipeWire stream state: unconnected -> connecting
+[2026-09-25 04:55:53.680]: Info: [pipewire] Connected to pipewire version 1.6.6
+[2026-09-25 04:55:53.680]: Info: [pipewire] PipeWire stream state: connecting -> paused
+[2026-09-25 04:55:53.682]: Info: [pipewire] Video format: 12
+[2026-09-25 04:55:53.682]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:55:53.682]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:55:53.682]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:55:53.682]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:55:53.682]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:55:53.684]: Info: [pipewire] Video format: 12
+[2026-09-25 04:55:53.684]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:55:53.684]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:55:53.684]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:55:53.684]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:55:53.684]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:55:53.684]: Info: [pipewire] PipeWire stream state: paused -> streaming
+[2026-09-25 04:55:53.690]: Info: Creating encoder [h264_nvenc]
+[2026-09-25 04:55:53.690]: Info: Color coding: SDR (Rec. 601)
+[2026-09-25 04:55:53.690]: Info: Color depth: 8-bit
+[2026-09-25 04:55:53.690]: Info: Color range: JPEG
+[2026-09-25 04:55:53.690]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:55:53.691]: Warning: EGL: context priority set to HIGH but CAP_SYS_NICE capability is missing
+[2026-09-25 04:55:53.730]: Info: Streaming bitrate is 1000000
+[2026-09-25 04:55:53.775]: Info: Creating encoder [hevc_nvenc]
+[2026-09-25 04:55:53.775]: Info: Color coding: SDR (Rec. 601)
+[2026-09-25 04:55:53.775]: Info: Color depth: 8-bit
+[2026-09-25 04:55:53.775]: Info: Color range: JPEG
+[2026-09-25 04:55:53.775]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:55:53.776]: Warning: EGL: context priority set to HIGH but CAP_SYS_NICE capability is missing
+[2026-09-25 04:55:53.778]: Info: Streaming bitrate is 1000000
+[2026-09-25 04:55:53.815]: Info: Creating encoder [av1_nvenc]
+[2026-09-25 04:55:53.815]: Info: Color coding: SDR (Rec. 601)
+[2026-09-25 04:55:53.815]: Info: Color depth: 8-bit
+[2026-09-25 04:55:53.815]: Info: Color range: JPEG
+[2026-09-25 04:55:53.815]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:55:53.816]: Warning: EGL: context priority set to HIGH but CAP_SYS_NICE capability is missing
+[2026-09-25 04:55:53.818]: Info: Streaming bitrate is 1000000
+[2026-09-25 04:55:53.825]: Warning: [av1_nvenc @ 0x753f3c29b1c0] Codec not supported
+[2026-09-25 04:55:53.825]: Error: [av1_nvenc @ 0x753f3c29b1c0] Provided device doesn't support required NVENC features
+[2026-09-25 04:55:53.827]: Error: Could not open codec [av1_nvenc]: Function not implemented
+[2026-09-25 04:55:53.828]: Info: [pipewire] PipeWire stream state: streaming -> paused
+[2026-09-25 04:55:53.828]: Info: [pipewire] PipeWire stream state: paused -> unconnected
+[2026-09-25 04:55:53.829]: Info: Screencasting with KWin ScreenCast
+[2026-09-25 04:55:53.829]: Info: [pipewire] Requested variable frame rate (Sunshine pacing required: 16.6667ms)
+[2026-09-25 04:55:53.829]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:55:53.832]: Info: [pipewire] Pure NVIDIA system - DMA-BUF will be enabled for CUDA
+[2026-09-25 04:55:53.834]: Info: [kwingrab] Pipewire stream created: node=211
+[2026-09-25 04:55:53.834]: Info: [kwingrab] Screencasting output name Virtual-SunshineVirt position 0x0 resolution 2376x1080
+[2026-09-25 04:55:53.834]: Info: [pipewire] Streaming display 'Virtual-SunshineVirt' offset: 0x0 resolution: 2376x1080
+[2026-09-25 04:55:53.834]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:55:53.834]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:55:53.834]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:55:53.834]: Info: [wayland] Found interface: wl_output(106) version 4
+[2026-09-25 04:55:53.834]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:55:53.834]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:55:53.834]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:55:53.834]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:55:53.834]: Info: [wayland] Found monitor:  
+[2026-09-25 04:55:53.835]: Info: [pipewire] PipeWire stream state: unconnected -> connecting
+[2026-09-25 04:55:53.839]: Info: [pipewire] Connected to pipewire version 1.6.6
+[2026-09-25 04:55:53.839]: Info: [pipewire] PipeWire stream state: connecting -> paused
+[2026-09-25 04:55:53.842]: Info: [pipewire] Video format: 12
+[2026-09-25 04:55:53.842]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:55:53.842]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:55:53.842]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:55:53.842]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:55:53.842]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:55:53.842]: Info: [pipewire] Video format: 12
+[2026-09-25 04:55:53.842]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:55:53.842]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:55:53.842]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:55:53.842]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:55:53.842]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:55:53.843]: Info: [pipewire] PipeWire stream state: paused -> streaming
+[2026-09-25 04:55:53.849]: Info: Creating encoder [h264_nvenc]
+[2026-09-25 04:55:53.849]: Info: Color coding: SDR (Rec. 601)
+[2026-09-25 04:55:53.849]: Info: Color depth: 8-bit
+[2026-09-25 04:55:53.849]: Info: Color range: JPEG
+[2026-09-25 04:55:53.849]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:55:53.850]: Warning: EGL: context priority set to HIGH but CAP_SYS_NICE capability is missing
+[2026-09-25 04:55:53.852]: Info: Streaming bitrate is 1000000
+[2026-09-25 04:55:53.898]: Info: [pipewire] PipeWire stream state: streaming -> paused
+[2026-09-25 04:55:53.898]: Info: [pipewire] PipeWire stream state: paused -> unconnected
+[2026-09-25 04:55:53.899]: Info: Screencasting with KWin ScreenCast
+[2026-09-25 04:55:53.899]: Info: [pipewire] Requested variable frame rate (Sunshine pacing required: 16.6667ms)
+[2026-09-25 04:55:53.899]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:55:53.902]: Info: [pipewire] Pure NVIDIA system - DMA-BUF will be enabled for CUDA
+[2026-09-25 04:55:53.904]: Info: [kwingrab] Pipewire stream created: node=211
+[2026-09-25 04:55:53.904]: Info: [kwingrab] Screencasting output name Virtual-SunshineVirt position 0x0 resolution 2376x1080
+[2026-09-25 04:55:53.904]: Info: [pipewire] Streaming display 'Virtual-SunshineVirt' offset: 0x0 resolution: 2376x1080
+[2026-09-25 04:55:53.904]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:55:53.904]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:55:53.904]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:55:53.904]: Info: [wayland] Found interface: wl_output(106) version 4
+[2026-09-25 04:55:53.904]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:55:53.904]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:55:53.905]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:55:53.905]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:55:53.905]: Info: [wayland] Found monitor:  
+[2026-09-25 04:55:53.906]: Info: [pipewire] PipeWire stream state: unconnected -> connecting
+[2026-09-25 04:55:53.910]: Info: [pipewire] Connected to pipewire version 1.6.6
+[2026-09-25 04:55:53.910]: Info: [pipewire] PipeWire stream state: connecting -> paused
+[2026-09-25 04:55:53.912]: Info: [pipewire] Video format: 12
+[2026-09-25 04:55:53.912]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:55:53.912]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:55:53.912]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:55:53.912]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:55:53.912]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:55:53.913]: Info: [pipewire] Video format: 12
+[2026-09-25 04:55:53.913]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:55:53.913]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:55:53.913]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:55:53.913]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:55:53.913]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:55:53.914]: Info: [pipewire] PipeWire stream state: paused -> streaming
+[2026-09-25 04:55:53.919]: Info: Creating encoder [hevc_nvenc]
+[2026-09-25 04:55:53.919]: Info: Color coding: SDR (Rec. 601)
+[2026-09-25 04:55:53.919]: Info: Color depth: 8-bit
+[2026-09-25 04:55:53.919]: Info: Color range: JPEG
+[2026-09-25 04:55:53.919]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:55:53.920]: Warning: EGL: context priority set to HIGH but CAP_SYS_NICE capability is missing
+[2026-09-25 04:55:53.922]: Info: Streaming bitrate is 1000000
+[2026-09-25 04:55:53.967]: Info: [pipewire] PipeWire stream state: streaming -> paused
+[2026-09-25 04:55:53.967]: Info: [pipewire] PipeWire stream state: paused -> unconnected
+[2026-09-25 04:55:53.968]: Info: Screencasting with KWin ScreenCast
+[2026-09-25 04:55:53.968]: Info: [pipewire] Requested variable frame rate (Sunshine pacing required: 16.6667ms)
+[2026-09-25 04:55:53.968]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:55:53.970]: Info: [pipewire] Pure NVIDIA system - DMA-BUF will be enabled for CUDA
+[2026-09-25 04:55:53.972]: Info: [kwingrab] Pipewire stream created: node=211
+[2026-09-25 04:55:53.972]: Info: [kwingrab] Screencasting output name Virtual-SunshineVirt position 0x0 resolution 2376x1080
+[2026-09-25 04:55:53.972]: Info: [pipewire] Streaming display 'Virtual-SunshineVirt' offset: 0x0 resolution: 2376x1080
+[2026-09-25 04:55:53.972]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:55:53.972]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:55:53.972]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:55:53.972]: Info: [wayland] Found interface: wl_output(106) version 4
+[2026-09-25 04:55:53.972]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:55:53.972]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:55:53.972]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:55:53.972]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:55:53.972]: Info: [wayland] Found monitor:  
+[2026-09-25 04:55:53.974]: Info: [pipewire] PipeWire stream state: unconnected -> connecting
+[2026-09-25 04:55:53.978]: Info: [pipewire] Connected to pipewire version 1.6.6
+[2026-09-25 04:55:53.978]: Info: [pipewire] PipeWire stream state: connecting -> paused
+[2026-09-25 04:55:53.981]: Info: [pipewire] Video format: 12
+[2026-09-25 04:55:53.981]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:55:53.981]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:55:53.981]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:55:53.981]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:55:53.981]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:55:53.981]: Info: [pipewire] Video format: 12
+[2026-09-25 04:55:53.981]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:55:53.981]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:55:53.981]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:55:53.981]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:55:53.981]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:55:53.982]: Info: [pipewire] PipeWire stream state: paused -> streaming
+[2026-09-25 04:55:53.987]: Info: Creating encoder [hevc_nvenc]
+[2026-09-25 04:55:53.987]: Info: Color coding: SDR (Rec. 709)
+[2026-09-25 04:55:53.987]: Info: Color depth: 10-bit
+[2026-09-25 04:55:53.987]: Info: Color range: JPEG
+[2026-09-25 04:55:53.987]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:55:53.989]: Warning: EGL: context priority set to HIGH but CAP_SYS_NICE capability is missing
+[2026-09-25 04:55:53.990]: Info: Streaming bitrate is 1000000
+[2026-09-25 04:55:54.034]: Info: [pipewire] PipeWire stream state: streaming -> paused
+[2026-09-25 04:55:54.034]: Info: [pipewire] PipeWire stream state: paused -> unconnected
+[2026-09-25 04:55:54.035]: Info: Screencasting with KWin ScreenCast
+[2026-09-25 04:55:54.035]: Info: [pipewire] Requested variable frame rate (Sunshine pacing required: 16.6667ms)
+[2026-09-25 04:55:54.035]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:55:54.038]: Info: [pipewire] Pure NVIDIA system - DMA-BUF will be enabled for CUDA
+[2026-09-25 04:55:54.040]: Info: [kwingrab] Pipewire stream created: node=211
+[2026-09-25 04:55:54.040]: Info: [kwingrab] Screencasting output name Virtual-SunshineVirt position 0x0 resolution 2376x1080
+[2026-09-25 04:55:54.040]: Info: [pipewire] Streaming display 'Virtual-SunshineVirt' offset: 0x0 resolution: 2376x1080
+[2026-09-25 04:55:54.040]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:55:54.040]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:55:54.040]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:55:54.040]: Info: [wayland] Found interface: wl_output(106) version 4
+[2026-09-25 04:55:54.040]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:55:54.040]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:55:54.040]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:55:54.040]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:55:54.040]: Info: [wayland] Found monitor:  
+[2026-09-25 04:55:54.041]: Info: [pipewire] PipeWire stream state: unconnected -> connecting
+[2026-09-25 04:55:54.045]: Info: [pipewire] Connected to pipewire version 1.6.6
+[2026-09-25 04:55:54.045]: Info: [pipewire] PipeWire stream state: connecting -> paused
+[2026-09-25 04:55:54.048]: Info: [pipewire] Video format: 12
+[2026-09-25 04:55:54.048]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:55:54.048]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:55:54.048]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:55:54.048]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:55:54.048]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:55:54.049]: Info: [pipewire] Video format: 12
+[2026-09-25 04:55:54.049]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:55:54.049]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:55:54.049]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:55:54.049]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:55:54.049]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:55:54.050]: Info: [pipewire] PipeWire stream state: paused -> streaming
+[2026-09-25 04:55:54.055]: Info: Creating encoder [hevc_nvenc]
+[2026-09-25 04:55:54.055]: Info: Color coding: SDR (Rec. 709)
+[2026-09-25 04:55:54.055]: Info: Color depth: 10-bit
+[2026-09-25 04:55:54.055]: Info: Color range: JPEG
+[2026-09-25 04:55:54.055]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:55:54.056]: Warning: EGL: context priority set to HIGH but CAP_SYS_NICE capability is missing
+[2026-09-25 04:55:54.058]: Info: Streaming bitrate is 1000000
+[2026-09-25 04:55:54.105]: Info: [pipewire] PipeWire stream state: streaming -> paused
+[2026-09-25 04:55:54.105]: Info: [pipewire] PipeWire stream state: paused -> unconnected
+[2026-09-25 04:55:54.106]: Info: Screencasting with KWin ScreenCast
+[2026-09-25 04:55:54.106]: Info: [pipewire] Requested variable frame rate (Sunshine pacing required: 16.6667ms)
+[2026-09-25 04:55:54.106]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:55:54.109]: Info: [pipewire] Pure NVIDIA system - DMA-BUF will be enabled for CUDA
+[2026-09-25 04:55:54.111]: Info: [kwingrab] Pipewire stream created: node=211
+[2026-09-25 04:55:54.111]: Info: [kwingrab] Screencasting output name Virtual-SunshineVirt position 0x0 resolution 2376x1080
+[2026-09-25 04:55:54.111]: Info: [pipewire] Streaming display 'Virtual-SunshineVirt' offset: 0x0 resolution: 2376x1080
+[2026-09-25 04:55:54.111]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:55:54.111]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:55:54.111]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:55:54.111]: Info: [wayland] Found interface: wl_output(106) version 4
+[2026-09-25 04:55:54.111]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:55:54.111]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:55:54.111]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:55:54.111]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:55:54.111]: Info: [wayland] Found monitor:  
+[2026-09-25 04:55:54.113]: Info: [pipewire] PipeWire stream state: unconnected -> connecting
+[2026-09-25 04:55:54.117]: Info: [pipewire] Connected to pipewire version 1.6.6
+[2026-09-25 04:55:54.117]: Info: [pipewire] PipeWire stream state: connecting -> paused
+[2026-09-25 04:55:54.119]: Info: [pipewire] Video format: 12
+[2026-09-25 04:55:54.120]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:55:54.120]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:55:54.120]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:55:54.120]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:55:54.120]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:55:54.120]: Info: [pipewire] Video format: 12
+[2026-09-25 04:55:54.120]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:55:54.120]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:55:54.120]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:55:54.120]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:55:54.120]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:55:54.121]: Info: [pipewire] PipeWire stream state: paused -> streaming
+[2026-09-25 04:55:54.126]: Info: [pipewire] PipeWire stream state: streaming -> paused
+[2026-09-25 04:55:54.126]: Info: [pipewire] PipeWire stream state: paused -> unconnected
+[2026-09-25 04:55:54.127]: Info: Screencasting with KWin ScreenCast
+[2026-09-25 04:55:54.127]: Info: [pipewire] Requested variable frame rate (Sunshine pacing required: 16.6667ms)
+[2026-09-25 04:55:54.127]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:55:54.128]: Info: [pipewire] Pure NVIDIA system - DMA-BUF will be enabled for CUDA
+[2026-09-25 04:55:54.130]: Info: [kwingrab] Pipewire stream created: node=211
+[2026-09-25 04:55:54.130]: Info: [kwingrab] Screencasting output name Virtual-SunshineVirt position 0x0 resolution 2376x1080
+[2026-09-25 04:55:54.130]: Info: [pipewire] Streaming display 'Virtual-SunshineVirt' offset: 0x0 resolution: 2376x1080
+[2026-09-25 04:55:54.130]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:55:54.130]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:55:54.130]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:55:54.130]: Info: [wayland] Found interface: wl_output(106) version 4
+[2026-09-25 04:55:54.130]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:55:54.130]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:55:54.130]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:55:54.130]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:55:54.130]: Info: [wayland] Found monitor:  
+[2026-09-25 04:55:54.132]: Info: [pipewire] PipeWire stream state: unconnected -> connecting
+[2026-09-25 04:55:54.135]: Info: [pipewire] Connected to pipewire version 1.6.6
+[2026-09-25 04:55:54.136]: Info: [pipewire] PipeWire stream state: connecting -> paused
+[2026-09-25 04:55:54.139]: Info: [pipewire] Video format: 12
+[2026-09-25 04:55:54.139]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:55:54.139]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:55:54.139]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:55:54.139]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:55:54.139]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:55:54.140]: Info: [pipewire] Video format: 12
+[2026-09-25 04:55:54.140]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:55:54.140]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:55:54.140]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:55:54.140]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:55:54.140]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:55:54.141]: Info: [pipewire] PipeWire stream state: paused -> streaming
+[2026-09-25 04:55:54.145]: Info: [pipewire] PipeWire stream state: streaming -> paused
+[2026-09-25 04:55:54.145]: Info: [pipewire] PipeWire stream state: paused -> unconnected
+[2026-09-25 04:55:54.146]: Info: Screencasting with KWin ScreenCast
+[2026-09-25 04:55:54.146]: Info: [pipewire] Requested variable frame rate (Sunshine pacing required: 16.6667ms)
+[2026-09-25 04:55:54.146]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:55:54.149]: Info: [pipewire] Pure NVIDIA system - DMA-BUF will be enabled for CUDA
+[2026-09-25 04:55:54.150]: Info: [kwingrab] Pipewire stream created: node=211
+[2026-09-25 04:55:54.150]: Info: [kwingrab] Screencasting output name Virtual-SunshineVirt position 0x0 resolution 2376x1080
+[2026-09-25 04:55:54.150]: Info: [pipewire] Streaming display 'Virtual-SunshineVirt' offset: 0x0 resolution: 2376x1080
+[2026-09-25 04:55:54.150]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:55:54.150]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:55:54.150]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:55:54.150]: Info: [wayland] Found interface: wl_output(106) version 4
+[2026-09-25 04:55:54.150]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:55:54.150]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:55:54.150]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:55:54.150]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:55:54.150]: Info: [wayland] Found monitor:  
+[2026-09-25 04:55:54.152]: Info: [pipewire] PipeWire stream state: unconnected -> connecting
+[2026-09-25 04:55:54.155]: Info: [pipewire] Connected to pipewire version 1.6.6
+[2026-09-25 04:55:54.156]: Info: [pipewire] PipeWire stream state: connecting -> paused
+[2026-09-25 04:55:54.158]: Info: [pipewire] Video format: 12
+[2026-09-25 04:55:54.158]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:55:54.158]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:55:54.158]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:55:54.158]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:55:54.158]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:55:54.159]: Info: [pipewire] Video format: 12
+[2026-09-25 04:55:54.159]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:55:54.159]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:55:54.159]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:55:54.159]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:55:54.159]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:55:54.160]: Info: [pipewire] PipeWire stream state: paused -> streaming
+[2026-09-25 04:55:54.165]: Info: [pipewire] PipeWire stream state: streaming -> paused
+[2026-09-25 04:55:54.165]: Info: [pipewire] PipeWire stream state: paused -> unconnected
+[2026-09-25 04:55:54.166]: Info: 
+[2026-09-25 04:55:54.166]: Info: // Ignore any errors mentioned above, they are not relevant. //
+[2026-09-25 04:55:54.166]: Info: 
+[2026-09-25 04:55:54.166]: Info: Found H.264 encoder: h264_nvenc [nvenc]
+[2026-09-25 04:55:54.166]: Info: Found HEVC encoder: hevc_nvenc [nvenc]
+[2026-09-25 04:55:54.166]: Info: Executing [Desktop]
+[2026-09-25 04:55:54.251]: Info: New streaming session started [active sessions: 1]
+[2026-09-25 04:55:54.276]: Info: CLIENT CONNECTED
+[2026-09-25 04:55:54.317]: Info: [portalgrab] Loaded portal restore token from disk
+[2026-09-25 04:55:54.328]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:55:54.328]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:55:54.328]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:55:54.328]: Info: [wayland] Found interface: wl_output(106) version 4
+[2026-09-25 04:55:54.328]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:55:54.328]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:55:54.328]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:55:54.328]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:55:54.328]: Info: [wayland] Found monitor:  
+[2026-09-25 04:55:54.330]: Info: [portalgrab] Found stream for display id/name: 'Virtual-SunshineVirt' position: 0x0 resolution: 1584x720
+[2026-09-25 04:55:54.330]: Info: Screencasting with KWin ScreenCast
+[2026-09-25 04:55:54.330]: Info: [pipewire] Requested variable frame rate (Sunshine pacing required: 11.1111ms)
+[2026-09-25 04:55:54.331]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:55:54.333]: Info: [pipewire] Pure NVIDIA system - DMA-BUF will be enabled for CUDA
+[2026-09-25 04:55:54.336]: Info: [kwingrab] Pipewire stream created: node=211
+[2026-09-25 04:55:54.336]: Info: [kwingrab] Screencasting output name Virtual-SunshineVirt position 0x0 resolution 2376x1080
+[2026-09-25 04:55:54.336]: Info: [pipewire] Streaming display 'Virtual-SunshineVirt' offset: 0x0 resolution: 2376x1080
+[2026-09-25 04:55:54.336]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:55:54.336]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:55:54.336]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:55:54.336]: Info: [wayland] Found interface: wl_output(106) version 4
+[2026-09-25 04:55:54.336]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:55:54.336]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:55:54.336]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:55:54.336]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:55:54.336]: Info: [wayland] Found monitor:  
+[2026-09-25 04:55:54.338]: Info: [pipewire] PipeWire stream state: unconnected -> connecting
+[2026-09-25 04:55:54.342]: Info: [pipewire] Connected to pipewire version 1.6.6
+[2026-09-25 04:55:54.342]: Info: [pipewire] PipeWire stream state: connecting -> paused
+[2026-09-25 04:55:54.346]: Info: [pipewire] Video format: 12
+[2026-09-25 04:55:54.346]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:55:54.346]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:55:54.346]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:55:54.346]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:55:54.346]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:55:54.348]: Info: [pipewire] Video format: 12
+[2026-09-25 04:55:54.348]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:55:54.348]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:55:54.348]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:55:54.348]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:55:54.348]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:55:54.349]: Info: [pipewire] PipeWire stream state: paused -> streaming
+[2026-09-25 04:55:54.351]: Info: Creating encoder [hevc_nvenc]
+[2026-09-25 04:55:54.351]: Info: Color coding: SDR (Rec. 709)
+[2026-09-25 04:55:54.351]: Info: Color depth: 8-bit
+[2026-09-25 04:55:54.351]: Info: Color range: MPEG
+[2026-09-25 04:55:54.351]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:55:54.352]: Warning: EGL: context priority set to HIGH but CAP_SYS_NICE capability is missing
+[2026-09-25 04:55:54.355]: Info: [pipewire] Sunshine frame pacing: enabled (11.111111ms)
+[2026-09-25 04:55:54.389]: Info: Streaming bitrate is 1988000
+[2026-09-25 04:55:54.415]: Info: Minimum FPS target set to ~45fps (22.2222ms)
+[2026-09-25 04:55:54.747]: Info: Setting default sink to: [sink-sunshine-stereo]
+[2026-09-25 04:55:54.747]: Info: Found default monitor by name: sink-sunshine-stereo.monitor
+[2026-09-25 04:55:54.775]: Info: Opus initialized: 48 kHz, 2 channels, 96 kbps (total), LOWDELAY
+[2026-09-25 04:55:59.851]: Info: CLIENT DISCONNECTED
+[2026-09-25 04:55:59.860]: Info: Setting default sink to: [alsa_output.pci-0000_00_1f.3.analog-stereo]
+[2026-09-25 04:55:59.875]: Info: [pipewire] PipeWire stream state: streaming -> paused
+[2026-09-25 04:55:59.875]: Info: [pipewire] PipeWire stream state: paused -> unconnected
+[2026-09-25 04:56:00.004]: Info: Executing Undo Cmd: [/home/biaogo/.local/bin/sunshine-vdisplay-undo.sh]
+[2026-09-25 04:56:02.639]: Info: [kwingrab] Found output: eDP-1 order: 0 position: 0x0 resolution: 2560x1600
+[2026-09-25 04:56:05.626]: Info: Launch session will use display [eDP-1]
+[2026-09-25 04:56:05.626]: Info: Display device configuration is disabled. Reverting any active display device configuration.
+[2026-09-25 04:56:05.626]: Info: Executing Do Cmd: [/home/biaogo/.local/bin/sunshine-vdisplay-do.sh]
+[2026-09-25 04:56:05.632]: Info: Executing [Desktop]
+[2026-09-25 04:56:05.684]: Info: New streaming session started [active sessions: 1]
+[2026-09-25 04:56:05.728]: Info: CLIENT CONNECTED
+[2026-09-25 04:56:05.753]: Info: [portalgrab] Loaded portal restore token from disk
+[2026-09-25 04:56:05.772]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:56:05.773]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:56:05.773]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:56:05.773]: Info: [wayland] Found interface: wl_output(107) version 4
+[2026-09-25 04:56:05.773]: Info: [wayland] Resolution: 2560x1600
+[2026-09-25 04:56:05.773]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:56:05.773]: Info: [wayland] Logical size: 1707x1067
+[2026-09-25 04:56:05.773]: Info: [wayland] Name: eDP-1
+[2026-09-25 04:56:05.773]: Info: [wayland] Found monitor: BOE CQ eDP-1-0x0A40
+[2026-09-25 04:56:05.775]: Info: [portalgrab] Found stream for display id/name: 'eDP-1' position: 0x0 resolution: 1707x1067
+[2026-09-25 04:56:05.775]: Info: Requested display [eDP-1] is available
+[2026-09-25 04:56:05.775]: Info: [portalgrab] Loaded portal restore token from disk
+[2026-09-25 04:56:05.796]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:56:05.796]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:56:05.796]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:56:05.796]: Info: [wayland] Found interface: wl_output(107) version 4
+[2026-09-25 04:56:05.797]: Info: [wayland] Resolution: 2560x1600
+[2026-09-25 04:56:05.797]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:56:05.797]: Info: [wayland] Logical size: 1707x1067
+[2026-09-25 04:56:05.797]: Info: [wayland] Name: eDP-1
+[2026-09-25 04:56:05.797]: Info: [wayland] Found monitor: BOE CQ eDP-1-0x0A40
+[2026-09-25 04:56:05.798]: Info: [portalgrab] Found stream for display id/name: 'eDP-1' position: 0x0 resolution: 1707x1067
+[2026-09-25 04:56:05.799]: Info: Screencasting with KWin ScreenCast
+[2026-09-25 04:56:05.799]: Info: [pipewire] Requested variable frame rate (Sunshine pacing required: 11.1111ms)
+[2026-09-25 04:56:05.799]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:56:05.803]: Info: [pipewire] Pure NVIDIA system - DMA-BUF will be enabled for CUDA
+[2026-09-25 04:56:05.813]: Info: [kwingrab] Pipewire stream created: node=187
+[2026-09-25 04:56:05.813]: Info: [kwingrab] Screencasting output name eDP-1 position 0x0 resolution 2560x1600
+[2026-09-25 04:56:05.813]: Info: [pipewire] Streaming display 'eDP-1' offset: 0x0 resolution: 2560x1600
+[2026-09-25 04:56:05.813]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:56:05.813]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:56:05.813]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:56:05.813]: Info: [wayland] Found interface: wl_output(107) version 4
+[2026-09-25 04:56:05.813]: Info: [wayland] Resolution: 2560x1600
+[2026-09-25 04:56:05.813]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:56:05.813]: Info: [wayland] Logical size: 1707x1067
+[2026-09-25 04:56:05.813]: Info: [wayland] Name: eDP-1
+[2026-09-25 04:56:05.813]: Info: [wayland] Found monitor: BOE CQ eDP-1-0x0A40
+[2026-09-25 04:56:05.815]: Info: [pipewire] PipeWire stream state: unconnected -> connecting
+[2026-09-25 04:56:05.819]: Info: [pipewire] Connected to pipewire version 1.6.6
+[2026-09-25 04:56:05.819]: Info: [pipewire] PipeWire stream state: connecting -> paused
+[2026-09-25 04:56:05.823]: Info: [pipewire] Video format: 12
+[2026-09-25 04:56:05.823]: Info: [pipewire] Size: 2560x1600
+[2026-09-25 04:56:05.823]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:56:05.823]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:56:05.823]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:56:05.823]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:56:05.824]: Info: [pipewire] Video format: 12
+[2026-09-25 04:56:05.824]: Info: [pipewire] Size: 2560x1600
+[2026-09-25 04:56:05.824]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:56:05.824]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:56:05.824]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:56:05.824]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:56:05.825]: Info: [pipewire] PipeWire stream state: paused -> streaming
+[2026-09-25 04:56:05.829]: Info: Creating encoder [hevc_nvenc]
+[2026-09-25 04:56:05.829]: Info: Color coding: SDR (Rec. 709)
+[2026-09-25 04:56:05.829]: Info: Color depth: 8-bit
+[2026-09-25 04:56:05.829]: Info: Color range: MPEG
+[2026-09-25 04:56:05.829]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:56:05.830]: Warning: EGL: context priority set to HIGH but CAP_SYS_NICE capability is missing
+[2026-09-25 04:56:05.832]: Info: [pipewire] Sunshine frame pacing: enabled (11.111111ms)
+[2026-09-25 04:56:05.872]: Info: Streaming bitrate is 1988000
+[2026-09-25 04:56:05.897]: Info: Minimum FPS target set to ~45fps (22.2222ms)
+[2026-09-25 04:56:06.169]: Info: Setting default sink to: [sink-sunshine-stereo]
+[2026-09-25 04:56:06.169]: Info: Found default monitor by name: sink-sunshine-stereo.monitor
+[2026-09-25 04:56:06.189]: Info: Opus initialized: 48 kHz, 2 channels, 96 kbps (total), LOWDELAY
+[2026-09-25 04:56:09.192]: Info: CLIENT DISCONNECTED
+[2026-09-25 04:56:09.201]: Info: Setting default sink to: [alsa_output.pci-0000_00_1f.3.analog-stereo]
+[2026-09-25 04:56:09.213]: Info: [pipewire] PipeWire stream state: streaming -> paused
+[2026-09-25 04:56:09.213]: Info: [pipewire] PipeWire stream state: paused -> unconnected
+[2026-09-25 04:56:09.343]: Info: Executing Undo Cmd: [/home/biaogo/.local/bin/sunshine-vdisplay-undo.sh]
+[2026-09-25 04:56:12.578]: Info: Launch session will use display [虚拟-KWin]
+[2026-09-25 04:56:12.580]: Info: Executing global Do Cmd before encoder probing: [/home/biaogo/.local/bin/sunshine-vdisplay-do.sh]
+[2026-09-25 04:56:13.902]: Info: Display device configuration is disabled. Reverting any active display device configuration.
+[2026-09-25 04:56:13.902]: Info: Executing [Desktop]
+[2026-09-25 04:56:13.974]: Info: New streaming session started [active sessions: 1]
+[2026-09-25 04:56:13.990]: Info: CLIENT CONNECTED
+[2026-09-25 04:56:14.043]: Info: [portalgrab] Loaded portal restore token from disk
+[2026-09-25 04:56:14.053]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:56:14.054]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:56:14.054]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:56:14.054]: Info: [wayland] Found interface: wl_output(109) version 4
+[2026-09-25 04:56:14.054]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:56:14.054]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:56:14.054]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:56:14.054]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:56:14.054]: Info: [wayland] Found monitor:  
+[2026-09-25 04:56:14.057]: Info: [portalgrab] Found stream for display id/name: 'Virtual-SunshineVirt' position: 0x0 resolution: 1584x720
+[2026-09-25 04:56:14.057]: Info: Requested display [Virtual-SunshineVirt] is available
+[2026-09-25 04:56:14.057]: Info: [portalgrab] Loaded portal restore token from disk
+[2026-09-25 04:56:14.067]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:56:14.068]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:56:14.068]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:56:14.068]: Info: [wayland] Found interface: wl_output(109) version 4
+[2026-09-25 04:56:14.068]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:56:14.068]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:56:14.068]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:56:14.068]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:56:14.068]: Info: [wayland] Found monitor:  
+[2026-09-25 04:56:14.070]: Info: [portalgrab] Found stream for display id/name: 'Virtual-SunshineVirt' position: 0x0 resolution: 1584x720
+[2026-09-25 04:56:14.071]: Info: Screencasting with KWin ScreenCast
+[2026-09-25 04:56:14.071]: Info: [pipewire] Requested variable frame rate (Sunshine pacing required: 11.1111ms)
+[2026-09-25 04:56:14.071]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:56:14.075]: Info: [pipewire] Pure NVIDIA system - DMA-BUF will be enabled for CUDA
+[2026-09-25 04:56:14.077]: Info: [kwingrab] Pipewire stream created: node=157
+[2026-09-25 04:56:14.077]: Info: [kwingrab] Screencasting output name Virtual-SunshineVirt position 0x0 resolution 2376x1080
+[2026-09-25 04:56:14.077]: Info: [pipewire] Streaming display 'Virtual-SunshineVirt' offset: 0x0 resolution: 2376x1080
+[2026-09-25 04:56:14.077]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:56:14.077]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:56:14.077]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:56:14.077]: Info: [wayland] Found interface: wl_output(109) version 4
+[2026-09-25 04:56:14.078]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:56:14.078]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:56:14.078]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:56:14.078]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:56:14.078]: Info: [wayland] Found monitor:  
+[2026-09-25 04:56:14.079]: Info: [pipewire] PipeWire stream state: unconnected -> connecting
+[2026-09-25 04:56:14.083]: Info: [pipewire] Connected to pipewire version 1.6.6
+[2026-09-25 04:56:14.083]: Info: [pipewire] PipeWire stream state: connecting -> paused
+[2026-09-25 04:56:14.087]: Info: [pipewire] Video format: 12
+[2026-09-25 04:56:14.087]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:56:14.087]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:56:14.087]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:56:14.087]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:56:14.087]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:56:14.088]: Info: [pipewire] Video format: 12
+[2026-09-25 04:56:14.088]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:56:14.088]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:56:14.088]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:56:14.088]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:56:14.088]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:56:14.089]: Info: [pipewire] PipeWire stream state: paused -> streaming
+[2026-09-25 04:56:14.093]: Info: Creating encoder [hevc_nvenc]
+[2026-09-25 04:56:14.093]: Info: Color coding: SDR (Rec. 709)
+[2026-09-25 04:56:14.093]: Info: Color depth: 8-bit
+[2026-09-25 04:56:14.093]: Info: Color range: MPEG
+[2026-09-25 04:56:14.093]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:56:14.094]: Warning: EGL: context priority set to HIGH but CAP_SYS_NICE capability is missing
+[2026-09-25 04:56:14.097]: Info: [pipewire] Sunshine frame pacing: enabled (11.111111ms)
+[2026-09-25 04:56:14.133]: Info: Streaming bitrate is 1988000
+[2026-09-25 04:56:14.159]: Info: Minimum FPS target set to ~45fps (22.2222ms)
+[2026-09-25 04:56:14.460]: Info: Setting default sink to: [sink-sunshine-stereo]
+[2026-09-25 04:56:14.460]: Info: Found default monitor by name: sink-sunshine-stereo.monitor
+[2026-09-25 04:56:14.489]: Info: Opus initialized: 48 kHz, 2 channels, 96 kbps (total), LOWDELAY
+[2026-09-25 04:56:17.869]: Info: CLIENT DISCONNECTED
+[2026-09-25 04:56:17.879]: Info: Setting default sink to: [alsa_output.pci-0000_00_1f.3.analog-stereo]
+[2026-09-25 04:56:17.888]: Info: [pipewire] PipeWire stream state: streaming -> paused
+[2026-09-25 04:56:17.888]: Info: [pipewire] PipeWire stream state: paused -> unconnected
+[2026-09-25 04:56:18.020]: Info: Executing Undo Cmd: [/home/biaogo/.local/bin/sunshine-vdisplay-undo.sh]
+[2026-09-25 04:56:21.397]: Info: Launch session will use display [虚拟-KMS]
+[2026-09-25 04:56:21.397]: Info: Executing global Do Cmd before encoder probing: [/home/biaogo/.local/bin/sunshine-vdisplay-do.sh]
+[2026-09-25 04:56:22.696]: Info: Display device configuration is disabled. Reverting any active display device configuration.
+[2026-09-25 04:56:22.697]: Info: Executing [Desktop]
+[2026-09-25 04:56:22.785]: Info: New streaming session started [active sessions: 1]
+[2026-09-25 04:56:22.819]: Info: CLIENT CONNECTED
+[2026-09-25 04:56:22.866]: Info: [portalgrab] Loaded portal restore token from disk
+[2026-09-25 04:56:22.878]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:56:22.878]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:56:22.878]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:56:22.878]: Info: [wayland] Found interface: wl_output(112) version 4
+[2026-09-25 04:56:22.878]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:56:22.878]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:56:22.878]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:56:22.878]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:56:22.878]: Info: [wayland] Found monitor:  
+[2026-09-25 04:56:22.880]: Info: [portalgrab] Found stream for display id/name: 'Virtual-SunshineVirt' position: 0x0 resolution: 1584x720
+[2026-09-25 04:56:22.880]: Info: Requested display [Virtual-SunshineVirt] is available
+[2026-09-25 04:56:22.880]: Info: [portalgrab] Loaded portal restore token from disk
+[2026-09-25 04:56:22.891]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:56:22.891]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:56:22.891]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:56:22.891]: Info: [wayland] Found interface: wl_output(112) version 4
+[2026-09-25 04:56:22.891]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:56:22.891]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:56:22.891]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:56:22.891]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:56:22.891]: Info: [wayland] Found monitor:  
+[2026-09-25 04:56:22.893]: Info: [portalgrab] Found stream for display id/name: 'Virtual-SunshineVirt' position: 0x0 resolution: 1584x720
+[2026-09-25 04:56:22.893]: Info: Screencasting with KWin ScreenCast
+[2026-09-25 04:56:22.893]: Info: [pipewire] Requested variable frame rate (Sunshine pacing required: 11.1111ms)
+[2026-09-25 04:56:22.893]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:56:22.896]: Info: [pipewire] Pure NVIDIA system - DMA-BUF will be enabled for CUDA
+[2026-09-25 04:56:22.897]: Info: [kwingrab] Pipewire stream created: node=144
+[2026-09-25 04:56:22.897]: Info: [kwingrab] Screencasting output name Virtual-SunshineVirt position 0x0 resolution 2376x1080
+[2026-09-25 04:56:22.897]: Info: [pipewire] Streaming display 'Virtual-SunshineVirt' offset: 0x0 resolution: 2376x1080
+[2026-09-25 04:56:22.897]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:56:22.897]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:56:22.897]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:56:22.897]: Info: [wayland] Found interface: wl_output(112) version 4
+[2026-09-25 04:56:22.898]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:56:22.898]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:56:22.898]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:56:22.898]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:56:22.898]: Info: [wayland] Found monitor:  
+[2026-09-25 04:56:22.899]: Info: [pipewire] PipeWire stream state: unconnected -> connecting
+[2026-09-25 04:56:22.903]: Info: [pipewire] Connected to pipewire version 1.6.6
+[2026-09-25 04:56:22.903]: Info: [pipewire] PipeWire stream state: connecting -> paused
+[2026-09-25 04:56:22.906]: Info: [pipewire] Video format: 12
+[2026-09-25 04:56:22.906]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:56:22.906]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:56:22.906]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:56:22.906]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:56:22.906]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:56:22.907]: Info: [pipewire] Video format: 12
+[2026-09-25 04:56:22.907]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:56:22.907]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:56:22.907]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:56:22.907]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:56:22.907]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:56:22.908]: Info: [pipewire] PipeWire stream state: paused -> streaming
+[2026-09-25 04:56:22.913]: Info: Creating encoder [hevc_nvenc]
+[2026-09-25 04:56:22.913]: Info: Color coding: SDR (Rec. 709)
+[2026-09-25 04:56:22.913]: Info: Color depth: 8-bit
+[2026-09-25 04:56:22.913]: Info: Color range: MPEG
+[2026-09-25 04:56:22.913]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:56:22.914]: Warning: EGL: context priority set to HIGH but CAP_SYS_NICE capability is missing
+[2026-09-25 04:56:22.916]: Info: [pipewire] Sunshine frame pacing: enabled (11.111111ms)
+[2026-09-25 04:56:22.955]: Info: Streaming bitrate is 1988000
+[2026-09-25 04:56:22.982]: Info: Minimum FPS target set to ~45fps (22.2222ms)
+[2026-09-25 04:56:23.268]: Info: Setting default sink to: [sink-sunshine-stereo]
+[2026-09-25 04:56:23.268]: Info: Found default monitor by name: sink-sunshine-stereo.monitor
+[2026-09-25 04:56:23.298]: Info: Opus initialized: 48 kHz, 2 channels, 96 kbps (total), LOWDELAY
+[2026-09-25 04:57:10.532]: Info: Terminate handler called
+[2026-09-25 04:57:10.532]: Error: Couldn't accept incoming connections: Operation canceled
+[2026-09-25 04:57:10.538]: Info: Setting default sink to: [alsa_output.pci-0000_00_1f.3.analog-stereo]
+[2026-09-25 04:57:10.570]: Info: [pipewire] PipeWire stream state: streaming -> paused
+[2026-09-25 04:57:10.570]: Info: [pipewire] PipeWire stream state: paused -> unconnected
+[2026-09-25 04:57:10.706]: Info: Executing Undo Cmd: [/home/biaogo/.local/bin/sunshine-vdisplay-undo.sh]

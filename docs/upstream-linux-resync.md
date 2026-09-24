@@ -244,6 +244,30 @@ before the launch path is proven is the one regression this port must not introd
 with the host's `output_name` set to the virtual monitor, every session now runs the do-hook (that is
 the fork's rule-20 behaviour, intentional, but it means the hook must be safe for non-virtual picks).
 
+### Acceptance — real client sessions on the target host (2026-09-25)
+
+Run against a second instance of the CUDA build (`--arg cudaSupport true`, `/tmp/fst-test` holding a
+copy of the host's config, credentials and pairing state) on its own port block (base 49000), with the
+live service left running on the standard ports. Logs:
+`/tmp/fst-test/sunshine-gate-cuda.log`, hook log `/tmp/sunshine-vdisplay-dbg.log`.
+
+| Pick | Evidence | Result |
+|---|---|---|
+| 默认 (host `output_name` = Virtual-SunshineVirt) | `Executing global Do Cmd before encoder probing: [.../sunshine-vdisplay-do.sh]`, hook `do: start VIRTUAL=kwin`, `CLIENT CONNECTED`, `Screencasting with KWin ScreenCast`, `[kwingrab] Screencasting output name Virtual-SunshineVirt … 2376x1080` | pass (2 consecutive sessions, clean disconnect + undo `krfb killed`) |
+| `eDP-1` (static EDID head) | `Launch session will use display [eDP-1]`, hook `start VIRTUAL=<unset>` (no virtual monitor made), `Screencasting with KWin ScreenCast` | pass |
+| `虚拟-KWin` | `Launch session will use display [虚拟-KWin]`, hook `start VIRTUAL=kwin` → `ready: … enabled at 2376x1080@90`, `Screencasting with KWin ScreenCast` | pass |
+| `虚拟-KMS` | `Launch session will use display [虚拟-KMS]`, hook `start VIRTUAL=kms` → same monitor enabled, in-session capture still KWin ScreenCast (KMS only takes over pre-login, by design) | pass |
+
+Zero `Failed to initialize video capture` / 503 / `Unable to find display` in the run. Two bugs were
+found and fixed by this test, both recorded above: the early prep-command ordering (commit
+"run the global prep commands before the encoder probe") and the client list coming from the KMS
+connector enumeration while capture used KWin (`client_display_names()` now prefers the KWin list when
+that source is alive; the client had shown `eDP-1`).
+
+Not covered by this run (needs the deployed, setcap-wrapped build): pre-login/SDDM capture and the
+reboot matrix, because the probe build carries no file capabilities — the in-session path uses
+`KWIN_WAYLAND_NO_PERMISSION_CHECKS` and needs none.
+
 ## 6. Recovered artifacts
 
 - `sync/upstream-linux-batch` (commit `b48a1cfb`, 7 commits, 2026-09-25) — the previous session's
