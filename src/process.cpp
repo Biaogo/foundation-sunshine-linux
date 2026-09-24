@@ -166,31 +166,20 @@ namespace proc {
 #endif
   }
 
-  int proc_t::execute(int app_id, std::shared_ptr<rtsp_stream::launch_session_t> launch_session) {
-    // Ensure starting from a clean slate
-    terminate();
+  
 
-    // Per-session environment must not leak into the next session: `_env` is a member that survives
-    // across streams, so a pick from session N (SUNSHINE_CLIENT_DISPLAY_NAME=HDMI-A-1,
-    // SUNSHINE_CLIENT_VIRTUAL_DISPLAY=kwin) would otherwise be inherited by session N+1's prep
-    // commands and re-create/relocate a monitor the new client never asked for.
+  /**
+   * @brief Refresh the per-session environment used for prep commands and the launched app.
+   *
+   * `_env` is a member that outlives a single session, so per-session keys are erased first;
+   * otherwise a display pick (or any other client value) from the previous session leaks into the
+   * next one's prep commands.
+   *
+   * @param launch_session Session providing the client values.
+   */
+  void proc_t::update_session_env(const std::shared_ptr<rtsp_stream::launch_session_t> &launch_session) {
     _env.erase("SUNSHINE_CLIENT_DISPLAY_NAME");
     _env.erase("SUNSHINE_CLIENT_VIRTUAL_DISPLAY");
-
-    auto iter = std::find_if(_apps.begin(), _apps.end(), [&app_id](const auto app) {
-      return app.id == std::to_string(app_id);
-    });
-
-    if (iter == _apps.end()) {
-      BOOST_LOG(error) << "Couldn't find app with ID ["sv << app_id << ']';
-      return 404;
-    }
-
-    _app_id = app_id;
-    _app = *iter;
-    _app_prep_begin = std::begin(_app.prep_cmds);
-    _app_prep_it = _app_prep_begin;
-
     // Add Stream-specific environment variables
     _env["SUNSHINE_APP_ID"] = std::to_string(_app_id);
     _env["SUNSHINE_APP_NAME"] = _app.name;
@@ -223,6 +212,100 @@ namespace proc {
         break;
     }
     _env["SUNSHINE_CLIENT_AUDIO_SURROUND_PARAMS"] = launch_session->surround_params;
+  }
+
+  int proc_t::run_global_prep_cmds(const std::shared_ptr<rtsp_stream::launch_session_t> &launch_session) {
+    if (_global_prep_session_id == launch_session->id || config::sunshine.prep_cmds.empty()) {
+      return 0;
+    }
+
+    // The launch handler probes encoders before execute() runs, and the probe needs the display a
+    // hook-managed virtual pick creates. The app identity is part of the command environment, so it
+    // is resolved here exactly like execute() does.
+    const auto app_id = std::to_string(launch_session->appid);
+    const auto iter = std::find_if(_apps.begin(), _apps.end(), [&app_id](const auto &app) {
+      return app.id == app_id;
+    });
+    if (iter == _apps.end()) {
+      BOOST_LOG(error) << "Couldn't find app with ID ["sv << app_id << ']';
+      return 404;
+    }
+
+    _app_id = launch_session->appid;
+    _app = *iter;
+
+    if (_app.exclude_global_prep) {
+      // This app opted out of the global commands; its own ones belong to execute().
+      return 0;
+    }
+
+    // The global commands are stored already expanded as the leading entries of the app's prep list
+    // (see the app parsing above); run exactly those, and execute() skips them afterwards.
+    const auto count = std::min(config::sunshine.prep_cmds.size(), _app.prep_cmds.size());
+    if (count == 0) {
+      return 0;
+    }
+
+    update_session_env(launch_session);
+
+    std::error_code ec;
+    for (std::size_t i = 0; i < count; ++i) {
+      const auto &cmd = _app.prep_cmds[i];
+      if (cmd.do_cmd.empty()) {
+        continue;
+      }
+
+      const auto command = prepare_command(cmd.do_cmd);
+      boost::filesystem::path working_dir = _app.working_dir.empty() ?
+                                              find_working_directory(command, _env) :
+                                              boost::filesystem::path(_app.working_dir);
+      BOOST_LOG(info) << "Executing global Do Cmd before encoder probing: ["sv << command << ']';
+      auto child = platf::run_command(cmd.elevated, true, command, working_dir, _env, _pipe.get(), ec, nullptr);
+
+      if (ec) {
+        BOOST_LOG(error) << "Couldn't run ["sv << command << "]: System: "sv << ec.message();
+        return -1;
+      }
+
+      child.wait(ec);
+      if (ec) {
+        BOOST_LOG(error) << '[' << command << "] wait failed with error code ["sv << ec << ']';
+        return -1;
+      }
+      if (const auto ret = child.exit_code(); ret != 0) {
+        BOOST_LOG(error) << '[' << command << "] exited with code ["sv << ret << ']';
+        return -1;
+      }
+    }
+
+    _global_prep_session_id = launch_session->id;
+    return 0;
+  }
+
+int proc_t::execute(int app_id, std::shared_ptr<rtsp_stream::launch_session_t> launch_session) {
+    // Ensure starting from a clean slate
+    terminate();
+
+
+    auto iter = std::find_if(_apps.begin(), _apps.end(), [&app_id](const auto app) {
+      return app.id == std::to_string(app_id);
+    });
+
+    if (iter == _apps.end()) {
+      BOOST_LOG(error) << "Couldn't find app with ID ["sv << app_id << ']';
+      return 404;
+    }
+
+    _app_id = app_id;
+    _app = *iter;
+    _app_prep_begin = std::begin(_app.prep_cmds);
+    _app_prep_it = _app_prep_begin;
+
+    // The global prep commands lead this vector unless the app opts out; when they already ran
+    // before the encoder probe (run_global_prep_cmds), they must not run a second time here.
+    _global_prep_count = _app.exclude_global_prep ? 0 : config::sunshine.prep_cmds.size();
+
+    update_session_env(launch_session);
 
     if (!_app.output.empty() && _app.output != "null"sv) {
 #ifdef _WIN32
@@ -247,6 +330,11 @@ namespace proc {
 
     for (; _app_prep_it != std::end(_app.prep_cmds); ++_app_prep_it) {
       auto &cmd = *_app_prep_it;
+
+      // Global prep commands already ran before the encoder probe (run_global_prep_cmds)
+      if (_global_prep_session_id == launch_session->id && static_cast<std::size_t>(std::distance(_app_prep_begin, _app_prep_it)) < _global_prep_count) {
+        continue;
+      }
 
       // Skip empty commands
       if (cmd.do_cmd.empty()) {
@@ -801,6 +889,7 @@ namespace proc {
         ctx.elevated = elevated.value_or(false);
         ctx.auto_detach = auto_detach.value_or(true);
         ctx.wait_all = wait_all.value_or(true);
+        ctx.exclude_global_prep = exclude_global_prep.value_or(false);
         ctx.exit_timeout = std::chrono::seconds {exit_timeout.value_or(5)};
 
         auto possible_ids = calculate_app_id(name, ctx.image_path, i++);

@@ -78,6 +78,7 @@ namespace proc {
     bool elevated;  ///< Whether the process should be launched elevated.
     bool auto_detach;  ///< Whether the process should detach automatically.
     bool wait_all;  ///< Whether Sunshine waits for all child processes.
+    bool exclude_global_prep;  ///< Whether this app opts out of the global prep commands.
     std::chrono::seconds exit_timeout;  ///< Exit timeout.
   };
 
@@ -111,6 +112,33 @@ namespace proc {
      * @return Process exit code or launch error status.
      */
     int execute(int app_id, std::shared_ptr<rtsp_stream::launch_session_t> launch_session);
+
+    /**
+     * @brief Run the global prep-command "do" commands for this session, synchronously.
+     *
+     * The launch handler probes encoders before `execute()` runs, while a hook-managed virtual
+     * monitor is created by the user's `global_prep_cmd` do-hook — so the hook has to run before
+     * that probe, otherwise the probe looks for a display that does not exist yet and the launch
+     * fails with "Failed to initialize video capture/encoding".
+     *
+     * `execute()` skips the global commands once this has run (the application's own prep commands
+     * still run there, so ordering relative to the app launch is unchanged).
+     *
+     * @param launch_session Session whose environment the commands are evaluated with.
+     * @return 0 on success, non-zero when a command could not be run.
+     */
+    int run_global_prep_cmds(const std::shared_ptr<rtsp_stream::launch_session_t> &launch_session);
+
+    /**
+     * @brief Refresh the per-session environment used for prep commands and the launched app.
+     *
+     * `_env` is a member that outlives a single session, so per-session keys are erased first;
+     * otherwise a display pick (or any other client value) from the previous session leaks into the
+     * next one's prep commands.
+     *
+     * @param launch_session Session providing the client values.
+     */
+    void update_session_env(const std::shared_ptr<rtsp_stream::launch_session_t> &launch_session);
 
     /**
      * @return `_app_id` if a process is running, otherwise returns `0`
@@ -166,6 +194,8 @@ namespace proc {
     file_t _pipe;
     std::vector<cmd_t>::const_iterator _app_prep_it;
     std::vector<cmd_t>::const_iterator _app_prep_begin;
+    std::uint32_t _global_prep_session_id {0};  ///< Session id whose global prep commands already ran.
+    std::size_t _global_prep_count {0};  ///< Number of leading app prep commands that are the global ones.
   };
 
   /**
