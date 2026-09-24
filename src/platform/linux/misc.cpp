@@ -16,6 +16,7 @@
 #include <algorithm>
 #include <array>
 #include <cerrno>
+#include <chrono>
 #include <cstring>
 #include <fstream>
 #include <iomanip>
@@ -1234,12 +1235,45 @@ namespace platf {
     // Note: The separate kwin_available check is necessary because with CAP_SYS_ADMIN kwin_display_names is never empty during startup
     return window_system == window_system_e::WAYLAND && kwin_available() && !kwin_display_names().empty();
   }
+
+  /**
+   * @brief Re-verify the compositor capture source once a Wayland session appears.
+   *
+   * @note `verify_sources()` decides the source set ONCE, at process start. Under systemd linger that
+   * start happens at boot, where no compositor exists yet: `verify_kwin()` fails and
+   * `sources[source::KWIN]` would stay false for the whole process lifetime even after the desktop
+   * session comes up. Every KWin-side output name (physical connector names and the virtual display)
+   * would then be handed to KMS, which understands numeric monitor ids only, so each encoder probe
+   * dies with "Couldn't find monitor [-N]" and every client pick answers 503 until Sunshine is
+   * restarted by hand. Re-checking lazily lets the compositor backend join a running process.
+   */
+  void reverify_sources_for_session() {
+    if (sources[source::KWIN] ||
+        !(config::video.capture.empty() || config::video.capture == "auto" || config::video.capture == "kwin")) {
+      return;
+    }
+
+    // While no compositor is reachable (pre-login, or none at all) every attempt is a failed
+    // Wayland connect, so rate-limit: a client hammering the launch path must not spin on it.
+    static std::chrono::steady_clock::time_point last_attempt {};
+    const auto now = std::chrono::steady_clock::now();
+    if (last_attempt != std::chrono::steady_clock::time_point {} && now - last_attempt < std::chrono::seconds(2)) {
+      return;
+    }
+    last_attempt = now;
+
+    if (verify_kwin()) {
+      BOOST_LOG(info) << "[platform] Wayland session detected — enabling KWin capture backend"sv;
+      sources[source::KWIN] = true;
+    }
+  }
 #endif
 
   /**
    * @brief List display names accepted by the selected capture backend.
    */
   std::vector<std::string> display_names(mem_type_e hwdevice_type) {
+    reverify_sources_for_session();
 #ifdef SUNSHINE_BUILD_CUDA
     // display using NvFBC only supports mem_type_e::cuda
     if (sources[source::NVFBC] && hwdevice_type == mem_type_e::cuda) {
@@ -1275,6 +1309,7 @@ namespace platf {
   }
 
   std::vector<std::string> client_display_names(mem_type_e hwdevice_type) {
+    reverify_sources_for_session();
     // The list a client may pick from has to match what `display()` will resolve the pick against:
     // Wayland-side names (connector names, the virtual ids) go to KWin whenever it is alive. KMS
     // enumeration, in contrast, can succeed without the capability that capturing needs (it only
@@ -1318,6 +1353,8 @@ namespace platf {
   }
 
   std::shared_ptr<display_t> display(mem_type_e hwdevice_type, const std::string &display_name, const video::config_t &config) {
+    reverify_sources_for_session();
+
     // Please ensure that KMS followed by CUDA remains at the top so that we can
     // drop DRM worker privileges once neither backend requires it.
 
