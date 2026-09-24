@@ -1,0 +1,531 @@
+commit d855af34ff7059986a258fdbc09cb54700753c3b
+Author: qiin2333 <chouq0212@gmail.com>
+Date:   Thu Mar 12 15:41:52 2026 +0800
+
+    feat(audio): add 7.1.4 (12-channel) surround sound support (#510)
+    
+    Add support for 7.1.4 Dolby Atmos-style surround sound with 12 audio channels
+    (FL, FR, FC, LFE, BL, BR, SL, SR, TFL, TFR, TBL, TBR).
+    
+    Core changes:
+    - Extend speaker_e enum with 4 height channels (MAX_SPEAKERS: 8 -> 12)
+    - Add map_surround714 constexpr mapping array
+    - Add SURROUND714/HIGH_SURROUND714 stream configs (600k/3072k bitrate)
+    - Add map_stream() case for 12 channels
+    
+    RTSP protocol:
+    - Use comma-delimited surround-params format for >8 channels to support
+      multi-digit mapping values (e.g., 10, 11)
+    - Add dual-format parser: legacy single-digit + new delimited format
+    - Inject default 7.1.4 params when client sends 12ch without custom params
+    - Fix std::rotate boundary to use channelCount instead of MAX_STREAM_CONFIG
+    
+    Platform support:
+    - Linux: Add 12-channel PulseAudio null sink with TOP_FRONT/REAR positions
+    - Windows: Add WAVEFORMATEXTENSIBLE with TOP speaker masks, 12ch format entry
+    
+    Environment:
+    - Add SUNSHINE_CLIENT_AUDIO_CONFIGURATION=7.1.4 in both nvhttp.cpp and process.cpp
+
+diff --git a/src/audio.cpp b/src/audio.cpp
+index 8f0c82d3..a37cd915 100644
+--- a/src/audio.cpp
++++ b/src/audio.cpp
+@@ -81,6 +81,22 @@ namespace audio {
+       platf::speaker::map_surround71,
+       2048000,
+     },
++    {
++      SAMPLE_RATE,
++      12,
++      8,
++      4,
++      platf::speaker::map_surround714,
++      600000,
++    },
++    {
++      SAMPLE_RATE,
++      12,
++      12,
++      0,
++      platf::speaker::map_surround714,
++      3072000,
++    },
+   };
+ 
+   void encodeThread(sample_queue_t samples, config_t config, void *channel_data) {
+@@ -195,6 +211,11 @@ namespace audio {
+         case 8:
+           sink = &null.surround71;
+           break;
++        case 12:
++          if (!null.surround714.empty()) {
++            sink = &null.surround714;
++          }
++          break;
+       }
+     }
+ 
+@@ -301,6 +322,14 @@ namespace audio {
+         return SURROUND51 + shift;
+       case 8:
+         return SURROUND71 + shift;
++      case 12:
++        return SURROUND714 + shift;
++    }
++    if (channels >= 12) {
++      return SURROUND714 + shift;
++    }
++    if (channels >= 8) {
++      return SURROUND71 + shift;
+     }
+     return STEREO;
+   }
+diff --git a/src/audio.h b/src/audio.h
+index 241d6fe3..80aebc38 100644
+--- a/src/audio.h
++++ b/src/audio.h
+@@ -19,6 +19,8 @@ namespace audio {
+     HIGH_SURROUND51,  ///< High surround 5.1
+     SURROUND71,  ///< Surround 7.1
+     HIGH_SURROUND71,  ///< High surround 7.1
++    SURROUND714,  ///< Surround 7.1.4
++    HIGH_SURROUND714,  ///< High surround 7.1.4
+     MAX_STREAM_CONFIG  ///< Maximum audio stream configuration
+   };
+ 
+@@ -35,7 +37,7 @@ namespace audio {
+     int channelCount;
+     int streams;
+     int coupledStreams;
+-    std::uint8_t mapping[8];
++    std::uint8_t mapping[platf::speaker::MAX_SPEAKERS];
+   };
+ 
+   extern opus_stream_config_t stream_configs[MAX_STREAM_CONFIG];
+diff --git a/src/nvhttp.cpp b/src/nvhttp.cpp
+index a1d711cc..25338a49 100644
+--- a/src/nvhttp.cpp
++++ b/src/nvhttp.cpp
+@@ -461,6 +461,9 @@ namespace nvhttp {
+       case 8:
+         launch_session->env["SUNSHINE_CLIENT_AUDIO_CONFIGURATION"] = "7.1";
+         break;
++      case 12:
++        launch_session->env["SUNSHINE_CLIENT_AUDIO_CONFIGURATION"] = "7.1.4";
++        break;
+     }
+ 
+     return launch_session;
+diff --git a/src/platform/common.h b/src/platform/common.h
+index 6cb864b3..c4a67f97 100644
+--- a/src/platform/common.h
++++ b/src/platform/common.h
+@@ -192,6 +192,10 @@ namespace platf {
+       BACK_RIGHT,  ///< Back right
+       SIDE_LEFT,  ///< Side left
+       SIDE_RIGHT,  ///< Side right
++      TOP_FRONT_LEFT,  ///< Top front left
++      TOP_FRONT_RIGHT,  ///< Top front right
++      TOP_BACK_LEFT,  ///< Top back left
++      TOP_BACK_RIGHT,  ///< Top back right
+       MAX_SPEAKERS,  ///< Maximum number of speakers
+     };
+ 
+@@ -217,6 +221,21 @@ namespace platf {
+       SIDE_LEFT,
+       SIDE_RIGHT,
+     };
++
++    constexpr std::uint8_t map_surround714[] {
++      FRONT_LEFT,
++      FRONT_RIGHT,
++      FRONT_CENTER,
++      LOW_FREQUENCY,
++      BACK_LEFT,
++      BACK_RIGHT,
++      SIDE_LEFT,
++      SIDE_RIGHT,
++      TOP_FRONT_LEFT,
++      TOP_FRONT_RIGHT,
++      TOP_BACK_LEFT,
++      TOP_BACK_RIGHT,
++    };
+   }  // namespace speaker
+ 
+   enum class mem_type_e {
+@@ -389,6 +408,7 @@ namespace platf {
+       std::string stereo;
+       std::string surround51;
+       std::string surround71;
++      std::string surround714;
+     };
+ 
+     std::optional<null_t> null;
+diff --git a/src/platform/linux/audio.cpp b/src/platform/linux/audio.cpp
+index 67b9ce3a..37ca6e82 100644
+--- a/src/platform/linux/audio.cpp
++++ b/src/platform/linux/audio.cpp
+@@ -31,6 +31,10 @@ namespace platf {
+     PA_CHANNEL_POSITION_REAR_RIGHT,
+     PA_CHANNEL_POSITION_SIDE_LEFT,
+     PA_CHANNEL_POSITION_SIDE_RIGHT,
++    PA_CHANNEL_POSITION_TOP_FRONT_LEFT,
++    PA_CHANNEL_POSITION_TOP_FRONT_RIGHT,
++    PA_CHANNEL_POSITION_TOP_REAR_LEFT,
++    PA_CHANNEL_POSITION_TOP_REAR_RIGHT,
+   };
+ 
+   std::string
+@@ -199,6 +203,7 @@ namespace platf {
+         std::uint32_t stereo = PA_INVALID_INDEX;
+         std::uint32_t surround51 = PA_INVALID_INDEX;
+         std::uint32_t surround71 = PA_INVALID_INDEX;
++        std::uint32_t surround714 = PA_INVALID_INDEX;
+       } index;
+ 
+       std::unique_ptr<safe::event_t<ctx_event_e>> events;
+@@ -307,6 +312,7 @@ namespace platf {
+         constexpr auto stereo = "sink-sunshine-stereo";
+         constexpr auto surround51 = "sink-sunshine-surround51";
+         constexpr auto surround71 = "sink-sunshine-surround71";
++        constexpr auto surround714 = "sink-sunshine-surround714";
+ 
+         auto alarm = safe::make_alarm<int>();
+ 
+@@ -341,6 +347,11 @@ namespace platf {
+           else if (!std::strcmp(sink_info->name, surround71)) {
+             index.surround71 = sink_info->owner_module;
+ 
++            ++nullcount;
++          }
++          else if (!std::strcmp(sink_info->name, surround714)) {
++            index.surround714 = sink_info->owner_module;
++
+             ++nullcount;
+           }
+         };
+@@ -392,12 +403,27 @@ namespace platf {
+           }
+         }
+ 
++        if (index.surround714 == PA_INVALID_INDEX) {
++          index.surround714 = load_null(surround714, speaker::map_surround714, sizeof(speaker::map_surround714));
++          if (index.surround714 == PA_INVALID_INDEX) {
++            BOOST_LOG(warning) << "Couldn't create virtual sink for surround-714: "sv << pa_strerror(pa_context_errno(ctx.get()));
++          }
++          else {
++            ++nullcount;
++          }
++        }
++
+         if (sink_name.empty()) {
+           BOOST_LOG(warning) << "Couldn't find an active default sink. Continuing with virtual audio only."sv;
+         }
+ 
+-        if (nullcount == 3) {
+-          sink.null = std::make_optional(sink_t::null_t { stereo, surround51, surround71 });
++        if (index.stereo != PA_INVALID_INDEX && index.surround51 != PA_INVALID_INDEX && index.surround71 != PA_INVALID_INDEX) {
++          sink.null = std::make_optional(sink_t::null_t {
++            stereo,
++            surround51,
++            surround71,
++            index.surround714 != PA_INVALID_INDEX ? surround714 : ""
++          });
+         }
+ 
+         return std::make_optional(std::move(sink));
+@@ -518,6 +544,7 @@ namespace platf {
+         unload_null(index.stereo);
+         unload_null(index.surround51);
+         unload_null(index.surround71);
++        unload_null(index.surround714);
+ 
+         if (worker.joinable()) {
+           pa_context_disconnect(ctx.get());
+diff --git a/src/platform/windows/audio.cpp b/src/platform/windows/audio.cpp
+index 49114bd4..0a6aacd3 100644
+--- a/src/platform/windows/audio.cpp
++++ b/src/platform/windows/audio.cpp
+@@ -55,6 +55,13 @@ namespace {
+                                               SPEAKER_BACK_LEFT | SPEAKER_BACK_RIGHT |
+                                               SPEAKER_SIDE_LEFT | SPEAKER_SIDE_RIGHT;
+ 
++  constexpr auto waveformat_mask_surround714 = SPEAKER_FRONT_LEFT | SPEAKER_FRONT_RIGHT |
++                                               SPEAKER_FRONT_CENTER | SPEAKER_LOW_FREQUENCY |
++                                               SPEAKER_BACK_LEFT | SPEAKER_BACK_RIGHT |
++                                               SPEAKER_SIDE_LEFT | SPEAKER_SIDE_RIGHT |
++                                               SPEAKER_TOP_FRONT_LEFT | SPEAKER_TOP_FRONT_RIGHT |
++                                               SPEAKER_TOP_BACK_LEFT | SPEAKER_TOP_BACK_RIGHT;
++
+   enum class sample_format_e {
+     f32,
+     s32,
+@@ -167,6 +174,16 @@ namespace {
+         create_waveformat(sample_format_e::s16, channel_count, channel_mask),
+       };
+     }
++    else if (channel_count == 12) {
++      auto channel_mask = waveformat_mask_surround714;
++      return {
++        create_waveformat(sample_format_e::f32, channel_count, channel_mask),
++        create_waveformat(sample_format_e::s32, channel_count, channel_mask),
++        create_waveformat(sample_format_e::s24in32, channel_count, channel_mask),
++        create_waveformat(sample_format_e::s24, channel_count, channel_mask),
++        create_waveformat(sample_format_e::s16, channel_count, channel_mask),
++      };
++    }
+   }
+ 
+   std::string
+@@ -195,6 +212,10 @@ namespace {
+         result += "7.1";
+         break;
+ 
++      case (waveformat_mask_surround714):
++        result += "7.1.4";
++        break;
++
+       default:
+         result += std::to_string(waveformat.Format.nChannels) + " channels (unrecognized)";
+         break;
+@@ -257,7 +278,7 @@ namespace platf::audio {
+     virtual_sink_waveformats_t virtual_sink_waveformats;
+   };
+ 
+-  const std::array<const format_t, 3> formats = {
++  const std::array<const format_t, 4> formats = {
+     format_t {
+       2,
+       "Stereo",
+@@ -276,6 +297,12 @@ namespace platf::audio {
+       waveformat_mask_surround71,
+       create_virtual_sink_waveformats<8>(),
+     },
++    format_t {
++      12,
++      "Surround 7.1.4",
++      waveformat_mask_surround714,
++      create_virtual_sink_waveformats<12>(),
++    },
+   };
+ 
+   audio_client_t
+@@ -736,6 +763,7 @@ namespace platf::audio {
+           "virtual-"s + formats[0].name + device_id,
+           "virtual-"s + formats[1].name + device_id,
+           "virtual-"s + formats[2].name + device_id,
++          "virtual-"s + formats[3].name + device_id,
+         });
+       }
+       else if (!config::audio.virtual_sink.empty()) {
+diff --git a/src/process.cpp b/src/process.cpp
+index d6699d65..81935492 100644
+--- a/src/process.cpp
++++ b/src/process.cpp
+@@ -200,6 +200,9 @@ namespace proc {
+       case 8:
+         _env["SUNSHINE_CLIENT_AUDIO_CONFIGURATION"] = "7.1";
+         break;
++      case 12:
++        _env["SUNSHINE_CLIENT_AUDIO_CONFIGURATION"] = "7.1.4";
++        break;
+     }
+     _env["SUNSHINE_CLIENT_AUDIO_SURROUND_PARAMS"] = launch_session->surround_params;
+ 
+diff --git a/src/rtsp.cpp b/src/rtsp.cpp
+index 874ae214..50039057 100644
+--- a/src/rtsp.cpp
++++ b/src/rtsp.cpp
+@@ -10,11 +10,13 @@ extern "C" {
+ }
+ 
+ // standard includes
++#include <algorithm>
+ #include <array>
+ #include <cctype>
+ #include <set>
+ #include <unordered_map>
+ #include <utility>
++#include <vector>
+ 
+ // lib includes
+ #include <boost/asio.hpp>
+@@ -39,6 +41,101 @@ using asio::ip::udp;
+ using namespace std::literals;
+ 
+ namespace rtsp_stream {
++  namespace {
++    bool
++    parse_legacy_surround_params(std::string_view params, int requested_channels, audio::stream_params_t &result) {
++      if (params.length() <= 3 || !std::all_of(params.begin(), params.end(), [](char c) { return std::isdigit((unsigned char) c); })) {
++        return false;
++      }
++
++      int channel_count = params[0] - '0';
++      int streams = params[1] - '0';
++      int coupled_streams = params[2] - '0';
++      if (channel_count != requested_channels || channel_count < 2 || channel_count > platf::speaker::MAX_SPEAKERS ||
++          streams + coupled_streams != channel_count || params.length() != (size_t) channel_count + 3) {
++        return false;
++      }
++
++      for (int i = 0; i < channel_count; ++i) {
++        auto map_value = params[i + 3] - '0';
++        if (map_value < 0 || map_value >= channel_count) {
++          return false;
++        }
++
++        result.mapping[i] = (std::uint8_t) map_value;
++      }
++
++      result.channelCount = channel_count;
++      result.streams = streams;
++      result.coupledStreams = coupled_streams;
++      return true;
++    }
++
++    bool
++    parse_delimited_surround_params(std::string_view params, int requested_channels, audio::stream_params_t &result) {
++      std::vector<int> values;
++      values.reserve(3 + platf::speaker::MAX_SPEAKERS);
++
++      int current = 0;
++      bool has_digit = false;
++      for (char ch : params) {
++        if (std::isdigit((unsigned char) ch)) {
++          current = current * 10 + (ch - '0');
++          has_digit = true;
++          continue;
++        }
++
++        if (ch == ',' || ch == ';' || ch == ':' || ch == '|' || std::isspace((unsigned char) ch)) {
++          if (has_digit) {
++            values.push_back(current);
++            current = 0;
++            has_digit = false;
++          }
++          continue;
++        }
++
++        return false;
++      }
++
++      if (has_digit) {
++        values.push_back(current);
++      }
++
++      if (values.size() < 3) {
++        return false;
++      }
++
++      int channel_count = values[0];
++      int streams = values[1];
++      int coupled_streams = values[2];
++
++      if (channel_count != requested_channels || channel_count < 2 || channel_count > platf::speaker::MAX_SPEAKERS ||
++          streams + coupled_streams != channel_count || values.size() != (size_t) channel_count + 3) {
++        return false;
++      }
++
++      for (int i = 0; i < channel_count; ++i) {
++        auto map_value = values[i + 3];
++        if (map_value < 0 || map_value >= channel_count) {
++          return false;
++        }
++
++        result.mapping[i] = (std::uint8_t) map_value;
++      }
++
++      result.channelCount = channel_count;
++      result.streams = streams;
++      result.coupledStreams = coupled_streams;
++      return true;
++    }
++
++    bool
++    parse_surround_params(std::string_view params, int requested_channels, audio::stream_params_t &result) {
++      return parse_legacy_surround_params(params, requested_channels, result) ||
++             parse_delimited_surround_params(params, requested_channels, result);
++    }
++  }  // namespace
++
+   void
+   free_msg(PRTSP_MESSAGE msg) {
+     freeMessage(msg);
+@@ -887,16 +984,30 @@ namespace rtsp_stream {
+        */
+       if (x == audio::SURROUND51 || x == audio::SURROUND71) {
+         std::copy_n(mapping_p, stream_config.channelCount, mapping);
+-        std::rotate(mapping + 3, mapping + 4, mapping + audio::MAX_STREAM_CONFIG);
++        std::rotate(mapping + 3, mapping + 4, mapping + stream_config.channelCount);
+ 
+         mapping_p = mapping;
+       }
+ 
+-      ss << "a=fmtp:97 surround-params="sv << stream_config.channelCount << stream_config.streams << stream_config.coupledStreams;
++      // For channel counts > 8 (e.g., 7.1.4 with 12 channels), use comma-delimited format
++      // because mapping values can exceed single digits (e.g., 10, 11)
++      if (stream_config.channelCount > 8) {
++        ss << "a=fmtp:97 surround-params="sv << stream_config.channelCount;
+ 
+-      std::for_each_n(mapping_p, stream_config.channelCount, [&ss](std::uint8_t digit) {
+-        ss << (char) (digit + '0');
+-      });
++        // Use comma-delimited format: channelCount,streams,coupledStreams,m0,m1,...
++        ss << ',' << (int) stream_config.streams << ',' << (int) stream_config.coupledStreams;
++
++        std::for_each_n(mapping_p, stream_config.channelCount, [&ss](std::uint8_t val) {
++          ss << ',' << (int) val;
++        });
++      }
++      else {
++        ss << "a=fmtp:97 surround-params="sv << stream_config.channelCount << stream_config.streams << stream_config.coupledStreams;
++
++        std::for_each_n(mapping_p, stream_config.channelCount, [&ss](std::uint8_t digit) {
++          ss << (char) (digit + '0');
++        });
++      }
+ 
+       ss << std::endl;
+     }
+@@ -1138,28 +1249,17 @@ namespace rtsp_stream {
+         }
+       }
+     }
+-    else if (session.surround_params.length() > 3) {
+-      // Channels
+-      std::uint8_t c = session.surround_params[0] - '0';
+-      // Streams
+-      std::uint8_t n = session.surround_params[1] - '0';
+-      // Coupled streams
+-      std::uint8_t m = session.surround_params[2] - '0';
+-      auto valid = false;
+-      if ((c == 6 || c == 8) && c == config.audio.channels && n + m == c && session.surround_params.length() == c + 3) {
+-        config.audio.customStreamParams.channelCount = c;
+-        config.audio.customStreamParams.streams = n;
+-        config.audio.customStreamParams.coupledStreams = m;
+-        valid = true;
+-        for (std::uint8_t i = 0; i < c; i++) {
+-          config.audio.customStreamParams.mapping[i] = session.surround_params[i + 3] - '0';
+-          if (config.audio.customStreamParams.mapping[i] >= c) {
+-            valid = false;
+-            break;
+-          }
+-        }
+-      }
+-      config.audio.flags[audio::config_t::CUSTOM_SURROUND_PARAMS] = valid;
++    else if (!session.surround_params.empty()) {
++      config.audio.flags[audio::config_t::CUSTOM_SURROUND_PARAMS] =
++        parse_surround_params(session.surround_params, config.audio.channels, config.audio.customStreamParams);
++    }
++
++    if (config.audio.channels == 12 && !config.audio.flags[audio::config_t::CUSTOM_SURROUND_PARAMS]) {
++      config.audio.customStreamParams.channelCount = 12;
++      config.audio.customStreamParams.streams = 8;
++      config.audio.customStreamParams.coupledStreams = 4;
++      std::copy_n(std::begin(platf::speaker::map_surround714), 12, std::begin(config.audio.customStreamParams.mapping));
++      config.audio.flags[audio::config_t::CUSTOM_SURROUND_PARAMS] = true;
+     }
+ 
+     // If the client sent a configured bitrate, we will choose the actual bitrate ourselves

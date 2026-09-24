@@ -1,0 +1,1970 @@
+commit d80144e7190de93472d0dac038da542542ca95dd
+Author: Yundi339 <yundi339@foxmail.com>
+Date:   Tue Aug 11 01:51:10 2026 +0800
+
+    feat(mic): 支持多客户端麦克风混音输入 (#929)
+    
+    * feat(stream): 支持多客户端麦克风混音
+    
+    * fix(mic): 修复多会话混音生命周期和格式兼容
+    
+    * fix(mic): 修复快速重连和线程初始化
+    
+    * fix(mic): 修复重连序列与地址路由
+    
+    * test(mic): 补充混音与地址规范化测试
+    
+    * test(mic): 加强队列与重启断言
+
+diff --git a/cmake/compile_definitions/common.cmake b/cmake/compile_definitions/common.cmake
+index 80da914e..4b76a682 100644
+--- a/cmake/compile_definitions/common.cmake
++++ b/cmake/compile_definitions/common.cmake
+@@ -196,6 +196,8 @@ set(SUNSHINE_TARGET_FILES
+         "${CMAKE_SOURCE_DIR}/src/input_activity.h"
+         "${CMAKE_SOURCE_DIR}/src/audio.cpp"
+         "${CMAKE_SOURCE_DIR}/src/audio.h"
++        "${CMAKE_SOURCE_DIR}/src/mic_mixer.cpp"
++        "${CMAKE_SOURCE_DIR}/src/mic_mixer.h"
+         "${CMAKE_SOURCE_DIR}/src/http_util.h"
+         "${CMAKE_SOURCE_DIR}/src/platform/common.h"
+         "${CMAKE_SOURCE_DIR}/src/process.cpp"
+diff --git a/src/audio.cpp b/src/audio.cpp
+index 9a207233..495d7eaf 100644
+--- a/src/audio.cpp
++++ b/src/audio.cpp
+@@ -726,7 +726,7 @@ namespace audio {
+     ref->control->release_mic_redirect_device();
+   }
+ 
+-  int write_mic_data(const std::uint8_t *data, size_t size, uint16_t seq) {
++  int write_mic_pcm(const std::int16_t *samples, std::size_t frame_count) {
+     // 单步原子获取：避免对已经释放的音频上下文做 check-then-act。
+     auto ref = try_get_audio_ctx_ref();
+     if (!ref) {
+@@ -740,6 +740,6 @@ namespace audio {
+       return -1;
+     }
+ 
+-    return ref->control->write_mic_data(reinterpret_cast<const char*>(data), size, seq);
++    return ref->control->write_mic_pcm(samples, frame_count);
+   }
+-}  // namespace audio
+\ No newline at end of file
++}  // namespace audio
+diff --git a/src/audio.h b/src/audio.h
+index 64dc52d9..af555f83 100644
+--- a/src/audio.h
++++ b/src/audio.h
+@@ -164,13 +164,12 @@ namespace audio {
+   release_mic_redirect_device();
+ 
+   /**
+-   * @brief Write microphone data to the virtual audio device.
++   * @brief Write mixed mono 48 kHz signed 16-bit PCM to the virtual microphone device.
+    * @note Must be called serially by micRecvThread with the other microphone redirect device APIs.
+-   * @param data Pointer to the audio data.
+-   * @param size Size of the audio data in bytes.
+-   * @param seq Sequence number for FEC recovery (0 = unknown)
+-   * @returns Number of bytes written, or -1 on error.
++   * @param samples Pointer to the PCM samples.
++   * @param frame_count Number of mono frames to write.
++   * @returns Number of bytes written, -1 on a generic error, or -2 when the device was invalidated.
+    */
+   int
+-  write_mic_data(const std::uint8_t *data, size_t size, uint16_t seq = 0);
++  write_mic_pcm(const std::int16_t *samples, std::size_t frame_count);
+ }  // namespace audio
+diff --git a/src/mic_mixer.cpp b/src/mic_mixer.cpp
+new file mode 100644
+index 00000000..97523780
+--- /dev/null
++++ b/src/mic_mixer.cpp
+@@ -0,0 +1,203 @@
++/**
++ * @file src/mic_mixer.cpp
++ * @brief Per-session Opus decoding and host microphone mixing.
++ */
++#include "mic_mixer.h"
++
++#include <algorithm>
++#include <cstdint>
++#include <deque>
++#include <limits>
++#include <memory>
++#include <unordered_map>
++#include <utility>
++#include <vector>
++
++#include <opus/opus.h>
++
++namespace mic_mixer {
++  namespace {
++    constexpr int channels = 1;
++    constexpr std::size_t max_queued_frames = 3;
++
++    struct opus_decoder_deleter_t {
++      void
++      operator()(OpusDecoder *decoder) const noexcept {
++        if (decoder) {
++          opus_decoder_destroy(decoder);
++        }
++      }
++    };
++
++    using opus_decoder_t = std::unique_ptr<OpusDecoder, opus_decoder_deleter_t>;
++
++    struct source_t {
++      opus_decoder_t decoder;
++      std::optional<std::uint16_t> last_sequence;
++      std::optional<std::uint16_t> expected_restart_sequence;
++      std::deque<std::vector<std::int16_t>> frames;
++    };
++
++    void
++    queue_frame(source_t &source, std::vector<std::int16_t> frame) {
++      if (source.frames.size() >= max_queued_frames) {
++        source.frames.pop_front();
++      }
++      source.frames.emplace_back(std::move(frame));
++    }
++
++    bool
++    decode_frame(source_t &source, const std::uint8_t *data, std::size_t size) {
++      const auto frame_size = opus_decoder_get_nb_samples(
++        source.decoder.get(),
++        data,
++        static_cast<opus_int32>(size));
++      if (frame_size != static_cast<int>(frame_samples)) {
++        return false;
++      }
++
++      std::vector<std::int16_t> pcm(static_cast<std::size_t>(frame_size));
++      const auto decoded_samples = opus_decode(
++        source.decoder.get(),
++        data,
++        static_cast<opus_int32>(size),
++        pcm.data(),
++        frame_size,
++        0);
++      if (decoded_samples <= 0) {
++        return false;
++      }
++
++      pcm.resize(static_cast<std::size_t>(decoded_samples));
++      queue_frame(source, std::move(pcm));
++      return true;
++    }
++  }  // namespace
++
++  struct mixer_t::impl_t {
++    std::unordered_map<source_id_t, source_t> sources;
++  };
++
++  mixer_t::mixer_t():
++      impl_ {std::make_unique<impl_t>()} {}
++
++  mixer_t::~mixer_t() = default;
++
++  bool
++  is_valid_opus_packet(const std::uint8_t *data, std::size_t size) {
++    if (!data || size == 0 || size > static_cast<std::size_t>(std::numeric_limits<opus_int32>::max())) {
++      return false;
++    }
++    const auto samples = opus_packet_get_nb_samples(data, static_cast<opus_int32>(size), sample_rate);
++    return samples == static_cast<int>(frame_samples);
++  }
++
++  bool
++  mixer_t::add_source(source_id_t source_id) {
++    if (impl_->sources.contains(source_id)) {
++      return true;
++    }
++
++    int error = OPUS_OK;
++    opus_decoder_t decoder {opus_decoder_create(sample_rate, channels, &error)};
++    if (!decoder || error != OPUS_OK) {
++      return false;
++    }
++
++    impl_->sources.emplace(source_id, source_t {std::move(decoder), std::nullopt, std::nullopt, {}});
++    return true;
++  }
++
++  void
++  mixer_t::remove_source(source_id_t source_id) {
++    impl_->sources.erase(source_id);
++  }
++
++  void
++  mixer_t::clear() {
++    impl_->sources.clear();
++  }
++
++  bool
++  mixer_t::push_packet(source_id_t source_id, const std::uint8_t *data, std::size_t size, std::uint16_t sequence_number) {
++    auto source_it = impl_->sources.find(source_id);
++    if (source_it == impl_->sources.end() || !data || size == 0) {
++      return false;
++    }
++
++    auto &source = source_it->second;
++    if (source.last_sequence) {
++      const auto distance = static_cast<std::uint16_t>(sequence_number - *source.last_sequence);
++      if (distance == 0) {
++        return false;
++      }
++
++      if (distance >= 0x8000) {
++        // 参考 RFC 3550 的 source restart 检测：第一次异常回退只记录下一序列号，
++        // 只有随后收到连续包才确认发送端已重启，避免单个迟到包重置解码状态。
++        if (!source.expected_restart_sequence || sequence_number != *source.expected_restart_sequence) {
++          source.expected_restart_sequence = static_cast<std::uint16_t>(sequence_number + 1);
++          return false;
++        }
++
++        if (opus_decoder_ctl(source.decoder.get(), OPUS_RESET_STATE) != OPUS_OK) {
++          source.expected_restart_sequence.reset();
++          return false;
++        }
++
++        source.frames.clear();
++        source.last_sequence.reset();
++      }
++    }
++
++    // 混音由固定的 20 ms 时钟驱动。迟到的 FEC 帧已经错过原时间片，
++    // 再插入队列会让该音源持续落后一帧，因此这里只解码当前数据包。
++    if (!decode_frame(source, data, size)) {
++      return false;
++    }
++
++    source.last_sequence = sequence_number;
++    source.expected_restart_sequence.reset();
++    return true;
++  }
++
++  std::optional<std::vector<std::int16_t>>
++  mixer_t::mix_next_frame() {
++    std::size_t source_count = 0;
++    for (const auto &[source_id, source] : impl_->sources) {
++      (void) source_id;
++      if (!source.frames.empty()) {
++        ++source_count;
++      }
++    }
++
++    if (source_count == 0) {
++      return std::nullopt;
++    }
++
++    std::vector<std::int64_t> sums(frame_samples, 0);
++    for (auto &[source_id, source] : impl_->sources) {
++      (void) source_id;
++      if (source.frames.empty()) {
++        continue;
++      }
++
++      auto frame = std::move(source.frames.front());
++      source.frames.pop_front();
++      for (std::size_t sample_index = 0; sample_index < frame.size(); ++sample_index) {
++        sums[sample_index] += frame[sample_index];
++      }
++    }
++
++    std::vector<std::int16_t> mixed(frame_samples, 0);
++    for (std::size_t sample_index = 0; sample_index < frame_samples; ++sample_index) {
++      const auto averaged = sums[sample_index] / static_cast<std::int64_t>(source_count);
++      mixed[sample_index] = static_cast<std::int16_t>(std::clamp<std::int64_t>(
++        averaged,
++        std::numeric_limits<std::int16_t>::min(),
++        std::numeric_limits<std::int16_t>::max()));
++    }
++
++    return mixed;
++  }
++}  // namespace mic_mixer
+diff --git a/src/mic_mixer.h b/src/mic_mixer.h
+new file mode 100644
+index 00000000..541f5fd1
+--- /dev/null
++++ b/src/mic_mixer.h
+@@ -0,0 +1,69 @@
++/**
++ * @file src/mic_mixer.h
++ * @brief Per-session Opus decoding and host microphone mixing.
++ */
++#pragma once
++
++#include <cstddef>
++#include <cstdint>
++#include <memory>
++#include <optional>
++#include <vector>
++
++namespace mic_mixer {
++  using source_id_t = std::uint32_t;
++
++  constexpr std::uint32_t sample_rate = 48000;
++  constexpr std::size_t frame_samples = sample_rate / 50;
++
++  /**
++   * @brief Validate that a payload contains a decodable Opus packet shape.
++   */
++  bool
++  is_valid_opus_packet(const std::uint8_t *data, std::size_t size);
++
++  class mixer_t {
++  public:
++    // 该类型不提供内部同步，所有成员函数都必须由麦克风接收线程串行调用。
++    mixer_t();
++    ~mixer_t();
++
++    mixer_t(const mixer_t &) = delete;
++    mixer_t &operator=(const mixer_t &) = delete;
++
++    /**
++     * @brief Add an independently decoded microphone source.
++     */
++    bool
++    add_source(source_id_t source_id);
++
++    /**
++     * @brief Remove a microphone source and its queued audio.
++     */
++    void
++    remove_source(source_id_t source_id);
++
++    /**
++     * @brief Remove every microphone source.
++     */
++    void
++    clear();
++
++    /**
++     * @brief Decode and queue one Opus packet for a source.
++     */
++    bool
++    push_packet(source_id_t source_id, const std::uint8_t *data, std::size_t size, std::uint16_t sequence_number);
++
++    /**
++     * @brief Mix one queued frame from every source into a mono PCM frame.
++     * @return An empty optional when no source currently has audio queued.
++     */
++    std::optional<std::vector<std::int16_t>>
++    mix_next_frame();
++
++  private:
++    struct impl_t;
++    std::unique_ptr<impl_t> impl_;
++  };
++}  // namespace mic_mixer
+diff --git a/src/platform/common.h b/src/platform/common.h
+index 549fd936..5e1227d1 100644
+--- a/src/platform/common.h
++++ b/src/platform/common.h
+@@ -8,6 +8,7 @@
+ #include <array>
+ #include <bitset>
+ #include <chrono>
++#include <cstdint>
+ #include <filesystem>
+ #include <functional>
+ #include <mutex>
+@@ -702,14 +703,13 @@ namespace platf {
+     sink_info() = 0;
+ 
+     /**
+-     * @brief Write microphone data to the virtual audio device.
+-     * @param data Pointer to the audio data.
+-     * @param size Size of the audio data in bytes.
+-     * @param seq Sequence number for FEC recovery (0 = unknown)
+-     * @returns Number of bytes written, or -1 on error.
++     * @brief Write mono 48 kHz signed 16-bit PCM to the virtual microphone device.
++     * @param samples Pointer to the PCM samples.
++     * @param frame_count Number of mono frames to write.
++     * @returns Number of bytes written, -1 on a generic error, or -2 when the device was invalidated.
+      */
+     virtual int
+-    write_mic_data(const char *data, size_t size, uint16_t seq = 0) = 0;
++    write_mic_pcm(const std::int16_t *samples, std::size_t frame_count) = 0;
+ 
+     /**
+      * @brief Initialize the microphone redirect device.
+@@ -746,6 +746,13 @@ namespace platf {
+   std::unique_ptr<audio_control_t>
+   audio_control();
+ 
++  /**
++   * @brief Initialize platform audio services required by the calling thread.
++   * @return A lifetime guard, or nullptr when thread initialization fails.
++   */
++  [[nodiscard]] std::unique_ptr<deinit_t>
++  init_audio_thread();
++
+   /**
+    * @brief Get the display_t instance for the given hwdevice_type.
+    * If display_name is empty, use the first monitor that's compatible you can find
+diff --git a/src/platform/linux/audio.cpp b/src/platform/linux/audio.cpp
+index c3be314e..dda335d5 100644
+--- a/src/platform/linux/audio.cpp
++++ b/src/platform/linux/audio.cpp
+@@ -541,11 +541,10 @@ namespace platf {
+       }
+ 
+       int
+-      write_mic_data(const char *data, size_t size, uint16_t seq = 0) override {
++      write_mic_pcm(const std::int16_t *samples, std::size_t frame_count) override {
+         // Microphone redirect to the host is not implemented on Linux yet.
+-        (void) data;
+-        (void) size;
+-        (void) seq;
++        (void) samples;
++        (void) frame_count;
+         return -1;
+       }
+ 
+@@ -590,4 +589,9 @@ namespace platf {
+ 
+     return audio;
+   }
+-}  // namespace platf
+\ No newline at end of file
++
++  std::unique_ptr<deinit_t>
++  init_audio_thread() {
++    return std::make_unique<deinit_t>();
++  }
++}  // namespace platf
+diff --git a/src/platform/macos/microphone.mm b/src/platform/macos/microphone.mm
+index 96782f6b..42b01823 100644
+--- a/src/platform/macos/microphone.mm
++++ b/src/platform/macos/microphone.mm
+@@ -95,11 +95,10 @@ namespace platf {
+     }
+ 
+     int
+-    write_mic_data(const char *data, size_t size, uint16_t seq = 0) override {
++    write_mic_pcm(const std::int16_t *samples, std::size_t frame_count) override {
+       // Microphone redirect to the host is not implemented on macOS yet.
+-      (void) data;
+-      (void) size;
+-      (void) seq;
++      (void) samples;
++      (void) frame_count;
+       return -1;
+     }
+ 
+@@ -119,4 +118,9 @@ namespace platf {
+   audio_control() {
+     return std::make_unique<macos_audio_control_t>();
+   }
++
++  std::unique_ptr<deinit_t>
++  init_audio_thread() {
++    return std::make_unique<deinit_t>();
++  }
+ }  // namespace platf
+diff --git a/src/platform/windows/audio.cpp b/src/platform/windows/audio.cpp
+index 14e0eca0..c556c24a 100644
+--- a/src/platform/windows/audio.cpp
++++ b/src/platform/windows/audio.cpp
+@@ -253,13 +253,30 @@ namespace platf::audio {
+ 
+   class co_init_t: public deinit_t {
+   public:
+-    co_init_t() {
+-      CoInitializeEx(nullptr, COINIT_MULTITHREADED | COINIT_SPEED_OVER_MEMORY);
++    co_init_t():
++        status {CoInitializeEx(nullptr, COINIT_MULTITHREADED | COINIT_SPEED_OVER_MEMORY)} {
+     }
+ 
+     ~co_init_t() override {
+-      CoUninitialize();
++      if (SUCCEEDED(status)) {
++        CoUninitialize();
++      }
++    }
++
++    [[nodiscard]] bool
++    initialized() const noexcept {
++      // RPC_E_CHANGED_MODE 表示当前线程已经属于另一种 COM 单元模型。
++      // 此时 COM 仍可使用，但当前守卫不能负责反初始化已有单元。
++      return SUCCEEDED(status) || status == RPC_E_CHANGED_MODE;
+     }
++
++    [[nodiscard]] HRESULT
++    result() const noexcept {
++      return status;
++    }
++
++  private:
++    HRESULT status;
+   };
+ 
+   class prop_var_t {
+@@ -1246,7 +1263,7 @@ namespace platf::audio {
+     std::mutex last_virtual_sink_notification_mutex;
+ 
+     int
+-    init_mic_redirect_device() {
++    init_mic_redirect_device() override {
+       if (!mic_redirect_device) {
+         mic_redirect_device = std::make_unique<mic_write_wasapi_t>();
+       }
+@@ -1263,7 +1280,7 @@ namespace platf::audio {
+     }
+ 
+     void
+-    release_mic_redirect_device() {
++    release_mic_redirect_device() override {
+       if (mic_redirect_device) {
+         mic_redirect_device->restore_audio_devices();
+         mic_redirect_device.reset();
+@@ -1271,13 +1288,13 @@ namespace platf::audio {
+     }
+ 
+     int
+-    write_mic_data(const char *data, size_t len, uint16_t seq = 0) {
++    write_mic_pcm(const std::int16_t *samples, std::size_t frame_count) override {
+       if (!mic_redirect_device || mic_redirect_device->is_cleaning_up.load()) {
+         BOOST_LOG(warning) << "Mic redirect device not available or cleaning up";
+         return -1;
+       }
+ 
+-      return mic_redirect_device->write_data(data, len, seq);
++      return mic_redirect_device->write_pcm(samples, frame_count);
+     }
+   };
+ }  // namespace platf::audio
+@@ -1308,6 +1325,18 @@ namespace platf {
+     return control;
+   }
+ 
++  std::unique_ptr<deinit_t>
++  init_audio_thread() {
++    auto guard = std::make_unique<audio::co_init_t>();
++    if (!guard->initialized()) {
++      BOOST_LOG(error) << "Failed to initialize COM for the audio thread: [0x"sv
++                       << util::hex(guard->result()).to_string_view() << ']';
++      return nullptr;
++    }
++
++    return guard;
++  }
++
+   std::unique_ptr<deinit_t>
+   init() {
+     if (dxgi::init()) {
+diff --git a/src/platform/windows/mic_write.cpp b/src/platform/windows/mic_write.cpp
+index da152c4f..38f66ff6 100644
+--- a/src/platform/windows/mic_write.cpp
++++ b/src/platform/windows/mic_write.cpp
+@@ -23,9 +23,6 @@
+ #include "src/logging.h"
+ #include "src/platform/common.h"
+ 
+-// Lib includes
+-#include <opus/opus.h>
+-
+ // Must be the last included file
+ // clang-format off
+ #include "PolicyConfig.h"
+@@ -107,11 +104,6 @@ namespace platf::audio {
+     audio_client.reset();
+     device_enum.reset();
+ 
+-    if (opus_decoder) {
+-      opus_decoder_destroy(opus_decoder);
+-      opus_decoder = nullptr;
+-    }
+-
+     if (mmcss_task_handle) {
+       AvRevertMmThreadCharacteristics(mmcss_task_handle);
+       mmcss_task_handle = nullptr;
+@@ -128,20 +120,6 @@ namespace platf::audio {
+ 
+   int
+   mic_write_wasapi_t::init(bool test_mode) {
+-    last_seq = 0;
+-    first_packet = true;
+-    total_packets = 0;
+-    packet_loss_count = 0;
+-    fec_recovered_packets = 0;
+-
+-    // 初始化OPUS解码器
+-    int opus_error;
+-    opus_decoder = opus_decoder_create(48000, 1, &opus_error);  // 48kHz, 单声道
+-    if (opus_error != OPUS_OK) {
+-      BOOST_LOG(error) << "Failed to create OPUS decoder: " << opus_strerror(opus_error);
+-      return -1;
+-    }
+-
+     // 初始化设备枚举器
+     HRESULT hr = CoCreateInstance(
+       CLSID_MMDeviceEnumerator,
+@@ -227,12 +205,8 @@ namespace platf::audio {
+     std::vector<WAVEFORMATEX> formats_to_try = {
+       // 16位单声道，48kHz
+       { WAVE_FORMAT_PCM, 1, 48000, 96000, 2, 16, 0 },
+-      // 16位单声道，44.1kHz
+-      { WAVE_FORMAT_PCM, 1, 44100, 88200, 2, 16, 0 },
+       // 16位立体声，48kHz
+       { WAVE_FORMAT_PCM, 2, 48000, 192000, 4, 16, 0 },
+-      // 16位立体声，44.1kHz
+-      { WAVE_FORMAT_PCM, 2, 44100, 176400, 4, 16, 0 },
+     };
+ 
+     HRESULT init_status = E_FAIL;
+@@ -244,7 +218,7 @@ namespace platf::audio {
+ 
+       init_status = audio_client->Initialize(
+         AUDCLNT_SHAREMODE_SHARED,
+-        0,  // 不使用特殊标志
++        AUDCLNT_STREAMFLAGS_AUTOCONVERTPCM | AUDCLNT_STREAMFLAGS_SRC_DEFAULT_QUALITY,
+         1000000,  // 100ms buffer (10000000 was 10 seconds)
+         0,
+         &format,
+@@ -296,101 +270,32 @@ namespace platf::audio {
+       }
+     }
+ 
+-    BOOST_LOG(info) << "Successfully initialized mic write device with OPUS decoder";
++    BOOST_LOG(info) << "Successfully initialized mic write device";
+     return 0;
+   }
+ 
+   int
+-  mic_write_wasapi_t::write_data(const char *data, size_t len, uint16_t seq) {
+-    if (!audio_client || !audio_render || !opus_decoder) {
++  mic_write_wasapi_t::write_pcm(const std::int16_t *samples, std::size_t frame_count) {
++    if (!audio_client || !audio_render || !samples) {
+       BOOST_LOG(error) << "Mic write device not initialized";
+       return -1;
+     }
+ 
+-    std::vector<int16_t> pcm_mono_buffer;
+-    ++total_packets;
+-    // FEC recovery: check for packet loss using sequence number
+-    if (seq != 0 && !first_packet) {
+-      uint16_t expected_seq = last_seq + 1;
+-      if (seq != expected_seq && seq > expected_seq) {
+-        // Packet loss detected, try to recover using FEC from current packet
+-        uint16_t lost_count = seq - expected_seq;
+-        packet_loss_count += lost_count;
+-        BOOST_LOG(verbose) << "Mic packet loss detected: expected " << expected_seq << ", got " << seq << " (lost " << lost_count << ")";
+-        
+-        // Use FEC to recover the previous lost packet from current packet's redundancy data
+-        // FEC can only recover one packet (the immediately preceding one)
+-        if (lost_count == 1) {
+-          int fec_frame_size = opus_decoder_get_nb_samples(opus_decoder, (const unsigned char *) data, len);
+-          if (fec_frame_size > 0) {
+-            std::vector<int16_t> fec_buffer(fec_frame_size);
+-            int fec_samples = opus_decode(
+-              opus_decoder,
+-              (const unsigned char *) data,
+-              len,
+-              fec_buffer.data(),
+-              fec_frame_size,
+-              1  // FEC recovery mode
+-            );
+-            if (fec_samples > 0) {
+-              BOOST_LOG(verbose) << "FEC recovered " << fec_samples << " samples for lost packet";
+-              ++fec_recovered_packets;
+-              // Write recovered audio (will be done together with current packet below)
+-              pcm_mono_buffer = std::move(fec_buffer);
+-            }
+-          }
+-        }
+-      }
+-    }
+-
+-    // Update sequence tracking
+-    if (seq != 0) {
+-      last_seq = seq;
+-      first_packet = false;
+-    }
+-
+-    // 解码OPUS数据
+-    int frame_size = opus_decoder_get_nb_samples(opus_decoder, (const unsigned char *) data, len);
+-    if (frame_size < 0) {
+-      BOOST_LOG(error) << "Failed to get OPUS frame size: " << opus_strerror(frame_size);
+-      return -1;
+-    }
+-
+-    // If we recovered FEC data, append current frame; otherwise just decode current
+-    size_t fec_offset = pcm_mono_buffer.size();
+-    pcm_mono_buffer.resize(fec_offset + frame_size);
+-
+-    int samples_decoded = opus_decode(
+-      opus_decoder,
+-      (const unsigned char *) data,
+-      len,
+-      pcm_mono_buffer.data() + fec_offset,
+-      frame_size,
+-      0  // Normal decode
+-    );
+-
+-    if (samples_decoded < 0) {
+-      BOOST_LOG(error) << "Failed to decode OPUS data: " << opus_strerror(samples_decoded);
+-      return -1;
+-    }
+-
+     // Handle channel conversion if necessary
+     std::vector<int16_t> pcm_output_buffer;
+-    UINT32 framesToWrite;
++    auto framesToWrite = static_cast<UINT32>(frame_count);
+ 
+     if (current_format.nChannels == 1) {
+       // Mono output, direct copy
+-      pcm_output_buffer = std::move(pcm_mono_buffer);
+-      framesToWrite = samples_decoded;
++      pcm_output_buffer.assign(samples, samples + frame_count);
+     }
+     else if (current_format.nChannels == 2) {
+       // Stereo output, duplicate mono samples
+-      pcm_output_buffer.resize(samples_decoded * 2);
+-      for (int i = 0; i < samples_decoded; ++i) {
+-        pcm_output_buffer[i * 2] = pcm_mono_buffer[i];  // Left channel
+-        pcm_output_buffer[i * 2 + 1] = pcm_mono_buffer[i];  // Right channel
++      pcm_output_buffer.resize(frame_count * 2);
++      for (std::size_t i = 0; i < frame_count; ++i) {
++        pcm_output_buffer[i * 2] = samples[i];  // Left channel
++        pcm_output_buffer[i * 2 + 1] = samples[i];  // Right channel
+       }
+-      framesToWrite = samples_decoded;  // Each original mono sample becomes one stereo frame
+     }
+     else {
+       BOOST_LOG(error) << "Unsupported channel count for mic write: " << current_format.nChannels;
+@@ -503,28 +408,17 @@ namespace platf::audio {
+ 
+   int
+   mic_write_wasapi_t::test_write() {
+-    if (!audio_client || !audio_render || !opus_decoder) {
++    if (!audio_client || !audio_render) {
+       BOOST_LOG(error) << "Mic write device not initialized for test";
+       return -1;
+     }
+ 
+-    int opus_error = OPUS_OK;
+-    auto encoder = std::unique_ptr<OpusEncoder, decltype(&opus_encoder_destroy)> {
+-      opus_encoder_create(48000, 1, OPUS_APPLICATION_VOIP, &opus_error),
+-      opus_encoder_destroy,
+-    };
+-    if (!encoder || opus_error != OPUS_OK) {
+-      BOOST_LOG(error) << "Failed to create OPUS encoder for microphone test";
+-      return -1;
+-    }
+-
+     constexpr double tone_hz = 440.0;
+     constexpr double amplitude = 0.18;
+     constexpr double pi = 3.14159265358979323846;
+     constexpr int frame_samples = 960;  // 20 ms at 48 kHz
+     constexpr int packet_count = 40;  // 800 ms
+     std::vector<int16_t> pcm(frame_samples);
+-    std::vector<unsigned char> packet(4000);
+     int total_bytes_written = 0;
+ 
+     BOOST_LOG(info) << "Testing client mic redirection with an 800 ms tone";
+@@ -537,19 +431,7 @@ namespace platf::audio {
+         pcm[sample_index] = static_cast<int16_t>(std::sin(phase) * amplitude * 32767.0);
+       }
+ 
+-      const int encoded_bytes = opus_encode(
+-        encoder.get(),
+-        pcm.data(),
+-        frame_samples,
+-        packet.data(),
+-        static_cast<opus_int32>(packet.size()));
+-      if (encoded_bytes <= 0) {
+-        return -1;
+-      }
+-
+-      const int bytes_written = write_data(
+-        reinterpret_cast<const char *>(packet.data()),
+-        static_cast<size_t>(encoded_bytes));
++      const int bytes_written = write_pcm(pcm.data(), pcm.size());
+       if (bytes_written < 0) {
+         return -1;
+       }
+@@ -558,7 +440,7 @@ namespace platf::audio {
+       // default Windows timer granularity is ~15.6 ms, so any requested delay is
+       // rounded up to a whole tick: Sleep(18) really costs ~31 ms and starves a
+       // 20 ms packet. One tick is comfortably shorter than the packet, and
+-      // write_data() backs off on its own once the buffer is full.
++      // write_pcm() backs off on its own once the buffer is full.
+       Sleep(10);
+     }
+ 
+@@ -966,14 +848,6 @@ namespace platf::audio {
+ 
+     BOOST_LOG(info) << "Restoring audio devices to original state";
+ 
+-    // Log FEC statistics
+-    if (total_packets > 0) {
+-      double loss_rate = (double)packet_loss_count / (total_packets + packet_loss_count) * 100.0;
+-      BOOST_LOG(info) << "Microphone Audio Stats, Total Audio Packets: " << total_packets
+-                      << ", Packet Loss: " << packet_loss_count << " (" << std::fixed << std::setprecision(1) << loss_rate << "%)"
+-                      << ", FEC Recovered: " << fec_recovered_packets;
+-    }
+-
+     int result = 0;
+ 
+     // 恢复输入设备
+diff --git a/src/platform/windows/mic_write.h b/src/platform/windows/mic_write.h
+index 9175fded..12179200 100644
+--- a/src/platform/windows/mic_write.h
++++ b/src/platform/windows/mic_write.h
+@@ -16,9 +16,6 @@
+ #include <mmdeviceapi.h>
+ #include <windows.h>
+ 
+-// Forward declarations
+-struct OpusDecoder;
+-
+ namespace platf::audio {
+ 
+   struct mic_redirect_test_result_t {
+@@ -55,8 +52,7 @@ namespace platf::audio {
+   /**
+    * @brief Windows WASAPI microphone write class for client mic redirection
+    * 
+-   * This class handles writing client microphone data to virtual audio devices
+-   * for redirection purposes. It supports OPUS decoding and various audio formats.
++   * This class handles writing mixed client microphone PCM to virtual audio devices.
+    */
+   class mic_write_wasapi_t: public mic_t {
+   public:
+@@ -77,14 +73,13 @@ namespace platf::audio {
+     init(bool test_mode = false);
+ 
+     /**
+-     * @brief Write audio data to the virtual audio device
+-     * @param data Pointer to the audio data (OPUS encoded)
+-     * @param len Length of the audio data in bytes
+-     * @param seq Sequence number for FEC recovery (0 = unknown)
+-     * @return Number of bytes written, or -1 on error
++     * @brief Write mono 48 kHz signed 16-bit PCM to the virtual audio device.
++     * @param samples Pointer to the PCM samples.
++     * @param frame_count Number of mono frames to write.
++     * @return Number of bytes written, -1 on a generic error, or -2 when the device was invalidated.
+      */
+     int
+-    write_data(const char *data, size_t len, uint16_t seq = 0);
++    write_pcm(const std::int16_t *samples, std::size_t frame_count);
+ 
+     /**
+      * @brief Write a short audible tone to the initialized render endpoint.
+@@ -198,7 +193,6 @@ namespace platf::audio {
+     device_enum_t device_enum;
+     audio_client_t audio_client;
+     IAudioRenderClient *audio_render = nullptr;
+-    OpusDecoder *opus_decoder = nullptr;
+     HANDLE mmcss_task_handle = nullptr;
+     WAVEFORMATEX current_format = {};
+     VirtualDeviceType virtual_device_type = VirtualDeviceType::NONE;
+@@ -209,15 +203,6 @@ namespace platf::audio {
+       bool input_device_changed = false;
+       bool settings_stored = false;
+     } restoration_state;
+-
+-    // FEC recovery state
+-    uint16_t last_seq = 0;
+-    bool first_packet = true;
+-    
+-    // Statistics
+-    uint64_t total_packets = 0;
+-    uint64_t packet_loss_count = 0;
+-    uint64_t fec_recovered_packets = 0;
+   };
+ 
+   extern std::unique_ptr<mic_write_wasapi_t> mic_redirect_device;
+diff --git a/src/rtsp.cpp b/src/rtsp.cpp
+index 552c3448..ddb713f1 100644
+--- a/src/rtsp.cpp
++++ b/src/rtsp.cpp
+@@ -1161,7 +1161,9 @@ namespace rtsp_stream {
+     if (config::audio.stream_mic) {
+       ss << "m=audio " << net::map_port(stream::MIC_STREAM_PORT) << " RTP/AVP 96" << std::endl;
+       ss << "a=rtpmap:96 opus/48000/2" << std::endl;
+-      ss << "a=fmtp:96 minptime=10;useinbandfec=1" << std::endl;
++      ss << "a=fmtp:96 minptime=20;useinbandfec=1" << std::endl;
++      ss << "a=ptime:20" << std::endl;
++      ss << "a=maxptime:20" << std::endl;
+     }
+ 
+     for (int x = 0; x < audio::MAX_STREAM_CONFIG; ++x) {
+diff --git a/src/stream.cpp b/src/stream.cpp
+index 584aec4c..3cde282e 100644
+--- a/src/stream.cpp
++++ b/src/stream.cpp
+@@ -11,6 +11,7 @@
+ #include <optional>
+ #include <queue>
+ #include <unordered_map>
++#include <unordered_set>
+ #include <utility>
+ 
+ #include <fstream>
+@@ -19,6 +20,7 @@
+ 
+ #include <boost/atomic.hpp>
+ #include <boost/endian/arithmetic.hpp>
++#include <boost/function.hpp>
+ #include <boost/make_shared.hpp>
+ #include <boost/shared_ptr.hpp>
+ #include <boost/thread/lock_guard.hpp>
+@@ -44,6 +46,7 @@ extern "C" {
+ #include "rtsp.h"
+ #include "input.h"
+ #include "logging.h"
++#include "mic_mixer.h"
+ #include "network.h"
+ #include "perf_recorder.h"
+ #include "stream.h"
+@@ -489,21 +492,12 @@ namespace stream {
+     boost::mutex mic_socket_mutex;
+     boost::atomic<bool> mic_socket_enabled { false };
+ 
+-    // 单个客户端的麦克风加密上下文。
++    // 单个会话的麦克风加密上下文。
+     struct mic_cipher_ctx_t {
+       crypto::cipher::cbc_t cipher;
+-      crypto::aes_t iv;
+ 
+-      mic_cipher_ctx_t(const crypto::aes_t &key, bool padding, std::uint32_t avRiKeyId)
+-          : cipher(key, padding), iv(16) {
+-        // 初始化 IV：前 4 字节存储 baseIv（大端序）
+-        // baseIv 对应客户端的 remoteInputAesIv 的前 4 字节
+-        // avRiKeyId 就是 launch_session.iv 的前 4 字节（大端序），与 remoteInputAesIv 的前 4 字节相同
+-        const auto base_iv_be = util::endian::big<std::uint32_t>(avRiKeyId);
+-        std::memcpy(iv.data(), &base_iv_be, sizeof(base_iv_be));
+-        // 其余字节保持为 0（IV 是 16 字节，但只使用前 4 字节）
+-        std::memset(iv.data() + 4, 0, 12);
+-      }
++      mic_cipher_ctx_t(const crypto::aes_t &key, bool padding):
++          cipher(key, padding) {}
+ 
+       mic_cipher_ctx_t(mic_cipher_ctx_t &&) noexcept = default;
+       mic_cipher_ctx_t &operator=(mic_cipher_ctx_t &&) noexcept = default;
+@@ -511,30 +505,28 @@ namespace stream {
+ 
+     struct mic_session_ctx_t {
+       std::uint32_t session_id;
+-      std::string client_ip;
+-      std::string client_name;
++      std::uint32_t key_id;
++      boost::asio::ip::address client_address;
++      std::optional<udp::endpoint> source_endpoint;
+       std::optional<mic_cipher_ctx_t> cipher;
+ 
+       mic_session_ctx_t(
+         std::uint32_t session_id,
+-        std::string client_ip,
+-        std::string client_name,
++        std::uint32_t key_id,
++        boost::asio::ip::address client_address,
+         std::optional<mic_cipher_ctx_t> cipher
+       ):
+           session_id {session_id},
+-          client_ip {std::move(client_ip)},
+-          client_name {std::move(client_name)},
++          key_id {key_id},
++          client_address {net::normalize_address(std::move(client_address))},
+           cipher {std::move(cipher)} {}
+     };
+ 
+-    // 主机只有一个虚拟麦克风和一个有状态的 Opus 解码器，因此同一时间
+-    // 只能由一个会话发送麦克风数据。新会话会接管所有权，但不会停止旧会话的音视频串流。
+-    boost::shared_ptr<mic_session_ctx_t> active_mic_session;
++    // 每个会话保留独立的加密与 Opus 解码状态，麦克风线程将所有活动源混合后
++    // 写入同一个虚拟麦克风设备。会话 ID 是主身份，IP 和 UDP endpoint 只用于路由。
++    std::unordered_map<std::uint32_t, boost::shared_ptr<mic_session_ctx_t>> mic_sessions;
+     boost::mutex mic_session_mutex;
+-    boost::atomic<std::uint32_t> mic_owner_session_id { 0 };
+-
+-    // TODO: 未来版本应当强制启用麦克风加密，防止被窃听
+-    boost::atomic<bool> mic_reject_plaintext { false };
++    boost::atomic<std::uint32_t> mic_session_count { 0 };
+   };
+ 
+   struct session_t {
+@@ -878,8 +870,8 @@ namespace stream {
+   bool
+   disable_mic_socket(broadcast_ctx_t &ctx) {
+     boost::lock_guard<boost::mutex> session_lock(ctx.mic_session_mutex);
+-    ctx.active_mic_session.reset();
+-    ctx.mic_owner_session_id.store(0, boost::memory_order_release);
++    ctx.mic_sessions.clear();
++    ctx.mic_session_count.store(0, boost::memory_order_release);
+ 
+     boost::lock_guard<boost::mutex> socket_lock(ctx.mic_socket_mutex);
+     const auto was_open = ctx.mic_sock.is_open();
+@@ -888,32 +880,36 @@ namespace stream {
+   }
+ 
+   /**
+-   * @brief Release the microphone registration owned by the ending session.
++   * @brief Release the microphone source registered by the ending session.
+    * @param ctx The shared broadcast context.
+    * @param session_id The ID of the ending session.
+-   * @return true if the ending session was still the active microphone owner.
++   * @return true if a source registration was removed.
+    */
+   bool
+   release_mic_session(broadcast_ctx_t &ctx, std::uint32_t session_id) {
+     boost::lock_guard<boost::mutex> session_lock(ctx.mic_session_mutex);
+-    if (!ctx.active_mic_session || ctx.active_mic_session->session_id != session_id) {
++    if (ctx.mic_sessions.erase(session_id) == 0) {
+       return false;
+     }
+ 
+-    ctx.active_mic_session.reset();
+-    ctx.mic_owner_session_id.store(0, boost::memory_order_release);
++    const auto remaining_sessions = static_cast<std::uint32_t>(ctx.mic_sessions.size());
++    ctx.mic_session_count.store(remaining_sessions, boost::memory_order_release);
++    if (remaining_sessions != 0) {
++      return true;
++    }
+ 
+     boost::lock_guard<boost::mutex> socket_lock(ctx.mic_socket_mutex);
+-    close_mic_socket_locked(ctx);
++    cancel_mic_receive_locked(ctx);
+     return true;
+   }
+ 
+   /**
+-   * @brief Make this session the active microphone owner.
++   * @brief Register an independently decoded microphone source.
+    * @param session The session that completed microphone SETUP.
++   * @param client_address The authenticated RTSP peer address.
+    */
+   void
+-  setup_mic_for_session(session_t &session) {
++  setup_mic_for_session(session_t &session, const boost::asio::ip::address &client_address) {
+     auto &ctx = *session.broadcast_ref.get();
+ 
+     const auto should_enable_mic_encryption = (session.config.encryptionFlagsEnabled & SS_ENC_MIC) != 0;
+@@ -921,21 +917,20 @@ namespace stream {
+     if (should_enable_mic_encryption) {
+       cipher.emplace(
+         session.audio.cipher.key,
+-        session.audio.cipher.padding,
+-        session.audio.avRiKeyId
++        session.audio.cipher.padding
+       );
+     }
+ 
+     auto registration = boost::make_shared<broadcast_ctx_t::mic_session_ctx_t>(
+       session.launch_session_id,
+-      session.audio.peer.address().to_string(),
+-      session.client_name,
++      session.audio.avRiKeyId,
++      client_address,
+       std::move(cipher)
+     );
+ 
+-    boost::shared_ptr<broadcast_ctx_t::mic_session_ctx_t> previous_owner;
+     {
+-      // 统一所有权和套接字生命周期的加锁顺序，避免旧会话退出时关闭新所有者的套接字。
++      // 统一会话表和套接字生命周期的加锁顺序，避免最后一个旧会话退出时
++      // 关闭刚为新会话打开的套接字。
+       boost::lock_guard<boost::mutex> session_lock(ctx.mic_session_mutex);
+       boost::lock_guard<boost::mutex> socket_lock(ctx.mic_socket_mutex);
+       if (!open_mic_socket_locked(ctx)) {
+@@ -944,24 +939,16 @@ namespace stream {
+       }
+ 
+       session.audio.mic_registered = true;
+-      previous_owner = std::exchange(ctx.active_mic_session, registration);
+-      ctx.mic_owner_session_id.store(session.launch_session_id, boost::memory_order_release);
+-
+-      // 取消旧所有者挂起的接收，让麦克风线程先重置有状态解码器，再接收新会话的数据。
+-      if (previous_owner) {
+-        cancel_mic_receive_locked(ctx);
+-      }
+-    }
+-
+-    if (previous_owner) {
+-      BOOST_LOG(info) << "Microphone ownership moved from client " << previous_owner->client_name
+-                      << " to " << session.client_name;
++      ctx.mic_sessions[session.launch_session_id] = registration;
++      ctx.mic_session_count.store(
++        static_cast<std::uint32_t>(ctx.mic_sessions.size()),
++        boost::memory_order_release);
+     }
+ 
+     BOOST_LOG(info) << "Client " << session.client_name << ": Microphone encryption "
+                     << (should_enable_mic_encryption ? "ENABLED" : "DISABLED")
+                     << " (session " << session.launch_session_id
+-                    << " registered for " << registration->client_ip << ')';
++                    << " registered for multi-client mixing)";
+   }
+ 
+   int
+@@ -2371,16 +2358,18 @@ namespace stream {
+     udp::endpoint peer;
+     std::array<char, 2048> mic_recv_buffer;
+     bool mic_device_initialized = false;
+-    std::uint32_t mic_device_session_id = 0;
++    std::unique_ptr<platf::deinit_t> audio_thread_guard;
+     audio::audio_ctx_ref_t mic_audio_ref;
++    mic_mixer::mixer_t mixer;
++    std::unordered_set<mic_mixer::source_id_t> mixer_sources;
+ 
+     struct MicStats {
+       uint64_t total_packets = 0;
+-      uint64_t decrypt_success = 0;
+-      uint64_t decrypt_failed = 0;
++      uint64_t accepted_packets = 0;
++      uint64_t decode_failed = 0;
+       uint64_t invalid_data = 0;
+       uint64_t unregistered = 0;
+-      uint64_t owner_not_ready = 0;
++      uint64_t route_ambiguous = 0;
+     };
+     MicStats stats;
+ 
+@@ -2390,137 +2379,201 @@ namespace stream {
+         BOOST_LOG(debug) << "Microphone device released"sv;
+       }
+       mic_device_initialized = false;
+-      mic_device_session_id = 0;
+       mic_audio_ref = {};
++      mixer.clear();
++      mixer_sources.clear();
+     };
+ 
+-    // // SSRC验证辅助函数
+-    // auto validate_mic_ssrc = [](uint32_t ssrc, const std::string &client_id) -> bool {
+-    //   if (ssrc != MIC_PACKET_MAGIC) {
+-    //     BOOST_LOG(warning) << "Client " << client_id << " received invalid microphone packet type (SSRC: 0x" 
+-    //                       << std::hex << ssrc << std::dec << ")";
+-    //     return false;
+-    //   }
+-    //   return true;
+-    // };
+-
+-    auto process_audio_data = [&](const uint8_t *audio_data, size_t data_size, uint16_t sequence_number, const std::string &client_ip) {
++    auto decode_candidate_payload = [](const boost::shared_ptr<broadcast_ctx_t::mic_session_ctx_t> &mic_session,
++                                      const std::uint8_t *audio_data,
++                                      std::size_t data_size,
++                                      std::uint16_t sequence_number,
++                                      std::vector<std::uint8_t> &decoded_payload) -> bool {
++      decoded_payload.clear();
++      if (!mic_session->cipher) {
++        if (!mic_mixer::is_valid_opus_packet(audio_data, data_size)) {
++          return false;
++        }
++        decoded_payload.assign(audio_data, audio_data + data_size);
++        return true;
++      }
++
++      auto &cipher_ctx = *mic_session->cipher;
++      // 麦克风 CBC IV 的前 4 字节为会话 key ID 与 16 位包序号之和，其余字节为 0。
++      crypto::aes_t current_iv(16);
++      const auto iv_sequence = mic_session->key_id + sequence_number;
++      const auto iv_sequence_be = util::endian::big<std::uint32_t>(iv_sequence);
++      std::memcpy(current_iv.data(), &iv_sequence_be, sizeof(iv_sequence_be));
++      std::memset(current_iv.data() + sizeof(iv_sequence_be), 0, current_iv.size() - sizeof(iv_sequence_be));
++
++      const std::string_view ciphertext {
++        reinterpret_cast<const char *>(audio_data),
++        data_size,
++      };
++      return cipher_ctx.cipher.decrypt(ciphertext, decoded_payload, &current_iv) == 0 &&
++             mic_mixer::is_valid_opus_packet(decoded_payload.data(), decoded_payload.size());
++    };
++
++    auto process_audio_data = [&](const std::uint8_t *audio_data,
++                                  std::size_t data_size,
++                                  std::uint16_t sequence_number,
++                                  std::uint32_t source_key_id,
++                                  const udp::endpoint &source_endpoint) {
+       if (!ctx.mic_socket_enabled.load()) {
+         return;
+       }
+ 
+       ++stats.total_packets;
+ 
+-      // 在锁内复制当前所有者。解密和设备 I/O 在临界区外执行，
+-      // shared_ptr 可保证并发切换所有者时旧上下文仍存活到本次处理结束。
+-      boost::shared_ptr<broadcast_ctx_t::mic_session_ctx_t> mic_session;
++      const auto source_address = net::normalize_address(source_endpoint.address());
++      std::vector<boost::shared_ptr<broadcast_ctx_t::mic_session_ctx_t>> candidates;
+       {
+         boost::lock_guard<boost::mutex> lock(ctx.mic_session_mutex);
+-        mic_session = ctx.active_mic_session;
++        for (const auto &[session_id, session] : ctx.mic_sessions) {
++          (void) session_id;
++          if (session->client_address == source_address) {
++            candidates.emplace_back(session);
++          }
++        }
+       }
+ 
+-      if (!mic_session || mic_session->client_ip != client_ip) {
++      if (candidates.empty()) {
+         ++stats.unregistered;
+         return;
+       }
+-      if (!mic_device_initialized || mic_device_session_id != mic_session->session_id) {
+-        ++stats.owner_not_ready;
+-        return;
+-      }
+-
+-      if (mic_session->cipher) {
+-        auto &cipher_ctx = *mic_session->cipher;
+-        // 根据 sequenceNumber 更新 IV
+-        // 客户端使用: baseIv[0:4] (Big Endian) + (sequenceNumber - 1) & 0xFFFF
+-        // 这与音频加密不同，音频加密使用: avRiKeyId + sequenceNumber
+-        // cipher_ctx.iv 的前 4 字节存储的是 baseIv（大端序），对应客户端的 remoteInputAesIv
+-        crypto::aes_t current_iv(16);  // 确保是 16 字节
+-        std::uint32_t base_iv_be;
+-        std::memcpy(&base_iv_be, cipher_ctx.iv.data(), sizeof(base_iv_be));
+-        const auto base_iv_value = util::endian::big(base_iv_be);
+-        // 服务端收到的 sequence_number 就是包里的实际值，直接使用即可（不需要减1），客户端减1是因为它的 sequenceNumber 变量在写入包后就递增了
+-        const auto iv_sequence = base_iv_value + (sequence_number & 0xFFFF);
+-        const auto iv_sequence_be = util::endian::big<std::uint32_t>(iv_sequence);
+-        std::memcpy(current_iv.data(), &iv_sequence_be, sizeof(iv_sequence_be));
+-        // 确保后 12 字节为 0（客户端构建 IV 时后 12 字节也是 0）
+-        std::memset(current_iv.data() + 4, 0, 12);
+-        std::vector<std::uint8_t> plaintext;
+-        std::string_view cipher_view((const char *) audio_data, data_size);
+-        if (cipher_ctx.cipher.decrypt(cipher_view, plaintext, &current_iv) != 0) {
+-          // 解密失败：可能是网络损坏包、IV不匹配、或密钥错误
+-          stats.decrypt_failed++;
+-          return;  // 丢弃数据包
+-        }
+ 
+-        stats.decrypt_success++;
+-
+-        if (plaintext.size() > 0) {
+-          // 简单的有效性检查：Opus 数据不应该全是 0 或全是 0xFF
+-          bool looks_valid = true;
+-          if (plaintext.size() >= 4) {
+-            uint8_t first_byte = plaintext[0];
+-            uint8_t second_byte = plaintext[1];
+-            uint8_t third_byte = plaintext[2];
+-            uint8_t fourth_byte = plaintext[3];
+-            bool all_zero = (first_byte == 0 && second_byte == 0 && third_byte == 0 && fourth_byte == 0);
+-            bool all_ff = (first_byte == 0xFF && second_byte == 0xFF && third_byte == 0xFF && fourth_byte == 0xFF);
+-            if (all_zero || all_ff) {
+-              looks_valid = false;
+-              stats.invalid_data++;
+-            }
+-          }
+-          // 注意：如果 plaintext.size() < 4，无法验证，假设有效并继续处理
++      std::sort(candidates.begin(), candidates.end(), [](const auto &left, const auto &right) {
++        return left->session_id < right->session_id;
++      });
+ 
+-          if (!looks_valid) {
+-            return;  // 丢弃数据包
++      // 现有客户端在线路上使用固定 SSRC，因此 endpoint 和密钥试解仍是兼容路径。
++      // 若后续客户端把会话 key ID 放入 SSRC，则可在首次数据包上直接定位会话。
++      std::vector<boost::shared_ptr<broadcast_ctx_t::mic_session_ctx_t>> ordered_candidates;
++      ordered_candidates.reserve(candidates.size());
++      auto append_candidates = [&](const auto &predicate) {
++        for (const auto &candidate : candidates) {
++          if (predicate(*candidate) &&
++              std::find(ordered_candidates.begin(), ordered_candidates.end(), candidate) == ordered_candidates.end()) {
++            ordered_candidates.emplace_back(candidate);
+           }
+         }
++      };
+ 
+-        {
+-          // 将最终所有权校验与所有权切换串行化，避免新所有者生效后旧会话继续写入。
+-          boost::lock_guard<boost::mutex> lock(ctx.mic_session_mutex);
+-          if (ctx.active_mic_session != mic_session) {
+-            ++stats.owner_not_ready;
+-            return;
+-          }
++      append_candidates([&](const auto &candidate) {
++        return candidate.source_endpoint == source_endpoint;
++      });
++      if (source_key_id != MIC_PACKET_MAGIC) {
++        append_candidates([&](const auto &candidate) {
++          return candidate.key_id == source_key_id;
++        });
++      }
++      if (candidates.size() == 1) {
++        append_candidates([](const auto &) {
++          return true;
++        });
++      }
++      append_candidates([](const auto &candidate) {
++        return !candidate.source_endpoint && candidate.cipher.has_value();
++      });
++      append_candidates([](const auto &candidate) {
++        return !candidate.source_endpoint;
++      });
++      // 加密载荷可以在源端口变化后重新通过密钥定位。明文载荷没有足够身份信息，
++      // 多会话下不能安全接管另一个 endpoint 的绑定。
++      append_candidates([](const auto &candidate) {
++        return candidate.cipher.has_value();
++      });
++
++      boost::shared_ptr<broadcast_ctx_t::mic_session_ctx_t> mic_session;
++      std::vector<std::uint8_t> decoded_payload;
++      for (const auto &candidate : ordered_candidates) {
++        if (decode_candidate_payload(candidate, audio_data, data_size, sequence_number, decoded_payload)) {
++          mic_session = candidate;
++          break;
++        }
++      }
+ 
+-          // 解密成功且数据看起来有效
+-          audio::write_mic_data(plaintext.data(), plaintext.size(), sequence_number);
++      if (!mic_session) {
++        if (ordered_candidates.empty()) {
++          ++stats.route_ambiguous;
++        }
++        else {
++          ++stats.decode_failed;
+         }
+         return;
+       }
+ 
+-      // 已注册但没有加密上下文，表示该会话明确协商使用明文。
++      if (!mic_device_initialized) {
++        return;
++      }
+ 
+-      // 安全模式：拒绝明文数据
+-      if (ctx.mic_reject_plaintext.load()) {
+-        BOOST_LOG(warning) << "Rejected plaintext microphone data (mic_reject_plaintext enabled)";
+-        stats.decrypt_failed++;
++      if (!mixer.add_source(mic_session->session_id)) {
++        ++stats.invalid_data;
++        return;
++      }
++      mixer_sources.insert(mic_session->session_id);
++      if (!mixer.push_packet(
++            mic_session->session_id,
++            decoded_payload.data(),
++            decoded_payload.size(),
++            sequence_number)) {
++        ++stats.invalid_data;
+         return;
+       }
+ 
+-      // 未加密数据或加密未启用，直接处理
+-      // 也要统计未加密数据
++      std::vector<std::uint32_t> displaced_sources;
+       {
+         boost::lock_guard<boost::mutex> lock(ctx.mic_session_mutex);
+-        if (ctx.active_mic_session != mic_session) {
+-          ++stats.owner_not_ready;
++        const auto registered = ctx.mic_sessions.find(mic_session->session_id);
++        if (registered == ctx.mic_sessions.end() || registered->second != mic_session) {
++          ++stats.unregistered;
+           return;
+         }
+-        stats.decrypt_success++;  // 明文数据算作"成功"
+-        audio::write_mic_data(audio_data, data_size, sequence_number);
++
++        // 一个 UDP endpoint 在同一时刻只属于一个已验证音源。重新绑定时清理旧映射，
++        // 避免同 IP 多会话在首次试解阶段留下重复 endpoint。
++        for (auto &[session_id, registered_session] : ctx.mic_sessions) {
++          (void) session_id;
++          if (registered_session != mic_session && registered_session->source_endpoint == source_endpoint) {
++            registered_session->source_endpoint.reset();
++            displaced_sources.emplace_back(registered_session->session_id);
++          }
++        }
++        mic_session->source_endpoint = source_endpoint;
+       }
++
++      for (const auto displaced_source : displaced_sources) {
++        mixer.remove_source(displaced_source);
++        mixer_sources.erase(displaced_source);
++      }
++
++      ++stats.accepted_packets;
+     };
+ 
+-    std::function<void(const boost::system::error_code, size_t)> mic_recv_func;
++    boost::function<void(const boost::system::error_code, size_t)> mic_recv_func;
++    boost::function<void()> schedule_mix;
+     bool retry_receive_after_error = false;
++    bool reset_mic_io_cycle = false;
++    bool mix_timer_armed = false;
++    std::uint64_t mix_timer_generation = 0;
++    asio::steady_timer mix_timer {mic_io};
++    auto cancel_mix_timer = [&]() {
++      mix_timer_armed = false;
++      ++mix_timer_generation;
++      try {
++        mix_timer.cancel();
++      }
++      catch (const std::exception &e) {
++        BOOST_LOG(error) << "Failed to cancel microphone mix timer: "sv << e.what();
++      }
++    };
+     auto schedule_receive = [&]() -> bool {
+       boost::lock_guard<boost::mutex> lock(ctx.mic_socket_mutex);
+       if (broadcast_shutdown_event->peek() ||
+           !ctx.mic_socket_enabled.load() ||
+           !ctx.mic_sock.is_open() ||
+-          mic_device_session_id == 0 ||
+-          ctx.mic_owner_session_id.load(boost::memory_order_acquire) != mic_device_session_id) {
++          !mic_device_initialized ||
++          ctx.mic_session_count.load(boost::memory_order_acquire) == 0) {
+         return false;
+       }
+ 
+@@ -2540,13 +2593,37 @@ namespace stream {
+       }
+ 
+       if (is_terminal_udp_receive_error(ec)) {
+-        BOOST_LOG(debug) << "Mic socket closed: "sv << ec.message();
++        BOOST_LOG(debug) << "Microphone receive stopped: "sv << ec.message();
++        // 最后一个会话退出会取消挂起的接收。如果新会话在取消回调执行前完成注册，
++        // 需要在同一个 io_context 周期内恢复接收和混音，不能把新会话留在空转状态。
++        if (!broadcast_shutdown_event->peek() &&
++            ctx.mic_socket_enabled.load() &&
++            ctx.mic_session_count.load(boost::memory_order_acquire) != 0 &&
++            mic_device_initialized) {
++          if (schedule_receive()) {
++            schedule_mix();
++          }
++          else {
++            retry_receive_after_error = true;
++            cancel_mix_timer();
++          }
++        }
++        else {
++          // 没有活动会话时同时终止旧混音链，让 io_context 回到外层重新判断状态。
++          // cancel() 无法撤回已经排队的成功回调，因此还要用周期标记阻止旧回调自重挂。
++          reset_mic_io_cycle = true;
++          cancel_mix_timer();
++        }
+         return;
+       }
+ 
+       // 正常处理数据包或遇到可恢复错误后继续挂接接收。
+       auto fg = util::fail_guard([&]() {
+-        schedule_receive();
++        if (schedule_receive()) {
++          // 新会话可能在旧混音回调因会话数为零退出后接入。
++          // 接收恢复时同时保证混音定时器仍在运行。
++          schedule_mix();
++        }
+       });
+ 
+       if (ec) {
+@@ -2557,6 +2634,7 @@ namespace stream {
+           BOOST_LOG(error) << "Mic socket error: "sv << ec.message();
+           retry_receive_after_error = true;
+           fg.disable();
++          cancel_mix_timer();
+         }
+         return;
+       }
+@@ -2567,8 +2645,6 @@ namespace stream {
+         return;
+       }
+ 
+-      std::string client_ip = peer.address().to_string();
+-
+       // 尝试16位扩展包类型
+       if (received_bytes >= sizeof(rtp_packet_ext_t)) {
+         auto *header_ext = (rtp_packet_ext_t *) mic_recv_buffer.data();
+@@ -2576,11 +2652,13 @@ namespace stream {
+           size_t header_size = sizeof(rtp_packet_ext_t);
+           if (received_bytes > header_size) {
+             uint16_t sequence_number = util::endian::little(header_ext->sequenceNumber);
+-            // uint32_t ssrc = util::endian::little(header_ext->ssrc);  // 小端序
+-            // if (!validate_mic_ssrc(ssrc, client_ip)) {
+-            //   return;
+-            // }
+-            process_audio_data(reinterpret_cast<const uint8_t *>(mic_recv_buffer.data()) + header_size, received_bytes - header_size, sequence_number, client_ip);
++            const auto source_key_id = util::endian::little(header_ext->ssrc);
++            process_audio_data(
++              reinterpret_cast<const uint8_t *>(mic_recv_buffer.data()) + header_size,
++              received_bytes - header_size,
++              sequence_number,
++              source_key_id,
++              peer);
+           }
+           return;
+         }
+@@ -2594,10 +2672,7 @@ namespace stream {
+           // 客户端按小端序发送序列号（MicrophoneStream.java 使用 LITTLE_ENDIAN）
+           // 服务端必须按小端序读取，否则会读错（比如 1 会读成 256）
+           uint16_t sequence_number = util::endian::little(header->rtp.sequenceNumber);
+-          // uint32_t ssrc = util::endian::little(header->rtp.ssrc);  // 小端序
+-          // if (!validate_mic_ssrc(ssrc, client_ip)) {
+-          //   return;
+-          // }
++          const auto source_key_id = util::endian::little(header->rtp.ssrc);
+           size_t data_size = received_bytes - header_size;
+           
+           // BOOST_LOG(verbose) << "Received MIC packet: total=" << received_bytes 
+@@ -2605,33 +2680,99 @@ namespace stream {
+           //                 << " bytes, data=" << data_size 
+           //                 << " bytes, sequenceNumber=" << sequence_number << " (little-endian)"
+           //                 << " from " << client_ip;
+-          process_audio_data(reinterpret_cast<const uint8_t *>(mic_recv_buffer.data()) + header_size, data_size, sequence_number, client_ip);
++          process_audio_data(
++            reinterpret_cast<const uint8_t *>(mic_recv_buffer.data()) + header_size,
++            data_size,
++            sequence_number,
++            source_key_id,
++            peer);
+         }
+       }
+     };
+ 
++    schedule_mix = [&]() {
++      if (mix_timer_armed) {
++        return;
++      }
++
++      mix_timer_armed = true;
++      const auto generation = ++mix_timer_generation;
++      mix_timer.expires_after(20ms);
++      mix_timer.async_wait([&, generation](const boost::system::error_code &ec) {
++        if (generation != mix_timer_generation) {
++          return;
++        }
++        mix_timer_armed = false;
++
++        if (ec == boost::asio::error::operation_aborted ||
++            broadcast_shutdown_event->peek() ||
++            retry_receive_after_error ||
++            reset_mic_io_cycle ||
++            ctx.mic_session_count.load(boost::memory_order_acquire) == 0) {
++          return;
++        }
++
++        std::unordered_set<mic_mixer::source_id_t> registered_sources;
++        {
++          boost::lock_guard<boost::mutex> lock(ctx.mic_session_mutex);
++          for (const auto &[session_id, session] : ctx.mic_sessions) {
++            (void) session;
++            registered_sources.insert(session_id);
++          }
++        }
++
++        for (auto source_it = mixer_sources.begin(); source_it != mixer_sources.end();) {
++          if (!registered_sources.contains(*source_it)) {
++            mixer.remove_source(*source_it);
++            source_it = mixer_sources.erase(source_it);
++          }
++          else {
++            ++source_it;
++          }
++        }
++
++        if (auto mixed = mixer.mix_next_frame()) {
++          if (audio::write_mic_pcm(mixed->data(), mixed->size()) == -2) {
++            BOOST_LOG(info) << "Microphone output device was invalidated; reinitializing"sv;
++            release_mic_device();
++            retry_receive_after_error = true;
++
++            boost::lock_guard<boost::mutex> lock(ctx.mic_socket_mutex);
++            cancel_mic_receive_locked(ctx);
++            return;
++          }
++        }
++        schedule_mix();
++      });
++    };
++
+     BOOST_LOG(debug) << "Starting microphone receive thread";
+ 
+     auto retry_delay = 300ms;  // 初始重试延迟，指数退避到最大5秒
+ 
+     while (!broadcast_shutdown_event->peek()) {
+-      const auto owner_session_id = ctx.mic_owner_session_id.load(boost::memory_order_acquire);
+-      if (!ctx.mic_socket_enabled.load() || owner_session_id == 0) {
++      if (!ctx.mic_socket_enabled.load() ||
++          ctx.mic_session_count.load(boost::memory_order_acquire) == 0) {
+         retry_delay = 300ms;  // 会话结束时重置延迟
+         release_mic_device();
+         std::this_thread::sleep_for(100ms);
+         continue;
+       }
+ 
+-      if (mic_device_initialized && mic_device_session_id != owner_session_id) {
+-        BOOST_LOG(debug) << "Resetting microphone device for owner session "sv << owner_session_id;
+-        release_mic_device();
+-      }
+-
+-      // 在麦克风设备的完整生命周期内持有现有音频上下文，确保音频采集退出后仍能恢复设备。
+-      // 接收线程不能自行创建新的音频上下文。
++      // 在麦克风设备的完整生命周期内持有音频上下文，确保音频采集退出后仍能恢复设备。
+       if (!mic_device_initialized) {
+-        mic_audio_ref = audio::try_get_audio_ctx_ref();
++        if (!audio_thread_guard) {
++          audio_thread_guard = platf::init_audio_thread();
++          if (!audio_thread_guard) {
++            std::this_thread::sleep_for(retry_delay);
++            retry_delay = std::min(retry_delay * 2, 5000ms);
++            continue;
++          }
++        }
++
++        // 客户端麦克风可以在主机音频串流关闭时独立工作，因此活动的麦克风
++        // 会话需要能够创建并持有自己的音频控制上下文。
++        mic_audio_ref = audio::get_audio_ctx_ref();
+         if (!mic_audio_ref) {
+           std::this_thread::sleep_for(retry_delay);
+           retry_delay = std::min(retry_delay * 2, 5000ms);
+@@ -2646,14 +2787,13 @@ namespace stream {
+         }
+ 
+         if (!ctx.mic_socket_enabled.load() ||
+-            ctx.mic_owner_session_id.load(boost::memory_order_acquire) != owner_session_id) {
++            ctx.mic_session_count.load(boost::memory_order_acquire) == 0) {
+           audio::release_mic_redirect_device();
+           mic_audio_ref = {};
+           continue;
+         }
+ 
+         mic_device_initialized = true;
+-        mic_device_session_id = owner_session_id;
+         retry_delay = 300ms;
+       }
+ 
+@@ -2661,12 +2801,14 @@ namespace stream {
+         mic_io.restart();
+       }
+       retry_receive_after_error = false;
++      reset_mic_io_cycle = false;
+       if (!schedule_receive()) {
+         if (ctx.mic_socket_enabled.load() && !broadcast_shutdown_event->peek()) {
+           std::this_thread::sleep_for(100ms);
+         }
+         continue;
+       }
++      schedule_mix();
+ 
+       mic_io.run();
+       if (retry_receive_after_error &&
+@@ -2680,14 +2822,14 @@ namespace stream {
+     release_mic_device();
+ 
+     if (stats.total_packets > 0) {
+-      BOOST_LOG(info) << "=== Microphone Decryption Stats Summary ===";
+-      const auto success_rate = (double) stats.decrypt_success / stats.total_packets * 100.0;
++      BOOST_LOG(info) << "=== Microphone Packet Stats Summary ===";
++      const auto success_rate = (double) stats.accepted_packets / stats.total_packets * 100.0;
+       BOOST_LOG(info) << "total=" << stats.total_packets
+-                      << ", success=" << stats.decrypt_success << " (" << std::fixed << std::setprecision(1) << success_rate << "%)"
+-                      << ", failed=" << stats.decrypt_failed
++                      << ", accepted=" << stats.accepted_packets << " (" << std::fixed << std::setprecision(1) << success_rate << "%)"
++                      << ", decode_failed=" << stats.decode_failed
+                       << ", invalid=" << stats.invalid_data
+                       << ", unregistered=" << stats.unregistered
+-                      << ", owner_not_ready=" << stats.owner_not_ready;
++                      << ", route_ambiguous=" << stats.route_ambiguous;
+     }
+ 
+     BOOST_LOG(debug) << "Microphone receive thread ended";
+@@ -3648,10 +3790,10 @@ namespace stream {
+         --running_sessions;
+ 
+         if (session.audio.mic_registered) {
+-          const auto was_active = release_mic_session(*session.broadcast_ref.get(), session.launch_session_id);
++          const auto was_registered = release_mic_session(*session.broadcast_ref.get(), session.launch_session_id);
+           session.audio.mic_registered = false;
+           BOOST_LOG(debug) << "Microphone registration for session " << session.launch_session_id
+-                           << (was_active ? " released as active owner"sv : " was already superseded"sv);
++                           << (was_registered ? " released"sv : " was already absent"sv);
+         }
+ 
+         // If this is the last non-control-only session, invoke the platform callbacks
+@@ -3789,7 +3931,7 @@ namespace stream {
+       // 避免 join() 在套接字引用和路由信息配对前释放会话。
+       if (!session.control_only) {
+         if (session.audio.enable_mic) {
+-          setup_mic_for_session(session);
++          setup_mic_for_session(session, addr);
+         }
+       }
+ 
+diff --git a/tests/unit/test_mic_mixer.cpp b/tests/unit/test_mic_mixer.cpp
+new file mode 100644
+index 00000000..40ce4325
+--- /dev/null
++++ b/tests/unit/test_mic_mixer.cpp
+@@ -0,0 +1,250 @@
++/**
++ * @file tests/unit/test_mic_mixer.cpp
++ * @brief Test src/mic_mixer.*.
++ */
++#include <src/mic_mixer.h>
++
++#include "../tests_common.h"
++
++#include <cstdint>
++#include <memory>
++#include <utility>
++#include <vector>
++
++#include <opus/opus.h>
++
++namespace {
++  struct opus_encoder_deleter_t {
++    void
++    operator()(OpusEncoder *encoder) const noexcept {
++      if (encoder) {
++        opus_encoder_destroy(encoder);
++      }
++    }
++  };
++
++  using opus_encoder_t = std::unique_ptr<OpusEncoder, opus_encoder_deleter_t>;
++
++  opus_encoder_t
++  make_encoder() {
++    int error = OPUS_OK;
++    opus_encoder_t encoder {
++      opus_encoder_create(
++        static_cast<opus_int32>(mic_mixer::sample_rate),
++        1,
++        OPUS_APPLICATION_AUDIO,
++        &error)
++    };
++    EXPECT_EQ(error, OPUS_OK);
++    EXPECT_TRUE(static_cast<bool>(encoder));
++    return encoder;
++  }
++
++  std::vector<std::uint8_t>
++  encode_frame(OpusEncoder *encoder, std::size_t sample_count, std::int16_t sample_value) {
++    if (!encoder) {
++      return {};
++    }
++
++    std::vector<std::int16_t> pcm(sample_count, sample_value);
++    std::vector<std::uint8_t> encoded(4000);
++    const auto encoded_size = opus_encode(
++      encoder,
++      pcm.data(),
++      static_cast<int>(pcm.size()),
++      encoded.data(),
++      static_cast<opus_int32>(encoded.size()));
++    EXPECT_GT(encoded_size, 0);
++    if (encoded_size <= 0) {
++      return {};
++    }
++
++    encoded.resize(static_cast<std::size_t>(encoded_size));
++    return encoded;
++  }
++
++  std::vector<std::int16_t>
++  decode_single_frame(const std::vector<std::uint8_t> &packet) {
++    mic_mixer::mixer_t mixer;
++    EXPECT_TRUE(mixer.add_source(1));
++    EXPECT_TRUE(mixer.push_packet(1, packet.data(), packet.size(), 1));
++    auto decoded = mixer.mix_next_frame();
++    EXPECT_TRUE(decoded.has_value());
++    return decoded.value_or(std::vector<std::int16_t> {});
++  }
++
++  std::vector<std::vector<std::int16_t>>
++  decode_frames_in_sequence(const std::vector<std::vector<std::uint8_t>> &packets) {
++    mic_mixer::mixer_t mixer;
++    EXPECT_TRUE(mixer.add_source(1));
++
++    std::vector<std::vector<std::int16_t>> decoded_frames;
++    decoded_frames.reserve(packets.size());
++    for (std::size_t packet_index = 0; packet_index < packets.size(); ++packet_index) {
++      const auto &packet = packets[packet_index];
++      EXPECT_TRUE(mixer.push_packet(
++        1,
++        packet.data(),
++        packet.size(),
++        static_cast<std::uint16_t>(packet_index + 1)));
++      auto decoded = mixer.mix_next_frame();
++      EXPECT_TRUE(decoded.has_value());
++      if (!decoded) {
++        return {};
++      }
++      decoded_frames.emplace_back(std::move(*decoded));
++    }
++    return decoded_frames;
++  }
++}  // namespace
++
++TEST(MicMixerTest, AcceptsOnlyTwentyMillisecondOpusFrames) {
++  auto encoder = make_encoder();
++  const auto twenty_ms = encode_frame(encoder.get(), mic_mixer::frame_samples, 1000);
++  const auto ten_ms = encode_frame(encoder.get(), mic_mixer::frame_samples / 2, 1000);
++
++  ASSERT_FALSE(twenty_ms.empty());
++  ASSERT_FALSE(ten_ms.empty());
++  EXPECT_TRUE(mic_mixer::is_valid_opus_packet(twenty_ms.data(), twenty_ms.size()));
++  EXPECT_FALSE(mic_mixer::is_valid_opus_packet(ten_ms.data(), ten_ms.size()));
++  EXPECT_FALSE(mic_mixer::is_valid_opus_packet(nullptr, 0));
++}
++
++TEST(MicMixerTest, MixesIndependentSourcesIntoOneFrame) {
++  auto first_encoder = make_encoder();
++  auto second_encoder = make_encoder();
++  const auto first_packet = encode_frame(first_encoder.get(), mic_mixer::frame_samples, 6000);
++  const auto second_packet = encode_frame(second_encoder.get(), mic_mixer::frame_samples, -2000);
++  ASSERT_FALSE(first_packet.empty());
++  ASSERT_FALSE(second_packet.empty());
++
++  const auto first_decoded = decode_single_frame(first_packet);
++  const auto second_decoded = decode_single_frame(second_packet);
++  ASSERT_EQ(first_decoded.size(), mic_mixer::frame_samples);
++  ASSERT_EQ(second_decoded.size(), mic_mixer::frame_samples);
++
++  mic_mixer::mixer_t mixer;
++  ASSERT_TRUE(mixer.add_source(1));
++  ASSERT_TRUE(mixer.add_source(2));
++  ASSERT_TRUE(mixer.push_packet(1, first_packet.data(), first_packet.size(), 1));
++  ASSERT_TRUE(mixer.push_packet(2, second_packet.data(), second_packet.size(), 1));
++
++  const auto mixed = mixer.mix_next_frame();
++  ASSERT_TRUE(mixed.has_value());
++  ASSERT_EQ(mixed->size(), mic_mixer::frame_samples);
++  for (std::size_t sample = 0; sample < mixed->size(); ++sample) {
++    const auto expected = (static_cast<std::int64_t>(first_decoded[sample]) +
++                           static_cast<std::int64_t>(second_decoded[sample])) /
++                          2;
++    EXPECT_EQ((*mixed)[sample], expected);
++  }
++  EXPECT_FALSE(mixer.mix_next_frame().has_value());
++}
++
++TEST(MicMixerTest, KeepsOnlyThreeNewestQueuedFrames) {
++  auto encoder = make_encoder();
++  std::vector<std::vector<std::uint8_t>> packets;
++  for (const auto sample_value : {1000, 2000, 3000, 4000}) {
++    packets.emplace_back(encode_frame(encoder.get(), mic_mixer::frame_samples, sample_value));
++    ASSERT_FALSE(packets.back().empty());
++  }
++  const auto expected_frames = decode_frames_in_sequence(packets);
++  ASSERT_EQ(expected_frames.size(), packets.size());
++  for (std::size_t frame_index = 1; frame_index < expected_frames.size(); ++frame_index) {
++    EXPECT_NE(expected_frames[frame_index - 1], expected_frames[frame_index]);
++  }
++
++  mic_mixer::mixer_t mixer;
++  ASSERT_TRUE(mixer.add_source(1));
++  for (std::size_t packet_index = 0; packet_index < packets.size(); ++packet_index) {
++    const auto &packet = packets[packet_index];
++    ASSERT_TRUE(mixer.push_packet(
++      1,
++      packet.data(),
++      packet.size(),
++      static_cast<std::uint16_t>(packet_index + 1)));
++  }
++
++  for (std::size_t expected_index = 1; expected_index < expected_frames.size(); ++expected_index) {
++    const auto mixed = mixer.mix_next_frame();
++    ASSERT_TRUE(mixed.has_value());
++    EXPECT_EQ(*mixed, expected_frames[expected_index]);
++  }
++  EXPECT_FALSE(mixer.mix_next_frame().has_value());
++}
++
++TEST(MicMixerTest, RejectsDuplicatesAndAcceptsSequenceWraparound) {
++  auto encoder = make_encoder();
++  const auto packet = encode_frame(encoder.get(), mic_mixer::frame_samples, 1000);
++  ASSERT_FALSE(packet.empty());
++
++  mic_mixer::mixer_t mixer;
++  ASSERT_TRUE(mixer.add_source(1));
++  EXPECT_TRUE(mixer.push_packet(1, packet.data(), packet.size(), 0xFFFF));
++  EXPECT_TRUE(mixer.push_packet(1, packet.data(), packet.size(), 0));
++  EXPECT_FALSE(mixer.push_packet(1, packet.data(), packet.size(), 0));
++
++  EXPECT_TRUE(mixer.mix_next_frame().has_value());
++  EXPECT_TRUE(mixer.mix_next_frame().has_value());
++  EXPECT_FALSE(mixer.mix_next_frame().has_value());
++}
++
++TEST(MicMixerTest, SingleLatePacketDoesNotResetSequenceState) {
++  auto encoder = make_encoder();
++  const auto packet = encode_frame(encoder.get(), mic_mixer::frame_samples, 1000);
++  ASSERT_FALSE(packet.empty());
++
++  mic_mixer::mixer_t mixer;
++  ASSERT_TRUE(mixer.add_source(1));
++  ASSERT_TRUE(mixer.push_packet(1, packet.data(), packet.size(), 100));
++  ASSERT_TRUE(mixer.mix_next_frame().has_value());
++
++  EXPECT_FALSE(mixer.push_packet(1, packet.data(), packet.size(), 90));
++  EXPECT_TRUE(mixer.push_packet(1, packet.data(), packet.size(), 101));
++  EXPECT_TRUE(mixer.mix_next_frame().has_value());
++  EXPECT_FALSE(mixer.mix_next_frame().has_value());
++}
++
++TEST(MicMixerTest, ConsecutiveRollbackPacketsRestartTheSource) {
++  auto old_encoder = make_encoder();
++  auto restarted_encoder = make_encoder();
++  const auto old_packet = encode_frame(old_encoder.get(), mic_mixer::frame_samples, 1000);
++  const auto restart_packet = encode_frame(restarted_encoder.get(), mic_mixer::frame_samples, 2000);
++  ASSERT_FALSE(old_packet.empty());
++  ASSERT_FALSE(restart_packet.empty());
++
++  mic_mixer::mixer_t mixer;
++  ASSERT_TRUE(mixer.add_source(1));
++  ASSERT_TRUE(mixer.push_packet(1, old_packet.data(), old_packet.size(), 100));
++  EXPECT_FALSE(mixer.push_packet(1, restart_packet.data(), restart_packet.size(), 10));
++  EXPECT_TRUE(mixer.push_packet(1, restart_packet.data(), restart_packet.size(), 11));
++
++  const auto mixed = mixer.mix_next_frame();
++  ASSERT_TRUE(mixed.has_value());
++  EXPECT_EQ(*mixed, decode_single_frame(restart_packet));
++  EXPECT_FALSE(mixer.mix_next_frame().has_value());
++}
++
++TEST(MicMixerTest, RemovingSourcesDiscardsTheirQueuedFrames) {
++  auto first_encoder = make_encoder();
++  auto second_encoder = make_encoder();
++  const auto first_packet = encode_frame(first_encoder.get(), mic_mixer::frame_samples, 6000);
++  const auto second_packet = encode_frame(second_encoder.get(), mic_mixer::frame_samples, -2000);
++  ASSERT_FALSE(first_packet.empty());
++  ASSERT_FALSE(second_packet.empty());
++  const auto expected = decode_single_frame(second_packet);
++
++  mic_mixer::mixer_t mixer;
++  ASSERT_TRUE(mixer.add_source(1));
++  ASSERT_TRUE(mixer.add_source(2));
++  ASSERT_TRUE(mixer.push_packet(1, first_packet.data(), first_packet.size(), 1));
++  ASSERT_TRUE(mixer.push_packet(2, second_packet.data(), second_packet.size(), 1));
++  mixer.remove_source(1);
++
++  const auto mixed = mixer.mix_next_frame();
++  ASSERT_TRUE(mixed.has_value());
++  EXPECT_EQ(*mixed, expected);
++
++  mixer.clear();
++  EXPECT_FALSE(mixer.mix_next_frame().has_value());
++}
+diff --git a/tests/unit/test_network.cpp b/tests/unit/test_network.cpp
+index 60094949..77ad6606 100644
+--- a/tests/unit/test_network.cpp
++++ b/tests/unit/test_network.cpp
+@@ -138,3 +138,20 @@ TEST_F(BindAddressTest, WildcardAddressFunction) {
+   ASSERT_EQ(net::af_to_any_address_string(net::af_e::IPV4), "0.0.0.0");
+   ASSERT_EQ(net::af_to_any_address_string(net::af_e::BOTH), "::");
+ }
++
++TEST(AddressNormalizationTest, ConvertsIpv4MappedIpv6ToIpv4) {
++  const auto mapped = boost::asio::ip::make_address("::ffff:192.0.2.10");
++  const auto normalized = net::normalize_address(mapped);
++
++  ASSERT_TRUE(normalized.is_v4());
++  EXPECT_EQ(normalized.to_string(), "192.0.2.10");
++  EXPECT_EQ(net::addr_to_normalized_string(mapped), "192.0.2.10");
++}
++
++TEST(AddressNormalizationTest, PreservesNativeIpv4AndIpv6) {
++  const auto ipv4 = boost::asio::ip::make_address("192.0.2.10");
++  const auto ipv6 = boost::asio::ip::make_address("2001:db8::10");
++
++  EXPECT_EQ(net::normalize_address(ipv4), ipv4);
++  EXPECT_EQ(net::normalize_address(ipv6), ipv6);
++}
