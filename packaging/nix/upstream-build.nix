@@ -143,6 +143,13 @@ stdenv'.mkDerivation (finalAttrs: {
     (lib.cmakeFeature "SUNSHINE_PUBLISHER_ISSUE_URL" "https://github.com/Biaogo/foundation-sunshine-linux/issues")
   ] ++ lib.optional configureOnly (lib.cmakeBool "SUNSHINE_CONFIGURE_ONLY" true);
 
+  # cmake's install step copies ${CMAKE_BINARY_DIR}/assets/web; upstream builds it with npm.
+  # For the harness proof we stage an empty tree (the packaging repo uses the real buildNpmPackage UI).
+  preBuild = lib.optionalString (!(configureOnly || configureStop)) ''
+    mkdir -p assets/web
+    echo "stub web UI (harness probe)" > assets/web/index.html
+  '';
+
   env = {
     BUILD_VERSION = finalAttrs.version;
     BRANCH = "master";   # build_version.cmake honours BUILD_VERSION only for "master"

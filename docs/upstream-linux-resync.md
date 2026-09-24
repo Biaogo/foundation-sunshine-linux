@@ -141,8 +141,22 @@ Costs and risks accepted with lane A:
      publisher/`SUNSHINE_EXECUTABLE_PATH` features.
    - `libdisplaydevice` warns `Linux is not supported yet` at configure time — expected, it is the
      Windows display-config layer; the Linux capture path does not use it.
-   - still to do: the real compile+link and the deployment path (web UI + tag/pin), i.e. the
-     `--arg cudaSupport true` build.
+   - **CPU variant: FULL BUILD VERIFIED** — configure + compile + link + install all pass
+     (`buildPhase completed in 55 seconds` on 20 cores), binary
+     `/nix/store/x2h79xg0p5kxwyd5rahqj967hxs9agr6-sunshine-refork-probe-2026.09.25/bin/sunshine`
+     reports `Sunshine version: 2026.09.25 commit: refork01`, `ldd` resolves everything
+     (`0 not found`). Translation units compiled include the whole upstream Linux surface:
+     `portalgrab.cpp`, `kwingrab.cpp`, `kmsgrab.cpp`, `pipewire.cpp`, `wayland.cpp`, `wlgrab.cpp`,
+     `vaapi.cpp`, `vulkan_encode.cpp`, `graphics.cpp`, `publish.cpp`, `audio.cpp`, `misc.cpp` and
+     `src/platform/virtualhid_input.cpp` (libvirtualhid).
+   - install needs `assets/web` (the npm-built UI): the harness stages a stub because the real UI
+     build belongs in the packaging repo (`buildNpmPackage`); everything else installs cleanly
+     (`assets/*`, `lib/systemd/user`, udev rules).
+   - `third-party/build-deps`' nested FFmpeg sources, `dockle`, `nvapi`, `tray` and the nested
+     `doxyconfig`/`googletest` copies stay un-checked-out on purpose — none are read on this path
+     (the ffmpeg FOD replaces build-deps, docs/tests are off, tray is off, the rest is Windows/CI).
+   - still to do: the CUDA variant (`--arg cudaSupport true`) and the deployment path
+     (real web UI + tag/pin handoff to `foundation-sunshine-linux.nix`).
 2. **AlkaidLab's Windows product surface is not carried over** to this branch (it does not build
    on Linux anyway). If a Windows build of the fork is ever needed again, it stays on
    `linux-support`/`master`.
