@@ -9,7 +9,7 @@
      nix-build upstream-sunshine.nix --arg configureOnly true          # deps probe only (fast)
      nix-build upstream-sunshine.nix --arg cudaSupport true -o result  # real build
 */
-{ pkgs ? import <nixpkgs> { }
+{ pkgs ? import <nixpkgs> { config.allowUnfree = true; }  # CUDA EULA for cudaSupport
 , srcPath ? /tmp/fsl-refork-src
 , configureOnly ? false
 , configureStop ? false   # full configure, no build (dependency-detection probe)
@@ -168,9 +168,20 @@ stdenv'.mkDerivation (finalAttrs: {
     runHook postInstall
   '';
 
+  # Sunshine dlopens libvulkan (encoder probing) and libEGL/libGL (EGL import of the captured
+  # DMA-BUFs). nixpkgs' package carries the same set as runtimeDependencies; without libglvnd the
+  # binary logs "Failed to load EGL library symbols" / "Platform failed to initialize".
+  runtimeDependencies = lib.optionals isLinux [
+    pkgs.avahi
+    pkgs.libgbm
+    pkgs.libxrandr
+    pkgs.libxcb
+    pkgs.libglvnd
+  ];
+
   postFixup = lib.optionalString (!(configureOnly || configureStop)) ''
     wrapProgram "$out/bin/sunshine" \
-      --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath [ pkgs.vulkan-loader ]}
+      --prefix LD_LIBRARY_PATH : ${lib.makeLibraryPath [ pkgs.vulkan-loader pkgs.libglvnd ]}
   '';
 
   meta.mainProgram = "sunshine";

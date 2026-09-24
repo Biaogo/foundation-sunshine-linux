@@ -1,0 +1,36 @@
+[2026-09-25 04:09:57.603594] [0x00007c0e92445000] [info]    config: 'locale' = en
+[2026-09-25 04:09:57.603631] [0x00007c0e92445000] [info]    config: 'port' = 48989
+[2026-09-25 04:09:57.603]: Info: Sunshine version: 2026.09.25 commit: refork01
+[2026-09-25 04:09:57.603]: Info: Package Publisher: Biaogo
+[2026-09-25 04:09:57.603]: Info: Publisher Website: https://github.com/Biaogo/foundation-sunshine-linux
+[2026-09-25 04:09:57.603]: Info: Get support: https://github.com/Biaogo/foundation-sunshine-linux/issues
+[2026-09-25 04:09:57.603]: Info: config: 'port' = 48989
+[2026-09-25 04:09:57.603]: Info: config: 'locale' = en
+[2026-09-25 04:09:57.628]: Error: Failed to create session: 
+[2026-09-25 04:09:57.628]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:09:57.628]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:09:57.628]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:09:57.628]: Info: [wayland] Found interface: wl_output(82) version 4
+[2026-09-25 04:09:57.628]: Warning: [wlgrab] Missing Wayland wire for wlr-export-dmabuf
+[2026-09-25 04:09:57.629]: Info: [kwingrab] No permission desktop file necessary. KWin permission system deactivated.
+[2026-09-25 04:09:57.630]: Info: [kwingrab] Found output: Virtual-SunshineVirt order: 0 position: 0x0 resolution: 2376x1080
+[2026-09-25 04:10:01.046]: Info: [portalgrab] Saved portal restore token to disk
+[2026-09-25 04:10:01.046]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:10:01.046]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:10:01.046]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:10:01.046]: Info: [wayland] Found interface: wl_output(82) version 4
+[2026-09-25 04:10:01.046]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:10:01.046]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:10:01.046]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:10:01.046]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:10:01.046]: Info: [wayland] Found monitor:  
+[2026-09-25 04:10:01.050]: Info: [portalgrab] Found stream for display id/name: 'Virtual-SunshineVirt' position: 0x0 resolution: 1584x720
+[2026-09-25 04:10:01.051]: Error: Failed to load EGL library symbols
+[2026-09-25 04:10:01.051]: Error: Platform failed to initialize
+[2026-09-25 04:10:01.058]: Info: // Testing for available encoders, this may generate errors. You can safely ignore those errors. //
+[2026-09-25 04:10:01.058]: Info: Trying encoder [nvenc]
+[2026-09-25 04:10:01.058]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:10:01.058]: Info: [misc] drop_elevated_privileges succeeded in dropping capabilities
+[2026-09-25 04:10:01.058]: Info: Screencasting with XDG portal
+[2026-09-25 04:10:01.064]: Info: [pipewire] Requested variable frame rate (Sunshine pacing required: 16.6667ms)
+timeout: 被监视的命令已核心转储

@@ -155,8 +155,28 @@ Costs and risks accepted with lane A:
    - `third-party/build-deps`' nested FFmpeg sources, `dockle`, `nvapi`, `tray` and the nested
      `doxyconfig`/`googletest` copies stay un-checked-out on purpose — none are read on this path
      (the ffmpeg FOD replaces build-deps, docs/tests are off, tray is off, the rest is Windows/CI).
-   - still to do: the CUDA variant (`--arg cudaSupport true`) and the deployment path
-     (real web UI + tag/pin handoff to `foundation-sunshine-linux.nix`).
+   - **CUDA variant: BUILT AND RUN VERIFIED** —
+     `/nix/store/v4xyddlrm7hi9va06ppsm89nxmlk9390-sunshine-refork-probe-2026.09.25`, compiled TUs
+     include `cuda.cpp`, `cuda.cu` and `nvenc_dynamic_factory.cpp`, `buildPhase completed in
+     50 seconds`, `--version` reports `2026.09.25 commit: refork01`, wrapper links `libvulkan` +
+     `libglvnd`, `ldd` 0 not found.
+   - **Runtime smoke on the target host (unprivileged, isolated config dir)** — the upstream
+     binary starts in this KDE/Wayland session and enumerates the fork's virtual output through
+     *upstream's own* backends:
+     `[wayland] Name: Virtual-SunshineVirt`,
+     `[portalgrab] Found stream for display id/name: 'Virtual-SunshineVirt' position: 0x0 resolution: 1584x720`,
+     `[pipewire] Requested variable frame rate (Sunshine pacing required: 16.6667ms)`,
+     `Screencasting with XDG portal`. Two caveats, both expected in this run and both already
+     understood: (a) `Failed to load EGL library symbols` → the harness must carry nixpkgs'
+     `runtimeDependencies` (`libglvnd` et al.) and wrap `LD_LIBRARY_PATH` with `libglvnd` — fixed
+     and being re-verified; (b) `Failed to gain CAP_SYS_ADMIN` and the core dump that followed are
+     an artefact of launching the store binary directly (no setcap wrapper, no
+     `KWIN_WAYLAND_NO_PERMISSION_CHECKS`) — the deployment shape is the setcap wrapper + that env
+     var, and the port's own verification matrix must be run against a wrapped build.
+     The portal finding is a real capability gain: upstream's `portalgrab` reaches the
+     krfb-created virtual monitor without the fork's kwin-only plumbing.
+   - still to do: the deployment path (real web UI via `buildNpmPackage` + tag/pin handoff to
+     `foundation-sunshine-linux.nix`) and the port queue itself.
 2. **AlkaidLab's Windows product surface is not carried over** to this branch (it does not build
    on Linux anyway). If a Windows build of the fork is ever needed again, it stays on
    `linux-support`/`master`.
