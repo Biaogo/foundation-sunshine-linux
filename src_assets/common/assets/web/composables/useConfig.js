@@ -25,6 +25,7 @@ const DEFAULT_TABS = [
       min_log_level: 2,
       global_prep_cmd: '[]',
       notify_pre_releases: 'disabled',
+      stop_on_last_video_session: 'disabled',
     },
   },
   {
@@ -43,6 +44,8 @@ const DEFAULT_TABS = [
       always_send_scancodes: 'enabled',
       key_rightalt_to_key_win: 'disabled',
       mouse: 'enabled',
+      usb_forwarding_enabled: 'disabled',
+      usb_forwarding_port: 0,
       high_resolution_scrolling: 'enabled',
       native_pen_touch: 'enabled',
       native_touchpad_optimization: 'enabled',
@@ -119,13 +122,10 @@ const DEFAULT_TABS = [
       capture_target: 'display',
       capture_compute_shader: 'auto',
       window_title: '',
-      display_mode_remapping: '[]',
       hevc_mode: 0,
       av1_mode: 0,
       capture: '',
       encoder: '',
-      rtx_hdr: 'off',
-      rtx_hdr_backend_path: '',
     },
   },
   {
@@ -137,10 +137,10 @@ const DEFAULT_TABS = [
         id: 'nv',
         name: 'NVIDIA NVENC Encoder',
         options: {
-          nvenc_preset: 1,
+          nvenc_preset: 4,
+          nvenc_frame_budget_guard: 'enabled',
           nvenc_twopass: 'quarter_res',
-          nvenc_spatial_aq: 'disabled',
-          nvenc_temporal_aq: 'disabled',
+          nvenc_spatial_aq: 'enabled',
           nvenc_vbv_increase: 0,
           nvenc_lookahead_depth: 0,
           nvenc_lookahead_level: 'disabled',
@@ -343,7 +343,6 @@ export function useConfig() {
   const resolutions = ref([])
   const currentTab = ref('general')
   const global_prep_cmd = ref([])
-  const display_mode_remapping = ref([])
   const tabs = ref([])
 
   // 原始配置快照
@@ -352,7 +351,6 @@ export function useConfig() {
     fps: null,
     resolutions: null,
     global_prep_cmd: null,
-    display_mode_remapping: null,
   })
 
   /**
@@ -364,7 +362,6 @@ export function useConfig() {
       fps: deepClone(fps.value),
       resolutions: deepClone(resolutions.value),
       global_prep_cmd: deepClone(global_prep_cmd.value),
-      display_mode_remapping: deepClone(display_mode_remapping.value),
     }
   }
 
@@ -412,10 +409,8 @@ export function useConfig() {
     fps.value = safeParseJSON(config.value.fps)
     resolutions.value = parseResolutions(config.value.resolutions)
     global_prep_cmd.value = safeParseJSON(config.value.global_prep_cmd)
-    display_mode_remapping.value = safeParseJSON(config.value.display_mode_remapping)
 
     config.value.global_prep_cmd = config.value.global_prep_cmd || []
-    config.value.display_mode_remapping = config.value.display_mode_remapping || []
   }
 
   /**
@@ -428,7 +423,7 @@ export function useConfig() {
       platform.value = data.platform || ''
       filterTabsByPlatform(platform.value)
 
-      const { platform: _, status, version, ...configData } = data
+      const { platform: _, status, version, usb_forwarding_config_version, ...configData } = data
       configData.amd_avcodec_compat = normalizeEnabledDisabledValue(configData.amd_avcodec_compat)
       config.value = configData
 
@@ -448,7 +443,6 @@ export function useConfig() {
     fps.value = filterValidFps(fps.value)
     config.value.fps = serializeFps(fps.value)
     config.value.global_prep_cmd = JSON.stringify(global_prep_cmd.value)
-    config.value.display_mode_remapping = JSON.stringify(display_mode_remapping.value)
   }
 
   /**
@@ -459,12 +453,10 @@ export function useConfig() {
     currentConfig.resolutions = serializeResolutions(resolutions.value)
     currentConfig.fps = serializeFps(filterValidFps([...fps.value]))
     currentConfig.global_prep_cmd = JSON.stringify(global_prep_cmd.value)
-    currentConfig.display_mode_remapping = JSON.stringify(display_mode_remapping.value)
 
     return {
       config: currentConfig,
       global_prep_cmd: deepClone(global_prep_cmd.value),
-      display_mode_remapping: deepClone(display_mode_remapping.value),
     }
   }
 
@@ -566,18 +558,6 @@ export function useConfig() {
           }),
         )
       }
-    }
-
-    if (
-      listChanged(current.display_mode_remapping, snapshots.value.display_mode_remapping) &&
-      current.display_mode_remapping.length > 0
-    ) {
-      addRisk(
-        risks,
-        createRisk('display_mode_remapping', 'medium', {
-          currentValue: String(current.display_mode_remapping.length),
-        }),
-      )
     }
 
     if (
@@ -748,7 +728,6 @@ export function useConfig() {
     tempConfig.resolutions = serializeResolutions(resolutions.value)
     tempConfig.fps = serializeFps(filterValidFps(fps.value))
     tempConfig.global_prep_cmd = JSON.stringify(global_prep_cmd.value)
-    tempConfig.display_mode_remapping = JSON.stringify(display_mode_remapping.value)
 
     return !configsAreEqual(tempConfig, snapshots.value.config)
   }
@@ -762,7 +741,6 @@ export function useConfig() {
     resolutions,
     currentTab,
     global_prep_cmd,
-    display_mode_remapping,
     tabs,
     initTabs,
     loadConfig,

@@ -84,17 +84,23 @@ add_test(NAME frame_contract_unit_tests COMMAND frame_contract_unit_tests)
 if (WIN32)
     set(PRE_ENCODE_FILTER_TEST_SOURCE
             ${CMAKE_SOURCE_DIR}/tests/unit/platform/windows/test_pre_encode_filter.cpp)
-    set(TRUEHDR_BACKEND_LOADER_TEST_SOURCE
-            ${CMAKE_SOURCE_DIR}/tests/unit/platform/windows/test_truehdr_backend_loader.cpp)
+    set(TRUEHDR_ADAPTER_LOADER_TEST_SOURCE
+            ${CMAKE_SOURCE_DIR}/tests/unit/platform/windows/test_truehdr_adapter_loader.cpp)
 
     add_executable(pre_encode_filter_unit_tests
             ${CMAKE_SOURCE_DIR}/src/platform/windows/pre_encode_filter.cpp
-            ${CMAKE_SOURCE_DIR}/src/platform/windows/rtx_hdr/backend_loader.cpp
+            ${CMAKE_SOURCE_DIR}/src/platform/windows/image_enhancement/backend_factory.cpp
+            ${CMAKE_SOURCE_DIR}/src/platform/windows/image_enhancement/rtx_hdr/truehdr_filter.cpp
+            ${CMAKE_SOURCE_DIR}/src/platform/windows/image_enhancement/rtx_hdr/adapter_loader.cpp
+            ${CMAKE_SOURCE_DIR}/src/platform/windows/image_enhancement/dlss_nr/dlssnr_filter.cpp
+            ${CMAKE_SOURCE_DIR}/src/platform/windows/image_enhancement/dlss_nr/hdr_filter.cpp
+            ${CMAKE_SOURCE_DIR}/src/platform/windows/image_enhancement/dlss_nr/adapter_loader.cpp
             ${CMAKE_SOURCE_DIR}/tests/tools/pre_encode_filter_test_stubs.cpp
             ${PRE_ENCODE_FILTER_TEST_SOURCE})
     target_include_directories(pre_encode_filter_unit_tests PRIVATE "${CMAKE_SOURCE_DIR}")
     target_link_libraries(pre_encode_filter_unit_tests
             Boost::log
+            Boost::thread
             d3d11
             d3dcompiler
             dxgi
@@ -107,51 +113,69 @@ if (WIN32)
             LINK_SEARCH_START_STATIC 1)
     add_test(NAME pre_encode_filter_unit_tests COMMAND pre_encode_filter_unit_tests)
 
-    add_library(fake_truehdr_backend SHARED
-            ${CMAKE_SOURCE_DIR}/tests/tools/fake_truehdr_backend.cpp)
-    target_include_directories(fake_truehdr_backend PRIVATE "${CMAKE_SOURCE_DIR}")
-    set_target_properties(fake_truehdr_backend PROPERTIES
+    if (SUNSHINE_DLSSNR_AVAILABLE)
+        # Hardware/runtime are supplied explicitly; do not add to ordinary CTest.
+        get_target_property(_nr_filter_sources pre_encode_filter_unit_tests SOURCES)
+        list(REMOVE_ITEM _nr_filter_sources "${PRE_ENCODE_FILTER_TEST_SOURCE}")
+        add_executable(dlssnr_pipeline_smoke ${_nr_filter_sources}
+                ${CMAKE_SOURCE_DIR}/tests/tools/dlssnr_pipeline_smoke.cpp)
+        target_include_directories(dlssnr_pipeline_smoke PRIVATE "${CMAKE_SOURCE_DIR}" "${DLSSNR_TRUST_INCLUDE}")
+        target_compile_definitions(dlssnr_pipeline_smoke PRIVATE SUNSHINE_DLSSNR_ADAPTER
+                SUNSHINE_SHADERS_DIR="${CMAKE_SOURCE_DIR}/src_assets/windows/assets/shaders/directx")
+        target_link_libraries(dlssnr_pipeline_smoke Boost::log Boost::thread d3d11 d3dcompiler dxgi bcrypt)
+        set_target_properties(dlssnr_pipeline_smoke PROPERTIES CXX_STANDARD 23 LINK_SEARCH_START_STATIC 1)
+        add_dependencies(dlssnr_pipeline_smoke sunshine_dlssnr_adapter)
+    endif ()
+
+    add_library(fake_truehdr_adapter SHARED
+            ${CMAKE_SOURCE_DIR}/tests/tools/fake_truehdr_adapter.cpp)
+    target_include_directories(fake_truehdr_adapter PRIVATE "${CMAKE_SOURCE_DIR}")
+    set_target_properties(fake_truehdr_adapter PROPERTIES
+            CXX_STANDARD 23
+            PREFIX "")
+    add_custom_command(TARGET fake_truehdr_adapter POST_BUILD
+            COMMAND "${CMAKE_COMMAND}" -E touch "$<TARGET_FILE_DIR:fake_truehdr_adapter>/nvngx_truehdr.dll")
+
+    add_library(fake_truehdr_bad_adapter SHARED
+            ${CMAKE_SOURCE_DIR}/tests/tools/fake_truehdr_adapter.cpp)
+    target_include_directories(fake_truehdr_bad_adapter PRIVATE "${CMAKE_SOURCE_DIR}")
+    target_compile_definitions(fake_truehdr_bad_adapter PRIVATE FAKE_TRUEHDR_BAD_ABI)
+    set_target_properties(fake_truehdr_bad_adapter PROPERTIES
             CXX_STANDARD 23
             PREFIX "")
 
-    add_library(fake_truehdr_bad_backend SHARED
-            ${CMAKE_SOURCE_DIR}/tests/tools/fake_truehdr_backend.cpp)
-    target_include_directories(fake_truehdr_bad_backend PRIVATE "${CMAKE_SOURCE_DIR}")
-    target_compile_definitions(fake_truehdr_bad_backend PRIVATE FAKE_TRUEHDR_BAD_ABI)
-    set_target_properties(fake_truehdr_bad_backend PROPERTIES
+    add_library(fake_truehdr_failing_adapter SHARED
+            ${CMAKE_SOURCE_DIR}/tests/tools/fake_truehdr_adapter.cpp)
+    target_include_directories(fake_truehdr_failing_adapter PRIVATE "${CMAKE_SOURCE_DIR}")
+    target_compile_definitions(fake_truehdr_failing_adapter PRIVATE FAKE_TRUEHDR_PROCESS_FAILS)
+    set_target_properties(fake_truehdr_failing_adapter PROPERTIES
             CXX_STANDARD 23
             PREFIX "")
 
-    add_library(fake_truehdr_failing_backend SHARED
-            ${CMAKE_SOURCE_DIR}/tests/tools/fake_truehdr_backend.cpp)
-    target_include_directories(fake_truehdr_failing_backend PRIVATE "${CMAKE_SOURCE_DIR}")
-    target_compile_definitions(fake_truehdr_failing_backend PRIVATE FAKE_TRUEHDR_PROCESS_FAILS)
-    set_target_properties(fake_truehdr_failing_backend PROPERTIES
-            CXX_STANDARD 23
-            PREFIX "")
-
-    add_executable(truehdr_backend_loader_unit_tests
-            ${CMAKE_SOURCE_DIR}/src/platform/windows/rtx_hdr/backend_loader.cpp
-            ${TRUEHDR_BACKEND_LOADER_TEST_SOURCE})
-    target_include_directories(truehdr_backend_loader_unit_tests PRIVATE "${CMAKE_SOURCE_DIR}")
-    target_link_libraries(truehdr_backend_loader_unit_tests gtest_main)
-    target_compile_definitions(truehdr_backend_loader_unit_tests PRIVATE
-            FAKE_TRUEHDR_BACKEND_PATH="$<TARGET_FILE:fake_truehdr_backend>"
-            FAKE_TRUEHDR_BAD_BACKEND_PATH="$<TARGET_FILE:fake_truehdr_bad_backend>")
-    target_compile_options(truehdr_backend_loader_unit_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:${SUNSHINE_COMPILE_OPTIONS}>)
-    set_target_properties(truehdr_backend_loader_unit_tests PROPERTIES
+    add_executable(truehdr_adapter_loader_unit_tests
+            ${CMAKE_SOURCE_DIR}/src/platform/windows/image_enhancement/rtx_hdr/adapter_loader.cpp
+            ${TRUEHDR_ADAPTER_LOADER_TEST_SOURCE})
+    target_include_directories(truehdr_adapter_loader_unit_tests PRIVATE "${CMAKE_SOURCE_DIR}")
+    target_link_libraries(truehdr_adapter_loader_unit_tests gtest_main)
+    target_compile_definitions(truehdr_adapter_loader_unit_tests PRIVATE
+            FAKE_TRUEHDR_ADAPTER_PATH="$<TARGET_FILE:fake_truehdr_adapter>"
+            FAKE_TRUEHDR_BAD_ADAPTER_PATH="$<TARGET_FILE:fake_truehdr_bad_adapter>"
+            FAKE_TRUEHDR_RUNTIME_PATH="$<TARGET_FILE_DIR:fake_truehdr_adapter>/nvngx_truehdr.dll")
+    target_compile_options(truehdr_adapter_loader_unit_tests PRIVATE $<$<COMPILE_LANGUAGE:CXX>:${SUNSHINE_COMPILE_OPTIONS}>)
+    set_target_properties(truehdr_adapter_loader_unit_tests PROPERTIES
             CXX_STANDARD 23
             LINK_SEARCH_START_STATIC 1)
-    add_dependencies(truehdr_backend_loader_unit_tests
-            fake_truehdr_backend
-            fake_truehdr_bad_backend)
+    add_dependencies(truehdr_adapter_loader_unit_tests
+            fake_truehdr_adapter
+            fake_truehdr_bad_adapter)
     add_dependencies(pre_encode_filter_unit_tests
-            fake_truehdr_backend
-            fake_truehdr_failing_backend)
+            fake_truehdr_adapter
+            fake_truehdr_failing_adapter)
     target_compile_definitions(pre_encode_filter_unit_tests PRIVATE
-            FAKE_TRUEHDR_BACKEND_PATH="$<TARGET_FILE:fake_truehdr_backend>"
-            FAKE_TRUEHDR_FAILING_BACKEND_PATH="$<TARGET_FILE:fake_truehdr_failing_backend>")
-    add_test(NAME truehdr_backend_loader_unit_tests COMMAND truehdr_backend_loader_unit_tests)
+            FAKE_TRUEHDR_ADAPTER_PATH="$<TARGET_FILE:fake_truehdr_adapter>"
+            FAKE_TRUEHDR_FAILING_ADAPTER_PATH="$<TARGET_FILE:fake_truehdr_failing_adapter>"
+            FAKE_TRUEHDR_RUNTIME_PATH="$<TARGET_FILE_DIR:fake_truehdr_adapter>/nvngx_truehdr.dll")
+    add_test(NAME truehdr_adapter_loader_unit_tests COMMAND truehdr_adapter_loader_unit_tests)
 
     add_executable(vdd_prerequisite_unit_tests
             ${CMAKE_SOURCE_DIR}/tests/unit/test_vdd_prerequisite.cpp)
@@ -306,7 +330,7 @@ if (WIN32)
     # targets above; do not compile a second copy into the aggregate suite.
     list(REMOVE_ITEM TEST_SOURCES
             ${PRE_ENCODE_FILTER_TEST_SOURCE}
-            ${TRUEHDR_BACKEND_LOADER_TEST_SOURCE})
+            ${TRUEHDR_ADAPTER_LOADER_TEST_SOURCE})
 endif ()
 
 set(SUNSHINE_SOURCES
@@ -319,6 +343,16 @@ list(REMOVE_ITEM SUNSHINE_SOURCES ${CMAKE_SOURCE_DIR}/src/main.cpp)
 add_executable(${PROJECT_NAME}
         ${TEST_SOURCES}
         ${SUNSHINE_SOURCES})
+if (TARGET sunshine_rtx_video_adapter)
+    add_dependencies(${PROJECT_NAME} sunshine_rtx_video_adapter)
+    target_include_directories(${PROJECT_NAME} PRIVATE "${RTX_VIDEO_TRUST_INCLUDE}")
+    target_compile_definitions(${PROJECT_NAME} PRIVATE SUNSHINE_RTX_VIDEO_ADAPTER)
+endif ()
+if (TARGET sunshine_dlssnr_adapter)
+    add_dependencies(${PROJECT_NAME} sunshine_dlssnr_adapter)
+    target_include_directories(${PROJECT_NAME} PRIVATE "${DLSSNR_TRUST_INCLUDE}")
+    target_compile_definitions(${PROJECT_NAME} PRIVATE SUNSHINE_DLSSNR_ADAPTER)
+endif ()
 
 foreach(dep ${SUNSHINE_TARGET_DEPENDENCIES})
     add_dependencies(${PROJECT_NAME} ${dep})  # compile these before sunshine

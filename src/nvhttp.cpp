@@ -92,8 +92,6 @@ namespace nvhttp {
   };
 
   boost::atomic<uint32_t> session_id_counter {0};
-  static boost::atomic_flag global_cancel_pending = BOOST_ATOMIC_FLAG_INIT;
-
   static tls_client_identity_store_t tls_client_identities;
 
   template <class Request>
@@ -274,22 +272,49 @@ namespace nvhttp {
     launch_session->unique_id = (get_arg(args, "uniqueid", "unknown"));
     launch_session->client_name = (get_arg(args, "clientname", "unknown"));
     launch_session->appid = util::from_view(get_arg(args, "appid", "unknown"));
-    if (config::video.rtx_hdr == "per_app") {
-      if (const auto app_rtx_hdr = proc::proc.get_app_rtx_hdr_config(launch_session->appid)) {
-        launch_session->synthetic_hdr = *app_rtx_hdr;
-      }
-    }
     launch_session->enable_sops = util::from_view(get_arg(args, "sops", "0"));
     launch_session->surround_info = util::from_view(get_arg(args, "surroundAudioInfo", "196610"));
     launch_session->surround_params = (get_arg(args, "surroundParams", ""));
     launch_session->continuous_audio = util::from_view(get_arg(args, "continuousAudio", "0"));
     launch_session->gcmap = util::from_view(get_arg(args, "gcmap", "0"));
     launch_session->enable_hdr = util::from_view(get_arg(args, "hdrMode", "0"));
+    if (launch_session->enable_hdr) {
+      if (const auto app_rtx_hdr = proc::proc.get_app_rtx_hdr_config(launch_session->appid); app_rtx_hdr && app_rtx_hdr->enabled) {
+        launch_session->hdr_backend = image_enhancement::manager().acquire_selected(image_enhancement::backend_capability_e::hdr);
+        if (launch_session->hdr_backend && launch_session->hdr_backend->id == image_enhancement::NVIDIA_RTX_VIDEO_BACKEND) {
+          launch_session->synthetic_hdr = *app_rtx_hdr;
+        }
+      }
+    }
+    if (const auto app_dlssnr = proc::proc.get_app_dlssnr_config(launch_session->appid);
+        app_dlssnr && app_dlssnr->enabled) {
+      // Reserve both enabled backends until RTSP knows the final wire format.
+      // It selects RTX HDR only for PQ and releases the unused backend;
+      // HLG/SDR must retain NR even when launch initially requested RTX HDR.
+      launch_session->dlssnr_backend = image_enhancement::manager().acquire_selected(image_enhancement::backend_capability_e::nr);
+      launch_session->dlssnr_params = *app_dlssnr;
+    }
     launch_session->use_vdd = util::from_view(get_arg(args, "useVdd", "0"));
     launch_session->custom_screen_mode = util::from_view(get_arg(args, "customScreenMode", "-1"));
     // Client-declared touch-keyboard intent (Sunshine protocol extension).
     // -1 undeclared: fall back to the per-client server profile.
     launch_session->touch_keyboard = util::from_view(get_arg(args, "touchKeyboard", "-1"));
+    // Client-declared controller emulation type (Sunshine protocol extension
+    // carried on the /launch and /resume query string). Values outside the
+    // host vocabulary are ignored with a warning and treated as undeclared.
+    {
+      auto declared_gamepad = get_arg(args, "gamepad", "");
+      if (!declared_gamepad.empty() &&
+          declared_gamepad != "auto"sv && declared_gamepad != "x360"sv &&
+          declared_gamepad != "ds4"sv && declared_gamepad != "ds5"sv) {
+        BOOST_LOG(warning) << "Ignoring unknown client gamepad preference: "sv << declared_gamepad;
+        declared_gamepad.clear();
+      }
+      launch_session->client_gamepad = declared_gamepad;
+      if (!declared_gamepad.empty()) {
+        BOOST_LOG(info) << "Client declared gamepad preference: "sv << declared_gamepad;
+      }
+    }
     const auto hdr_capabilities = hdr::parse_client_display_capabilities(
       find_arg(args, "maxBrightness"),
       find_arg(args, "minBrightness"),
@@ -457,6 +482,7 @@ namespace nvhttp {
         "corever"sv,
         "customScreenMode"sv,
         "display_name"sv,
+        "gamepad"sv,
         "gcmap"sv,
         "hdrMode"sv,
         "localAudioPlayMode"sv,
@@ -681,6 +707,7 @@ namespace nvhttp {
 
     host_audio = util::from_view(get_arg(args, "localAudioPlayMode"));
     const auto launch_session = make_launch_session(host_audio, args);
+    const rtsp_stream::launch_preparation_guard_t launch_preparation;
     launch_session->rtsp_peer_address = net::addr_to_normalized_string(request->remote_endpoint().address());
     const auto fingerprint_match = client_fingerprint::match_client(args);
     launch_session->highly_suspected_unknown_client = fingerprint_match.suspicious;
@@ -849,6 +876,7 @@ namespace nvhttp {
       host_audio = util::from_view(get_arg(args, "localAudioPlayMode"));
     }
     const auto launch_session = make_launch_session(host_audio, args);
+    const rtsp_stream::launch_preparation_guard_t launch_preparation;
     if (launch_session->width <= 0 || launch_session->height <= 0 || launch_session->fps <= 0) {
       BOOST_LOG(warning) << "Resume request has no usable mode; keeping the current display resolution and refresh rate for compatibility. "sv
                             "Update Moonlight-Switch to a version that sends mode on Resume when one is available."sv;
@@ -962,41 +990,7 @@ namespace nvhttp {
 
     // GameStream 的 /cancel 表示退出当前应用，而普通断开由 RTSP/控制通道处理。
     // 清理可能需要等待编码器和应用退出，不能阻塞 NVHTTP 工作线程。
-    if (!global_cancel_pending.test_and_set(boost::memory_order_acq_rel)) {
-      BOOST_LOG(info) << "Global app cancel accepted; stopping all streaming sessions asynchronously"sv;
-      rtsp_stream::terminate_sessions_async(stream::session::stop_reason_e::client_cancel, []() {
-        auto clear_pending = util::fail_guard([]() {
-          global_cancel_pending.clear(boost::memory_order_release);
-        });
-
-        try {
-          if (proc::proc.running() > 0) {
-            proc::proc.terminate();
-          }
-        }
-        catch (const std::exception &e) {
-          BOOST_LOG(error) << "Failed to terminate the running application during app cancel: "sv << e.what();
-        }
-        catch (...) {
-          BOOST_LOG(error) << "Failed to terminate the running application during app cancel"sv;
-        }
-
-        try {
-          display_device::session_t::get().restore_state();
-        }
-        catch (const std::exception &e) {
-          BOOST_LOG(error) << "Failed to restore display state during app cancel: "sv << e.what();
-        }
-        catch (...) {
-          BOOST_LOG(error) << "Failed to restore display state during app cancel"sv;
-        }
-
-        BOOST_LOG(info) << "Global app cancel cleanup finished"sv;
-      });
-    }
-    else {
-      BOOST_LOG(debug) << "Global app cancel is already in progress"sv;
-    }
+    stream::session::request_global_cancel("Global app cancel"sv);
   }
 
   void
@@ -1068,7 +1062,7 @@ namespace nvhttp {
     bool host_audio {};
 
     auto bind_address = net::get_bind_address(address_family);
-    auto is_file_mapping_client_paired = [](std::string_view client_uuid) {
+    auto is_client_paired = [](std::string_view client_uuid) {
       if (client_uuid.empty()) {
         return false;
       }
@@ -1089,41 +1083,45 @@ namespace nvhttp {
     file_mapping_config.certificate_file = config::nvhttp.cert;
     file_mapping_config.private_key_file = config::nvhttp.pkey;
     file_mapping_config.mappings_json = config::nvhttp.file_mappings;
-    file_mapping_config.authorize_client = is_file_mapping_client_paired;
+    file_mapping_config.authorize_client = is_client_paired;
     file_mapping_service.start(std::move(file_mapping_config));
 
-    /* Reverse USB/IP tunnel (docs/remote-usb-reverse-tunnel.md in moonlight-qt).
-     * Transition contract until RTSP negotiates the USB stream: the client
-     * presents SUNSHINE_USB_TUNNEL_TOKEN as the shared session token and
-     * connects to SUNSHINE_USB_TUNNEL_PORT. */
+    // USB forwarding requires explicit host opt-in. Credentials are generated
+    // per service lifetime and delivered only over the paired HTTPS connection.
     remote_usb::reverse_tunnel_service reverse_tunnel_service;
-    {
-      remote_usb::reverse_tunnel_config reverse_tunnel_config;
-      bool valid_usb_port = true;
-      reverse_tunnel_config.bind_address = bind_address.empty() ? "0.0.0.0" : bind_address;
-      if (const char *port_env = std::getenv("SUNSHINE_USB_TUNNEL_PORT")) {
-        unsigned int port = 0;
-        const std::string_view port_text(port_env);
-        const auto [end, error] = std::from_chars(port_text.data(), port_text.data() + port_text.size(), port);
-        valid_usb_port = error == std::errc {} && end == port_text.data() + port_text.size() &&
-                         port > 0 && port <= std::numeric_limits<std::uint16_t>::max();
-        if (valid_usb_port) {
-          reverse_tunnel_config.port = static_cast<std::uint16_t>(port);
-        } else {
-          BOOST_LOG(warning) << "Remote USB tunnel disabled: invalid port configuration";
-        }
-      }
-      if (const char *token_env = std::getenv("SUNSHINE_USB_TUNNEL_TOKEN")) {
-        reverse_tunnel_config.session_token = token_env;
-      }
-      reverse_tunnel_config.certificate_file = config::nvhttp.cert;
-      reverse_tunnel_config.private_key_file = config::nvhttp.pkey;
-      reverse_tunnel_config.verify_client_cert =
-        [](X509 *cert) {
+    std::string usb_forwarding_token;
+    bool usb_forwarding_available = false;
+    if (config::nvhttp.usb_forwarding_enabled) {
+      std::array<unsigned char, 32> token_bytes {};
+      if (RAND_bytes(token_bytes.data(), static_cast<int>(token_bytes.size())) == 1) {
+        usb_forwarding_token = util::hex_vec(token_bytes);
+        remote_usb::reverse_tunnel_config tunnel_config;
+        tunnel_config.bind_address = bind_address.empty() ? "0.0.0.0" : bind_address;
+        // Resolve after the main port has been parsed. Its validated range
+        // reserves +21 for RTSP, so +7 cannot overflow a uint16_t.
+        tunnel_config.port = config::nvhttp.usb_forwarding_port != 0
+          ? config::nvhttp.usb_forwarding_port : net::map_port(7);
+        tunnel_config.session_token = usb_forwarding_token;
+        tunnel_config.certificate_file = config::nvhttp.cert;
+        tunnel_config.private_key_file = config::nvhttp.pkey;
+        tunnel_config.verify_client_cert = [](X509 *cert) {
           return pairing::verify_client_certificate(cert, false) == nullptr;
         };
-      if (!valid_usb_port || !reverse_tunnel_service.start(reverse_tunnel_config)) {
-        BOOST_LOG(info) << "Remote USB tunnel is not active";
+        // Optional USB forwarding must never claim a core TCP listener first.
+        const auto tunnel_port = tunnel_config.port;
+        const bool reserved_port = tunnel_port == port_http || tunnel_port == port_https ||
+          tunnel_port == net::map_port(confighttp::PORT_HTTPS) ||
+          tunnel_port == net::map_port(rtsp_stream::RTSP_SETUP_PORT);
+        if (!reserved_port) {
+          usb_forwarding_available = reverse_tunnel_service.start(std::move(tunnel_config));
+        }
+        else {
+          BOOST_LOG(warning) << "Remote USB forwarding port conflicts with a core TCP listener";
+        }
+      }
+      if (!usb_forwarding_available) {
+        usb_forwarding_token.clear();
+        BOOST_LOG(warning) << "Remote USB forwarding unavailable";
       }
     }
 
@@ -1186,6 +1184,32 @@ namespace nvhttp {
     https_server.resource["^/serverinfo$"]["GET"] = serverinfo<SunshineHTTPS>;
     https_server.resource["^/pair$"]["GET"] = pairing::pair_https;
     https_server.resource["^/applist$"]["GET"] = apps::list;
+    https_server.resource["^/api/v1/usb-forwarding$"]["GET"] =
+      [&](resp_https_t resp, req_https_t req) {
+        const SimpleWeb::CaseInsensitiveMultimap headers {
+          { "Content-Type", "application/json" },
+          { "Cache-Control", "no-store" },
+        };
+        // Do not trust the caller-supplied uniqueid, or relaxed TLS verification.
+        // Keep-alive identity is cached at handshake; pairing may since be revoked.
+        if (!is_client_paired(get_client_cert_uuid_from_request(req))) {
+          resp->write(SimpleWeb::StatusCode::client_error_unauthorized,
+            "{\"error\":\"pairing_required\"}", headers);
+          return;
+        }
+        nlohmann::json body {
+          { "version", 1 },
+          { "enabled", config::nvhttp.usb_forwarding_enabled },
+          { "available", usb_forwarding_available },
+          { "reason", !config::nvhttp.usb_forwarding_enabled ? "disabled" :
+                        usb_forwarding_available ? "ready" : "unavailable" },
+        };
+        if (usb_forwarding_available) {
+          body["port"] = reverse_tunnel_service.bound_port();
+          body["token"] = usb_forwarding_token;
+        }
+        resp->write(SimpleWeb::StatusCode::success_ok, body.dump(), headers);
+      };
     https_server.resource["^/appasset$"]["GET"] = apps::asset;
     https_server.resource["^/displays$"]["GET"] = display_control::get_displays;
     https_server.resource["^/display-scale-options$"]["GET"] = display_scale::get_options;

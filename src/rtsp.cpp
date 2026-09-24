@@ -22,6 +22,7 @@ extern "C" {
 #include <vector>
 
 // lib includes
+#include <boost/atomic.hpp>
 #include <boost/asio.hpp>
 #include <boost/bind.hpp>
 
@@ -48,6 +49,18 @@ using asio::ip::udp;
 using namespace std::literals;
 
 namespace rtsp_stream {
+  namespace {
+    boost::atomic_uint32_t launch_preparations { 0 };
+  }
+
+  launch_preparation_guard_t::launch_preparation_guard_t() noexcept {
+    ++launch_preparations;
+  }
+
+  launch_preparation_guard_t::~launch_preparation_guard_t() noexcept {
+    --launch_preparations;
+  }
+
   void
   launch_session_t::set_hdr_target(
     const hdr::client_display_capabilities_t &capabilities,
@@ -899,6 +912,43 @@ namespace rtsp_stream {
       });
     }
 
+    void
+    terminate_sessions_async_if(
+      stream::session::stop_reason_e reason,
+      boost::function<bool()> predicate,
+      boost::function<void(bool)> completion) {
+      boost::asio::post(io_context, [this, reason, predicate = std::move(predicate), completion = std::move(completion)]() mutable {
+        bool termination_started { false };
+        try {
+          if (!predicate || predicate()) {
+            termination_started = true;
+            clear(true, reason);
+          }
+          else {
+            BOOST_LOG(debug) << "Skipped asynchronous streaming termination because its precondition changed"sv;
+          }
+        }
+        catch (const std::exception &e) {
+          BOOST_LOG(error) << "Failed to terminate streaming sessions asynchronously: "sv << e.what();
+        }
+        catch (...) {
+          BOOST_LOG(error) << "Failed to terminate streaming sessions asynchronously"sv;
+        }
+
+        try {
+          if (completion) {
+            completion(termination_started);
+          }
+        }
+        catch (const std::exception &e) {
+          BOOST_LOG(error) << "Streaming session termination callback failed: "sv << e.what();
+        }
+        catch (...) {
+          BOOST_LOG(error) << "Streaming session termination callback failed"sv;
+        }
+      });
+    }
+
     /**
      * @brief Removes the provided session from the set of sessions.
      * @param session The session to remove.
@@ -982,9 +1032,24 @@ namespace rtsp_stream {
     return server.pending_session_count();
   }
 
+  bool
+  session_starting_or_active() {
+    return launch_preparations.load() != 0 ||
+           server.pending_session_count() != 0 ||
+           server.session_count() != 0;
+  }
+
   void
   terminate_sessions_async(stream::session::stop_reason_e reason, boost::function<void()> completion) {
     server.terminate_sessions_async(reason, std::move(completion));
+  }
+
+  void
+  terminate_sessions_async_if(
+    stream::session::stop_reason_e reason,
+    boost::function<bool()> predicate,
+    boost::function<void(bool)> completion) {
+    server.terminate_sessions_async_if(reason, std::move(predicate), std::move(completion));
   }
 
   int
@@ -1114,7 +1179,7 @@ namespace rtsp_stream {
 
     // Tell the client about our supported features
     {
-      auto caps = (uint32_t) platf::get_capabilities();
+      auto caps = (uint32_t) platf::get_capabilities(session.client_gamepad);
       // Advertise clipboard sync only when the user opted in AND a user-session
       // GUI agent is currently subscribed; otherwise the client would attempt
       // sync into a black hole.
@@ -1458,6 +1523,9 @@ namespace rtsp_stream {
     config.audio.flags[audio::config_t::HOST_AUDIO] = session.host_audio;
     // Set inside the SDP parse below; consumed by the dynamic HDR selection.
     bool post_process_hdr_active = false;
+    // Signal-preserving neural filter; declared unconditionally so the policy resolve
+    // below compiles on every platform.
+    bool post_process_nr_active = false;
     auto getArg = [&args](std::string_view key) {
       return util::from_view(args.at(key));
     };
@@ -1558,10 +1626,10 @@ namespace rtsp_stream {
       monitor.videoFormat = getArg("x-nv-vqos[0].bitStreamFormat"sv);
       monitor.dynamicRange = getArg("x-nv-video[0].dynamicRangeMode"sv);
 #ifdef _WIN32
-      // The TrueHDR chain (filter output, synthetic metadata, wire colorspace)
-      // is specified for PQ only; HLG sessions must keep the legacy capture
-      // path. Docs §5.4 of rtx_hdr_stream_implementation.md.
-      post_process_hdr_active = session.synthetic_hdr.enabled && monitor.dynamicRange == 1;
+      // The TrueHDR output and synthetic metadata are defined for PQ. HLG keeps
+      // the original capture path so the encoded pixels and wire signal agree.
+      post_process_hdr_active = session.synthetic_hdr.enabled && session.hdr_backend && monitor.dynamicRange == 1;
+      if (!post_process_hdr_active) session.hdr_backend.reset();
       if (session.synthetic_hdr.enabled && monitor.dynamicRange == 2) {
         BOOST_LOG(warning) << "RTX HDR requires PQ (dynamicRangeMode=1); ignoring it for this HLG session"sv;
       }
@@ -1573,11 +1641,30 @@ namespace rtsp_stream {
           .middle_gray_nits = static_cast<float>(session.synthetic_hdr.middle_gray),
           .peak_nits = static_cast<float>(session.synthetic_hdr.peak_nits),
         };
-        monitor.pre_encode_filter_backend_path = config::video.rtx_hdr_backend_path;
+        monitor.enhancement_backend = session.hdr_backend;
+      }
+      // NR preserves the captured SDR or native HDR signal. Synthetic RTX HDR
+      // owns the single filter slot when selected; do not overwrite its policy.
+      post_process_nr_active = !post_process_hdr_active && session.dlssnr_params.enabled &&
+                               static_cast<bool>(session.dlssnr_backend);
+      if (!post_process_nr_active) session.dlssnr_backend.reset();
+      if (post_process_nr_active) {
+        monitor.pre_encode_filter = platf::pre_encode_filter_e::external_neural_enhancement;
+        monitor.pre_encode_filter_config = {
+          .nr_intensity = session.dlssnr_params.intensity,
+          .nr_local_tone_strength = session.dlssnr_params.local_tone_strength,
+          .nr_local_structure_strength = session.dlssnr_params.local_structure_strength,
+          .nr_skin_structure_strength = session.dlssnr_params.skin_structure_strength,
+          .nr_style = session.dlssnr_params.style,
+          .nr_motion_quality = session.dlssnr_params.motion_quality,
+          .nr_auto_mask = session.dlssnr_params.auto_mask,
+          .nr_ui_correction = session.dlssnr_params.ui_correction,
+        };
+        monitor.enhancement_backend = session.dlssnr_backend;
       }
 #endif
       monitor.frame_pipeline_policy =
-        platf::resolve_frame_pipeline_policy(monitor.dynamicRange, post_process_hdr_active);
+        platf::resolve_frame_pipeline_policy(monitor.dynamicRange, post_process_hdr_active, post_process_nr_active);
       monitor.frame_pipeline_policy_resolved = true;
 #ifdef _WIN32
       // Publish the resolved policy on the launch session so display

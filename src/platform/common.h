@@ -14,6 +14,7 @@
 #include <mutex>
 #include <optional>
 #include <string>
+#include <string_view>
 
 // lib includes
 #include <boost/core/noncopyable.hpp>
@@ -557,6 +558,9 @@ namespace platf {
     set_client_sdr_white_nits(float) {
     }
 
+    // Packet-level confirmation, independent of the PQ/HLG transfer function.
+    virtual void report_dolby_vision_output(bool injected, bool enabled) {}
+
     video::sunshine_colorspace_t colorspace;
 
     /**
@@ -709,6 +713,22 @@ namespace platf {
     virtual std::unique_ptr<amf_encode_device_t>
     make_amf_encode_device(pix_fmt_e pix_fmt) {
       return nullptr;
+    }
+
+    // 编码器使用会话自身的配置，不能借用共享采集设备的首个会话配置。
+    virtual std::unique_ptr<avcodec_encode_device_t>
+    make_avcodec_encode_device(pix_fmt_e pix_fmt, const ::video::config_t &config) {
+      return make_avcodec_encode_device(pix_fmt);
+    }
+
+    virtual std::unique_ptr<nvenc_encode_device_t>
+    make_nvenc_encode_device(pix_fmt_e pix_fmt, const ::video::config_t &config) {
+      return make_nvenc_encode_device(pix_fmt);
+    }
+
+    virtual std::unique_ptr<amf_encode_device_t>
+    make_amf_encode_device(pix_fmt_e pix_fmt, const ::video::config_t &config) {
+      return make_amf_encode_device(pix_fmt);
     }
 
     virtual bool
@@ -1118,10 +1138,16 @@ namespace platf {
   set_mouse_mode(int mode);
   /**
    * @brief Select the gamepad emulation policy for the currently running app.
-   * @param mode 0=inherit global, 1=auto, 2=Xbox 360, 3=DualShock 4.
+   * @param mode 0=inherit global, 1=auto, 2=Xbox 360, 3=DualShock 4, 4=DualSense.
    */
   void
   set_gamepad_mode(int mode);
+  /**
+   * @brief Hot-apply the persisted global gamepad policy for future allocations.
+   * @param preference One of: auto, x360, ds4, ds5.
+   */
+  void
+  set_global_gamepad_mode(std::string_view preference);
   void
   abs_mouse(input_t &input, const touch_port_t &touch_port, float x, float y);
   void
@@ -1211,19 +1237,38 @@ namespace platf {
    * @param id The gamepad ID.
    * @param metadata Controller metadata from client (empty if none provided).
    * @param feedback_queue The queue for posting messages back to the client.
+   * @param client_gamepad Client-declared gamepad type for this session, or empty when undeclared.
    * @return 0 on success.
    */
   int
-  alloc_gamepad(input_t &input, const gamepad_id_t &id, const gamepad_arrival_t &metadata, feedback_queue_t feedback_queue);
+  alloc_gamepad(input_t &input, const gamepad_id_t &id, const gamepad_arrival_t &metadata,
+                feedback_queue_t feedback_queue, std::string_view client_gamepad);
   void
   free_gamepad(input_t &input, int nr);
+  /**
+   * @brief Check whether an allocated gamepad is backed by the DualSense path.
+   * @param input The global platform input context.
+   * @param nr The global gamepad index.
+   * @return true only when the platform allocated a DualSense for this index.
+   */
+  bool
+  gamepad_is_ds5(input_t &input, int nr);
+
+  /**
+   * @brief 检查已分配的 DualSense 音频触觉会话是否仍可用。
+   * @param input 平台输入上下文。
+   * @return 音频触觉协商成功且未降级或断线时返回 true。
+   */
+  bool
+  gamepad_has_ds5_audio_haptics(input_t &input);
 
   /**
    * @brief Get the supported platform capabilities to advertise to the client.
+   * @param client_gamepad Client-declared gamepad type for this session, or empty when undeclared.
    * @return Capability flags.
    */
   platform_caps::caps_t
-  get_capabilities();
+  get_capabilities(std::string_view client_gamepad);
 
 #define SERVICE_NAME "Sunshine"
 #define SERVICE_TYPE "_nvstream._tcp"
