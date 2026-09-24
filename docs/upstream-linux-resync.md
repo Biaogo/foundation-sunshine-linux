@@ -299,3 +299,37 @@ this tree tracks real files under `third-party/`), then a `nix-build` of the pac
 | Moonlight end-to-end: virtual pick, 虚拟-KWin, 虚拟-KMS, 默认, ×3 reconnects | display routing (races alternate, one success proves nothing) |
 | reboot + SDDM/pre-login capture | linger/boot-time capability and source state |
 | `KWIN_WAYLAND_NO_PERMISSION_CHECKS=1` deployment (session var + unit env) | KWin gate open (0 × `not found in registry`) |
+
+## 8. Release state of the re-fork lane (2026-09-25)
+
+* **Branch.** `refork/linux` (17 commits on top of `upstream/master@05350c05`) is pushed to
+  `origin`. Verified: `git rev-list --count HEAD..upstream/master` → **0**, and
+  `git merge-base --is-ancestor upstream/master HEAD` → true, i.e. **every** upstream commit —
+  including all ~300 Linux-touching ones — is contained in the branch by construction. Nothing is
+  left to port from LizardByte for this base; future upstream Linux work arrives as a plain
+  `git merge upstream/master` (that is the point of re-forking instead of file-by-file porting).
+* **Packaging.** `foundation-sunshine-linux.nix` gained `pkgs/foundation-sunshine-upstream`
+  (same `nixpkgs`-shaped derivation as the harness: libvirtualhid/glad/`SUNSHINE_SYSTEM_VULKAN_HEADERS`,
+  prebuilt ffmpeg FOD, KWin+portal+KMS+VAAPI+Vulkan backends, CUDA toggle) plus the matching flake
+  outputs (`packages`, `overlays.default`, `checks`). The old `foundation-sunshine` package stays
+  in place until the new one is pinned, so the current NixOS config keeps working.
+* **Known-broken pin.** `pkgs/foundation-sunshine/default.nix` still pins
+  `v2026.09.25-linux @ b48a1cfb` (the abandoned batch-port lineage). Re-tag or re-pin before the
+  next `nix flake update`; `update-pin-and-cache.yml`'s tag regex is
+  `^v[0-9]{4}\.[0-9]{2}\.[0-9]{2}-linux$`, so a release of this lane must use that shape if it is
+  to be picked up automatically.
+* **Portal capture is interactive.** The XDG portal backend shows a desktop approval dialog; the
+  user has to accept it (observed on the target host). The default path does not hit portal (non
+  numeric names route to KWin), so this only matters when KWin is unavailable, e.g. before login —
+  where the KMS backend is used instead anyway.
+* **SDDM is no longer testable.** The host now boots with SDDM auto-login + immediate lock, so the
+  greeter/pre-login row of the verification matrix can only be exercised as "locked session", not as
+  a greeter. Treat the boot-time capability assumptions (linger, `KWIN_WAYLAND_NO_PERMISSION_CHECKS`)
+  as verified only for the locked-session case.
+
+## 9. AlkaidLab's two Linux features
+
+| Feature | State | Notes |
+|---|---|---|
+| 7.1.4 / 12-channel surround (#510, fork `d855af34`) | **ported** (commit `c868a5ee`) | speaker enum + `map_surround714`, `SURROUND714`/`HIGH_SURROUND714` stream configs, PulseAudio TOP_FRONT/TOP_REAR positions and `sink-sunshine-surround714`, delimited `surround-params` negotiation (12-channel mapping values no longer fit a single digit), `SUNSHINE_CLIENT_AUDIO_CONFIGURATION=7.1.4`. Compile+link verified. Runtime negotiation still needs a 12-channel-capable client. |
+| Multi-client mic mixing (#929, fork `d80144e7`) | **not portable as-is** | upstream's 2026 audio stack has a different mic model: `platf::mic_t` is a *capture* source (`audio.cpp` pulls `mic->sample()` and encodes it), and there is no client→host mic ingest path anywhere in `src/` (the fork's 502-line `stream.cpp` rewrite, `mic_write.*` and `mic_mixer.*` have no counterpart). Re-applying it means *adding* the client→host direction (Opus decode → per-source jitter queue → mix → virtual mic device) on top of upstream's pipeline, i.e. new code rather than a cherry-pick. Patch kept at `docs/reapply-alkaid/mic-mixing-929.patch` for that work. |
