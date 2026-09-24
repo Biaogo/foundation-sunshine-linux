@@ -160,21 +160,24 @@ Costs and risks accepted with lane A:
      include `cuda.cpp`, `cuda.cu` and `nvenc_dynamic_factory.cpp`, `buildPhase completed in
      50 seconds`, `--version` reports `2026.09.25 commit: refork01`, wrapper links `libvulkan` +
      `libglvnd`, `ldd` 0 not found.
-   - **Runtime smoke on the target host (unprivileged, isolated config dir)** — the upstream
-     binary starts in this KDE/Wayland session and enumerates the fork's virtual output through
-     *upstream's own* backends:
-     `[wayland] Name: Virtual-SunshineVirt`,
-     `[portalgrab] Found stream for display id/name: 'Virtual-SunshineVirt' position: 0x0 resolution: 1584x720`,
-     `[pipewire] Requested variable frame rate (Sunshine pacing required: 16.6667ms)`,
-     `Screencasting with XDG portal`. Two caveats, both expected in this run and both already
-     understood: (a) `Failed to load EGL library symbols` → the harness must carry nixpkgs'
-     `runtimeDependencies` (`libglvnd` et al.) and wrap `LD_LIBRARY_PATH` with `libglvnd` — fixed
-     and being re-verified; (b) `Failed to gain CAP_SYS_ADMIN` and the core dump that followed are
-     an artefact of launching the store binary directly (no setcap wrapper, no
-     `KWIN_WAYLAND_NO_PERMISSION_CHECKS`) — the deployment shape is the setcap wrapper + that env
-     var, and the port's own verification matrix must be run against a wrapped build.
-     The portal finding is a real capability gain: upstream's `portalgrab` reaches the
-     krfb-created virtual monitor without the fork's kwin-only plumbing.
+   - **Runtime smoke on the target host — PASS (after the `runtimeDependencies`/`libglvnd` fix)**,
+     unprivileged, isolated config dir, 20 s runs; logs under `docs/upstream-smoke-log-20260925.txt`
+     and `/tmp/fsl-harness/smoke{2,3}.log`. What the upstream-shaped binary does on this host:
+     - `[kwingrab] No permission desktop file necessary. KWin permission system deactivated.`
+       then `[kwingrab] Found output: Virtual-SunshineVirt order: 0 position: 0x0 resolution: 2376x1080`
+       — **upstream's KWin ScreenCast backend enumerates the fork's krfb virtual output** without any
+       fork patch (the session already exports `KWIN_WAYLAND_NO_PERMISSION_CHECKS=1`).
+     - `[portalgrab] Found stream for display id/name: 'Virtual-SunshineVirt' position: 0x0 resolution: 1584x720`
+       — upstream's XDG-portal backend reaches the same output independently
+       (`Screencasting with XDG portal`), and it is what auto mode actually selects on this host.
+     - `Creating encoder [h264_nvenc]` / `[hevc_nvenc]` — NVENC probing works in the CUDA variant;
+       `EGL: context priority set to HIGH but CAP_SYS_NICE capability is missing` is the expected
+       unprivileged warning (EGL itself now loads, no more `Failed to load EGL library symbols`, no
+       core dump; both runs ended on `timeout`, exit 124).
+     - `Failed to gain CAP_SYS_ADMIN` lines are expected: the store binary is not the setcap wrapper.
+     - open question for the port: auto mode prefers PORTAL over KWIN on this host, while the fork's
+       virtual-display design assumed the kwin backend. Decide per scenario (portal cannot serve
+       pre-login SDDM; kwin needs the permission env) instead of assuming either.
    - still to do: the deployment path (real web UI via `buildNpmPackage` + tag/pin handoff to
      `foundation-sunshine-linux.nix`) and the port queue itself.
 2. **AlkaidLab's Windows product surface is not carried over** to this branch (it does not build

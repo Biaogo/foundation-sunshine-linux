@@ -1,0 +1,532 @@
+[2026-09-25 04:11:30.419811] [0x0000748246a36000] [info]    config: 'locale' = en
+[2026-09-25 04:11:30.419841] [0x0000748246a36000] [info]    config: 'port' = 48990
+[2026-09-25 04:11:30.420]: Info: Sunshine version: 2026.09.25 commit: refork01
+[2026-09-25 04:11:30.420]: Info: Package Publisher: Biaogo
+[2026-09-25 04:11:30.420]: Info: Publisher Website: https://github.com/Biaogo/foundation-sunshine-linux
+[2026-09-25 04:11:30.420]: Info: Get support: https://github.com/Biaogo/foundation-sunshine-linux/issues
+[2026-09-25 04:11:30.420]: Info: config: 'port' = 48990
+[2026-09-25 04:11:30.420]: Info: config: 'locale' = en
+[2026-09-25 04:11:30.435]: Error: Failed to create session: 
+[2026-09-25 04:11:30.435]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:30.435]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:11:30.435]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:11:30.435]: Info: [wayland] Found interface: wl_output(82) version 4
+[2026-09-25 04:11:30.435]: Warning: [wlgrab] Missing Wayland wire for wlr-export-dmabuf
+[2026-09-25 04:11:30.436]: Info: [kwingrab] No permission desktop file necessary. KWin permission system deactivated.
+[2026-09-25 04:11:30.436]: Info: [kwingrab] Found output: Virtual-SunshineVirt order: 0 position: 0x0 resolution: 2376x1080
+[2026-09-25 04:11:32.040]: Info: [portalgrab] Saved portal restore token to disk
+[2026-09-25 04:11:32.040]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.041]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:11:32.041]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:11:32.041]: Info: [wayland] Found interface: wl_output(82) version 4
+[2026-09-25 04:11:32.042]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:11:32.042]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:11:32.042]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:11:32.042]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:11:32.042]: Info: [wayland] Found monitor:  
+[2026-09-25 04:11:32.044]: Info: [portalgrab] Found stream for display id/name: 'Virtual-SunshineVirt' position: 0x0 resolution: 1584x720
+[2026-09-25 04:11:32.072]: Info: // Testing for available encoders, this may generate errors. You can safely ignore those errors. //
+[2026-09-25 04:11:32.072]: Info: Trying encoder [nvenc]
+[2026-09-25 04:11:32.072]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:11:32.072]: Info: [misc] drop_elevated_privileges succeeded in dropping capabilities
+[2026-09-25 04:11:32.072]: Info: Screencasting with XDG portal
+[2026-09-25 04:11:32.074]: Info: [pipewire] Requested variable frame rate (Sunshine pacing required: 16.6667ms)
+[2026-09-25 04:11:32.074]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.090]: Info: [pipewire] Pure NVIDIA system - DMA-BUF will be enabled for CUDA
+[2026-09-25 04:11:32.090]: Info: [portalgrab] Loaded portal restore token from disk
+[2026-09-25 04:11:32.103]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.104]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:11:32.104]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:11:32.104]: Info: [wayland] Found interface: wl_output(82) version 4
+[2026-09-25 04:11:32.104]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:11:32.104]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:11:32.104]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:11:32.104]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:11:32.104]: Info: [wayland] Found monitor:  
+[2026-09-25 04:11:32.106]: Info: [portalgrab] Using first available stream as no matching stream was found for: ''
+[2026-09-25 04:11:32.106]: Info: [pipewire] Streaming display '' offset: 0x0 resolution: 1584x720
+[2026-09-25 04:11:32.106]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.107]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:11:32.107]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:11:32.107]: Info: [wayland] Found interface: wl_output(82) version 4
+[2026-09-25 04:11:32.108]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:11:32.108]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:11:32.108]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:11:32.108]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:11:32.108]: Info: [wayland] Found monitor:  
+[2026-09-25 04:11:32.110]: Info: [pipewire] PipeWire stream state: unconnected -> connecting
+[2026-09-25 04:11:32.114]: Info: [pipewire] Connected to pipewire version 1.6.6
+[2026-09-25 04:11:32.114]: Info: [pipewire] PipeWire stream state: connecting -> paused
+[2026-09-25 04:11:32.116]: Info: [pipewire] Video format: 12
+[2026-09-25 04:11:32.116]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:11:32.116]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:11:32.116]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:11:32.116]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:11:32.116]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:11:32.117]: Info: [pipewire] Video format: 12
+[2026-09-25 04:11:32.117]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:11:32.117]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:11:32.117]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:11:32.117]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:11:32.117]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:11:32.120]: Info: [pipewire] PipeWire stream state: paused -> streaming
+[2026-09-25 04:11:32.124]: Info: [pipewire] Using negotiated Resolution: 2376x1080
+[2026-09-25 04:11:32.124]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.125]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:11:32.125]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:11:32.125]: Info: [wayland] Found interface: wl_output(82) version 4
+[2026-09-25 04:11:32.126]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:11:32.126]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:11:32.126]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:11:32.126]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:11:32.126]: Info: [wayland] Found monitor:  
+[2026-09-25 04:11:32.126]: Info: Creating encoder [h264_nvenc]
+[2026-09-25 04:11:32.126]: Info: Color coding: SDR (Rec. 601)
+[2026-09-25 04:11:32.126]: Info: Color depth: 8-bit
+[2026-09-25 04:11:32.126]: Info: Color range: JPEG
+[2026-09-25 04:11:32.126]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:11:32.140]: Warning: EGL: context priority set to HIGH but CAP_SYS_NICE capability is missing
+[2026-09-25 04:11:32.316]: Info: Streaming bitrate is 1000000
+[2026-09-25 04:11:32.436]: Info: Creating encoder [hevc_nvenc]
+[2026-09-25 04:11:32.436]: Info: Color coding: SDR (Rec. 601)
+[2026-09-25 04:11:32.436]: Info: Color depth: 8-bit
+[2026-09-25 04:11:32.436]: Info: Color range: JPEG
+[2026-09-25 04:11:32.436]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:11:32.437]: Warning: EGL: context priority set to HIGH but CAP_SYS_NICE capability is missing
+[2026-09-25 04:11:32.439]: Info: Streaming bitrate is 1000000
+[2026-09-25 04:11:32.485]: Info: Creating encoder [av1_nvenc]
+[2026-09-25 04:11:32.485]: Info: Color coding: SDR (Rec. 601)
+[2026-09-25 04:11:32.485]: Info: Color depth: 8-bit
+[2026-09-25 04:11:32.485]: Info: Color range: JPEG
+[2026-09-25 04:11:32.485]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:11:32.487]: Warning: EGL: context priority set to HIGH but CAP_SYS_NICE capability is missing
+[2026-09-25 04:11:32.488]: Info: Streaming bitrate is 1000000
+[2026-09-25 04:11:32.495]: Warning: [av1_nvenc @ 0x64fb6f6a5000] Codec not supported
+[2026-09-25 04:11:32.495]: Error: [av1_nvenc @ 0x64fb6f6a5000] Provided device doesn't support required NVENC features
+[2026-09-25 04:11:32.498]: Error: Could not open codec [av1_nvenc]: Function not implemented
+[2026-09-25 04:11:32.500]: Info: [pipewire] PipeWire stream state: streaming -> paused
+[2026-09-25 04:11:32.500]: Info: [pipewire] PipeWire stream state: paused -> unconnected
+[2026-09-25 04:11:32.501]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:11:32.501]: Info: [misc] drop_elevated_privileges succeeded in dropping capabilities
+[2026-09-25 04:11:32.501]: Info: Screencasting with XDG portal
+[2026-09-25 04:11:32.502]: Info: [pipewire] Requested variable frame rate (Sunshine pacing required: 16.6667ms)
+[2026-09-25 04:11:32.502]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.504]: Info: [pipewire] Pure NVIDIA system - DMA-BUF will be enabled for CUDA
+[2026-09-25 04:11:32.504]: Info: [portalgrab] Loaded portal restore token from disk
+[2026-09-25 04:11:32.514]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.514]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:11:32.514]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:11:32.514]: Info: [wayland] Found interface: wl_output(82) version 4
+[2026-09-25 04:11:32.514]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:11:32.514]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:11:32.515]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:11:32.515]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:11:32.515]: Info: [wayland] Found monitor:  
+[2026-09-25 04:11:32.516]: Info: [portalgrab] Using first available stream as no matching stream was found for: ''
+[2026-09-25 04:11:32.516]: Info: [pipewire] Streaming display '' offset: 0x0 resolution: 1584x720
+[2026-09-25 04:11:32.516]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.516]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:11:32.516]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:11:32.516]: Info: [wayland] Found interface: wl_output(82) version 4
+[2026-09-25 04:11:32.517]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:11:32.517]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:11:32.517]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:11:32.517]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:11:32.517]: Info: [wayland] Found monitor:  
+[2026-09-25 04:11:32.518]: Info: [pipewire] PipeWire stream state: unconnected -> connecting
+[2026-09-25 04:11:32.522]: Info: [pipewire] Connected to pipewire version 1.6.6
+[2026-09-25 04:11:32.522]: Info: [pipewire] PipeWire stream state: connecting -> paused
+[2026-09-25 04:11:32.524]: Info: [pipewire] Video format: 12
+[2026-09-25 04:11:32.524]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:11:32.524]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:11:32.524]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:11:32.524]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:11:32.524]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:11:32.525]: Info: [pipewire] Video format: 12
+[2026-09-25 04:11:32.525]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:11:32.525]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:11:32.525]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:11:32.525]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:11:32.525]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:11:32.526]: Info: [pipewire] PipeWire stream state: paused -> streaming
+[2026-09-25 04:11:32.532]: Info: [pipewire] Using negotiated Resolution: 2376x1080
+[2026-09-25 04:11:32.532]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.532]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:11:32.532]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:11:32.532]: Info: [wayland] Found interface: wl_output(82) version 4
+[2026-09-25 04:11:32.532]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:11:32.532]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:11:32.532]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:11:32.532]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:11:32.532]: Info: [wayland] Found monitor:  
+[2026-09-25 04:11:32.532]: Info: Creating encoder [h264_nvenc]
+[2026-09-25 04:11:32.532]: Info: Color coding: SDR (Rec. 601)
+[2026-09-25 04:11:32.532]: Info: Color depth: 8-bit
+[2026-09-25 04:11:32.532]: Info: Color range: JPEG
+[2026-09-25 04:11:32.532]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:11:32.533]: Warning: EGL: context priority set to HIGH but CAP_SYS_NICE capability is missing
+[2026-09-25 04:11:32.535]: Info: Streaming bitrate is 1000000
+[2026-09-25 04:11:32.610]: Info: [pipewire] PipeWire stream state: streaming -> paused
+[2026-09-25 04:11:32.611]: Info: [pipewire] PipeWire stream state: paused -> unconnected
+[2026-09-25 04:11:32.612]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:11:32.612]: Info: [misc] drop_elevated_privileges succeeded in dropping capabilities
+[2026-09-25 04:11:32.612]: Info: Screencasting with XDG portal
+[2026-09-25 04:11:32.612]: Info: [pipewire] Requested variable frame rate (Sunshine pacing required: 16.6667ms)
+[2026-09-25 04:11:32.612]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.616]: Info: [pipewire] Pure NVIDIA system - DMA-BUF will be enabled for CUDA
+[2026-09-25 04:11:32.616]: Info: [portalgrab] Loaded portal restore token from disk
+[2026-09-25 04:11:32.625]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.626]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:11:32.626]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:11:32.626]: Info: [wayland] Found interface: wl_output(82) version 4
+[2026-09-25 04:11:32.626]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:11:32.626]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:11:32.626]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:11:32.626]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:11:32.626]: Info: [wayland] Found monitor:  
+[2026-09-25 04:11:32.628]: Info: [portalgrab] Using first available stream as no matching stream was found for: ''
+[2026-09-25 04:11:32.628]: Info: [pipewire] Streaming display '' offset: 0x0 resolution: 1584x720
+[2026-09-25 04:11:32.628]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.628]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:11:32.628]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:11:32.628]: Info: [wayland] Found interface: wl_output(82) version 4
+[2026-09-25 04:11:32.628]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:11:32.628]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:11:32.628]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:11:32.628]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:11:32.628]: Info: [wayland] Found monitor:  
+[2026-09-25 04:11:32.629]: Info: [pipewire] PipeWire stream state: unconnected -> connecting
+[2026-09-25 04:11:32.633]: Info: [pipewire] Connected to pipewire version 1.6.6
+[2026-09-25 04:11:32.633]: Info: [pipewire] PipeWire stream state: connecting -> paused
+[2026-09-25 04:11:32.635]: Info: [pipewire] Video format: 12
+[2026-09-25 04:11:32.635]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:11:32.635]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:11:32.635]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:11:32.635]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:11:32.635]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:11:32.636]: Info: [pipewire] Video format: 12
+[2026-09-25 04:11:32.636]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:11:32.636]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:11:32.636]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:11:32.636]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:11:32.636]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:11:32.637]: Info: [pipewire] PipeWire stream state: paused -> streaming
+[2026-09-25 04:11:32.643]: Info: [pipewire] Using negotiated Resolution: 2376x1080
+[2026-09-25 04:11:32.643]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.643]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:11:32.643]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:11:32.643]: Info: [wayland] Found interface: wl_output(82) version 4
+[2026-09-25 04:11:32.643]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:11:32.643]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:11:32.643]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:11:32.643]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:11:32.643]: Info: [wayland] Found monitor:  
+[2026-09-25 04:11:32.643]: Info: Creating encoder [hevc_nvenc]
+[2026-09-25 04:11:32.643]: Info: Color coding: SDR (Rec. 601)
+[2026-09-25 04:11:32.643]: Info: Color depth: 8-bit
+[2026-09-25 04:11:32.643]: Info: Color range: JPEG
+[2026-09-25 04:11:32.643]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:11:32.644]: Warning: EGL: context priority set to HIGH but CAP_SYS_NICE capability is missing
+[2026-09-25 04:11:32.646]: Info: Streaming bitrate is 1000000
+[2026-09-25 04:11:32.695]: Info: [pipewire] PipeWire stream state: streaming -> paused
+[2026-09-25 04:11:32.695]: Info: [pipewire] PipeWire stream state: paused -> unconnected
+[2026-09-25 04:11:32.696]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:11:32.696]: Info: [misc] drop_elevated_privileges succeeded in dropping capabilities
+[2026-09-25 04:11:32.696]: Info: Screencasting with XDG portal
+[2026-09-25 04:11:32.696]: Info: [pipewire] Requested variable frame rate (Sunshine pacing required: 16.6667ms)
+[2026-09-25 04:11:32.696]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.700]: Info: [pipewire] Pure NVIDIA system - DMA-BUF will be enabled for CUDA
+[2026-09-25 04:11:32.700]: Info: [portalgrab] Loaded portal restore token from disk
+[2026-09-25 04:11:32.708]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.709]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:11:32.709]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:11:32.709]: Info: [wayland] Found interface: wl_output(82) version 4
+[2026-09-25 04:11:32.710]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:11:32.710]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:11:32.710]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:11:32.710]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:11:32.710]: Info: [wayland] Found monitor:  
+[2026-09-25 04:11:32.712]: Info: [portalgrab] Using first available stream as no matching stream was found for: ''
+[2026-09-25 04:11:32.712]: Info: [pipewire] Streaming display '' offset: 0x0 resolution: 1584x720
+[2026-09-25 04:11:32.712]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.712]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:11:32.712]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:11:32.712]: Info: [wayland] Found interface: wl_output(82) version 4
+[2026-09-25 04:11:32.712]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:11:32.712]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:11:32.712]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:11:32.712]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:11:32.713]: Info: [wayland] Found monitor:  
+[2026-09-25 04:11:32.714]: Info: [pipewire] PipeWire stream state: unconnected -> connecting
+[2026-09-25 04:11:32.717]: Info: [pipewire] Connected to pipewire version 1.6.6
+[2026-09-25 04:11:32.717]: Info: [pipewire] PipeWire stream state: connecting -> paused
+[2026-09-25 04:11:32.721]: Info: [pipewire] Video format: 12
+[2026-09-25 04:11:32.721]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:11:32.721]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:11:32.721]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:11:32.721]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:11:32.721]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:11:32.722]: Info: [pipewire] Video format: 12
+[2026-09-25 04:11:32.722]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:11:32.722]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:11:32.722]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:11:32.722]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:11:32.722]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:11:32.723]: Info: [pipewire] PipeWire stream state: paused -> streaming
+[2026-09-25 04:11:32.727]: Info: [pipewire] Using negotiated Resolution: 2376x1080
+[2026-09-25 04:11:32.727]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.727]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:11:32.727]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:11:32.727]: Info: [wayland] Found interface: wl_output(82) version 4
+[2026-09-25 04:11:32.728]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:11:32.728]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:11:32.728]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:11:32.728]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:11:32.728]: Info: [wayland] Found monitor:  
+[2026-09-25 04:11:32.728]: Info: Creating encoder [hevc_nvenc]
+[2026-09-25 04:11:32.728]: Info: Color coding: SDR (Rec. 709)
+[2026-09-25 04:11:32.728]: Info: Color depth: 10-bit
+[2026-09-25 04:11:32.728]: Info: Color range: JPEG
+[2026-09-25 04:11:32.728]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:11:32.729]: Warning: EGL: context priority set to HIGH but CAP_SYS_NICE capability is missing
+[2026-09-25 04:11:32.731]: Info: Streaming bitrate is 1000000
+[2026-09-25 04:11:32.778]: Info: [pipewire] PipeWire stream state: streaming -> paused
+[2026-09-25 04:11:32.778]: Info: [pipewire] PipeWire stream state: paused -> unconnected
+[2026-09-25 04:11:32.779]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:11:32.780]: Info: [misc] drop_elevated_privileges succeeded in dropping capabilities
+[2026-09-25 04:11:32.780]: Info: Screencasting with XDG portal
+[2026-09-25 04:11:32.780]: Info: [pipewire] Requested variable frame rate (Sunshine pacing required: 16.6667ms)
+[2026-09-25 04:11:32.780]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.782]: Info: [pipewire] Pure NVIDIA system - DMA-BUF will be enabled for CUDA
+[2026-09-25 04:11:32.782]: Info: [portalgrab] Loaded portal restore token from disk
+[2026-09-25 04:11:32.790]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.791]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:11:32.791]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:11:32.791]: Info: [wayland] Found interface: wl_output(82) version 4
+[2026-09-25 04:11:32.791]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:11:32.791]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:11:32.791]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:11:32.791]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:11:32.791]: Info: [wayland] Found monitor:  
+[2026-09-25 04:11:32.792]: Info: [portalgrab] Using first available stream as no matching stream was found for: ''
+[2026-09-25 04:11:32.792]: Info: [pipewire] Streaming display '' offset: 0x0 resolution: 1584x720
+[2026-09-25 04:11:32.792]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.792]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:11:32.792]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:11:32.792]: Info: [wayland] Found interface: wl_output(82) version 4
+[2026-09-25 04:11:32.793]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:11:32.793]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:11:32.793]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:11:32.793]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:11:32.793]: Info: [wayland] Found monitor:  
+[2026-09-25 04:11:32.794]: Info: [pipewire] PipeWire stream state: unconnected -> connecting
+[2026-09-25 04:11:32.798]: Info: [pipewire] Connected to pipewire version 1.6.6
+[2026-09-25 04:11:32.798]: Info: [pipewire] PipeWire stream state: connecting -> paused
+[2026-09-25 04:11:32.802]: Info: [pipewire] Video format: 12
+[2026-09-25 04:11:32.802]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:11:32.802]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:11:32.802]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:11:32.802]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:11:32.802]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:11:32.803]: Info: [pipewire] Video format: 12
+[2026-09-25 04:11:32.803]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:11:32.803]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:11:32.803]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:11:32.803]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:11:32.803]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:11:32.804]: Info: [pipewire] PipeWire stream state: paused -> streaming
+[2026-09-25 04:11:32.808]: Info: [pipewire] Using negotiated Resolution: 2376x1080
+[2026-09-25 04:11:32.808]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.808]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:11:32.808]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:11:32.808]: Info: [wayland] Found interface: wl_output(82) version 4
+[2026-09-25 04:11:32.808]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:11:32.808]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:11:32.808]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:11:32.808]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:11:32.808]: Info: [wayland] Found monitor:  
+[2026-09-25 04:11:32.808]: Info: Creating encoder [hevc_nvenc]
+[2026-09-25 04:11:32.808]: Info: Color coding: SDR (Rec. 709)
+[2026-09-25 04:11:32.808]: Info: Color depth: 10-bit
+[2026-09-25 04:11:32.808]: Info: Color range: JPEG
+[2026-09-25 04:11:32.809]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:11:32.810]: Warning: EGL: context priority set to HIGH but CAP_SYS_NICE capability is missing
+[2026-09-25 04:11:32.812]: Info: Streaming bitrate is 1000000
+[2026-09-25 04:11:32.866]: Info: [pipewire] PipeWire stream state: streaming -> paused
+[2026-09-25 04:11:32.866]: Info: [pipewire] PipeWire stream state: paused -> unconnected
+[2026-09-25 04:11:32.867]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:11:32.867]: Info: [misc] drop_elevated_privileges succeeded in dropping capabilities
+[2026-09-25 04:11:32.867]: Info: Screencasting with XDG portal
+[2026-09-25 04:11:32.867]: Info: [pipewire] Requested variable frame rate (Sunshine pacing required: 16.6667ms)
+[2026-09-25 04:11:32.867]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.870]: Info: [pipewire] Pure NVIDIA system - DMA-BUF will be enabled for CUDA
+[2026-09-25 04:11:32.870]: Info: [portalgrab] Loaded portal restore token from disk
+[2026-09-25 04:11:32.881]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.881]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:11:32.881]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:11:32.881]: Info: [wayland] Found interface: wl_output(82) version 4
+[2026-09-25 04:11:32.882]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:11:32.882]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:11:32.882]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:11:32.882]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:11:32.882]: Info: [wayland] Found monitor:  
+[2026-09-25 04:11:32.883]: Info: [portalgrab] Using first available stream as no matching stream was found for: ''
+[2026-09-25 04:11:32.883]: Info: [pipewire] Streaming display '' offset: 0x0 resolution: 1584x720
+[2026-09-25 04:11:32.883]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.883]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:11:32.884]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:11:32.884]: Info: [wayland] Found interface: wl_output(82) version 4
+[2026-09-25 04:11:32.884]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:11:32.884]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:11:32.884]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:11:32.884]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:11:32.884]: Info: [wayland] Found monitor:  
+[2026-09-25 04:11:32.885]: Info: [pipewire] PipeWire stream state: unconnected -> connecting
+[2026-09-25 04:11:32.889]: Info: [pipewire] Connected to pipewire version 1.6.6
+[2026-09-25 04:11:32.889]: Info: [pipewire] PipeWire stream state: connecting -> paused
+[2026-09-25 04:11:32.892]: Info: [pipewire] Video format: 12
+[2026-09-25 04:11:32.892]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:11:32.892]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:11:32.892]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:11:32.892]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:11:32.892]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:11:32.893]: Info: [pipewire] Video format: 12
+[2026-09-25 04:11:32.893]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:11:32.893]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:11:32.893]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:11:32.893]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:11:32.893]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:11:32.894]: Info: [pipewire] PipeWire stream state: paused -> streaming
+[2026-09-25 04:11:32.899]: Info: [pipewire] Using negotiated Resolution: 2376x1080
+[2026-09-25 04:11:32.899]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.899]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:11:32.899]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:11:32.899]: Info: [wayland] Found interface: wl_output(82) version 4
+[2026-09-25 04:11:32.900]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:11:32.900]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:11:32.900]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:11:32.900]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:11:32.900]: Info: [wayland] Found monitor:  
+[2026-09-25 04:11:32.900]: Info: [pipewire] PipeWire stream state: streaming -> paused
+[2026-09-25 04:11:32.900]: Info: [pipewire] PipeWire stream state: paused -> unconnected
+[2026-09-25 04:11:32.901]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:11:32.901]: Info: [misc] drop_elevated_privileges succeeded in dropping capabilities
+[2026-09-25 04:11:32.901]: Info: Screencasting with XDG portal
+[2026-09-25 04:11:32.901]: Info: [pipewire] Requested variable frame rate (Sunshine pacing required: 16.6667ms)
+[2026-09-25 04:11:32.901]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.905]: Info: [pipewire] Pure NVIDIA system - DMA-BUF will be enabled for CUDA
+[2026-09-25 04:11:32.905]: Info: [portalgrab] Loaded portal restore token from disk
+[2026-09-25 04:11:32.914]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.915]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:11:32.915]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:11:32.915]: Info: [wayland] Found interface: wl_output(82) version 4
+[2026-09-25 04:11:32.915]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:11:32.915]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:11:32.915]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:11:32.915]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:11:32.915]: Info: [wayland] Found monitor:  
+[2026-09-25 04:11:32.917]: Info: [portalgrab] Using first available stream as no matching stream was found for: ''
+[2026-09-25 04:11:32.917]: Info: [pipewire] Streaming display '' offset: 0x0 resolution: 1584x720
+[2026-09-25 04:11:32.917]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.917]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:11:32.917]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:11:32.917]: Info: [wayland] Found interface: wl_output(82) version 4
+[2026-09-25 04:11:32.917]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:11:32.917]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:11:32.917]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:11:32.917]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:11:32.917]: Info: [wayland] Found monitor:  
+[2026-09-25 04:11:32.918]: Info: [pipewire] PipeWire stream state: unconnected -> connecting
+[2026-09-25 04:11:32.922]: Info: [pipewire] Connected to pipewire version 1.6.6
+[2026-09-25 04:11:32.922]: Info: [pipewire] PipeWire stream state: connecting -> paused
+[2026-09-25 04:11:32.925]: Info: [pipewire] Video format: 12
+[2026-09-25 04:11:32.925]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:11:32.925]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:11:32.925]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:11:32.925]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:11:32.925]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:11:32.926]: Info: [pipewire] Video format: 12
+[2026-09-25 04:11:32.926]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:11:32.926]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:11:32.926]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:11:32.926]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:11:32.926]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:11:32.928]: Info: [pipewire] PipeWire stream state: paused -> streaming
+[2026-09-25 04:11:32.932]: Info: [pipewire] Using negotiated Resolution: 2376x1080
+[2026-09-25 04:11:32.932]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.932]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:11:32.932]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:11:32.932]: Info: [wayland] Found interface: wl_output(82) version 4
+[2026-09-25 04:11:32.932]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:11:32.932]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:11:32.932]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:11:32.932]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:11:32.932]: Info: [wayland] Found monitor:  
+[2026-09-25 04:11:32.933]: Info: [pipewire] PipeWire stream state: streaming -> paused
+[2026-09-25 04:11:32.933]: Info: [pipewire] PipeWire stream state: paused -> unconnected
+[2026-09-25 04:11:32.934]: Error: Failed to gain CAP_SYS_ADMIN
+[2026-09-25 04:11:32.934]: Info: [misc] drop_elevated_privileges succeeded in dropping capabilities
+[2026-09-25 04:11:32.934]: Info: Screencasting with XDG portal
+[2026-09-25 04:11:32.934]: Info: [pipewire] Requested variable frame rate (Sunshine pacing required: 16.6667ms)
+[2026-09-25 04:11:32.934]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.936]: Info: [pipewire] Pure NVIDIA system - DMA-BUF will be enabled for CUDA
+[2026-09-25 04:11:32.936]: Info: [portalgrab] Loaded portal restore token from disk
+[2026-09-25 04:11:32.945]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.945]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:11:32.945]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:11:32.945]: Info: [wayland] Found interface: wl_output(82) version 4
+[2026-09-25 04:11:32.946]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:11:32.946]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:11:32.946]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:11:32.946]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:11:32.946]: Info: [wayland] Found monitor:  
+[2026-09-25 04:11:32.947]: Info: [portalgrab] Using first available stream as no matching stream was found for: ''
+[2026-09-25 04:11:32.947]: Info: [pipewire] Streaming display '' offset: 0x0 resolution: 1584x720
+[2026-09-25 04:11:32.947]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.947]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:11:32.947]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:11:32.947]: Info: [wayland] Found interface: wl_output(82) version 4
+[2026-09-25 04:11:32.948]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:11:32.948]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:11:32.948]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:11:32.948]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:11:32.948]: Info: [wayland] Found monitor:  
+[2026-09-25 04:11:32.949]: Info: [pipewire] PipeWire stream state: unconnected -> connecting
+[2026-09-25 04:11:32.953]: Info: [pipewire] Connected to pipewire version 1.6.6
+[2026-09-25 04:11:32.953]: Info: [pipewire] PipeWire stream state: connecting -> paused
+[2026-09-25 04:11:32.957]: Info: [pipewire] Video format: 12
+[2026-09-25 04:11:32.957]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:11:32.957]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:11:32.957]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:11:32.957]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:11:32.957]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:11:32.958]: Info: [pipewire] Video format: 12
+[2026-09-25 04:11:32.958]: Info: [pipewire] Size: 2376x1080
+[2026-09-25 04:11:32.958]: Info: [pipewire] Color primaries: 0
+[2026-09-25 04:11:32.958]: Info: [pipewire] Transfer function: 0
+[2026-09-25 04:11:32.958]: Info: [pipewire] Compositor negotiated frame rate: 0/1 (variable rate capture)
+[2026-09-25 04:11:32.958]: Info: [pipewire] using DMA-BUF buffers
+[2026-09-25 04:11:32.959]: Info: [pipewire] PipeWire stream state: paused -> streaming
+[2026-09-25 04:11:32.962]: Info: [pipewire] Using negotiated Resolution: 2376x1080
+[2026-09-25 04:11:32.962]: Info: [wayland] Found display [wayland-0]
+[2026-09-25 04:11:32.963]: Info: [wayland] Found interface: zxdg_output_manager_v1(31) version 3
+[2026-09-25 04:11:32.963]: Info: [wayland] Found interface: zwp_linux_dmabuf_v1(57) version 5
+[2026-09-25 04:11:32.963]: Info: [wayland] Found interface: wl_output(82) version 4
+[2026-09-25 04:11:32.963]: Info: [wayland] Resolution: 2376x1080
+[2026-09-25 04:11:32.963]: Info: [wayland] Offset: 0x0
+[2026-09-25 04:11:32.963]: Info: [wayland] Logical size: 1584x720
+[2026-09-25 04:11:32.963]: Info: [wayland] Name: Virtual-SunshineVirt
+[2026-09-25 04:11:32.963]: Info: [wayland] Found monitor:  
+[2026-09-25 04:11:32.964]: Info: [pipewire] PipeWire stream state: streaming -> paused
+[2026-09-25 04:11:32.964]: Info: [pipewire] PipeWire stream state: paused -> unconnected
+[2026-09-25 04:11:32.965]: Info: 
+[2026-09-25 04:11:32.965]: Info: // Ignore any errors mentioned above, they are not relevant. //
+[2026-09-25 04:11:32.965]: Info: 
+[2026-09-25 04:11:32.965]: Info: Found H.264 encoder: h264_nvenc [nvenc]
+[2026-09-25 04:11:32.965]: Info: Found HEVC encoder: hevc_nvenc [nvenc]
+[2026-09-25 04:11:32.976]: Info: Open the Web UI to set your new username and password and getting started
+[2026-09-25 04:11:32.976]: Info: File /tmp/fsl-smoke2/sunshine/sunshine_state.json doesn't exist
+[2026-09-25 04:11:32.976]: Info: No main thread features enabled, skipping event loop
+[2026-09-25 04:11:32.977]: Info: Configuration UI available at [https://localhost:48991]
+[2026-09-25 04:11:32.978]: Error: avahi::entry_group_new() failed: Not permitted
+[2026-09-25 04:11:50.406]: Info: Terminate handler called
