@@ -170,6 +170,13 @@ namespace proc {
     // Ensure starting from a clean slate
     terminate();
 
+    // Per-session environment must not leak into the next session: `_env` is a member that survives
+    // across streams, so a pick from session N (SUNSHINE_CLIENT_DISPLAY_NAME=HDMI-A-1,
+    // SUNSHINE_CLIENT_VIRTUAL_DISPLAY=kwin) would otherwise be inherited by session N+1's prep
+    // commands and re-create/relocate a monitor the new client never asked for.
+    _env.erase("SUNSHINE_CLIENT_DISPLAY_NAME");
+    _env.erase("SUNSHINE_CLIENT_VIRTUAL_DISPLAY");
+
     auto iter = std::find_if(_apps.begin(), _apps.end(), [&app_id](const auto app) {
       return app.id == std::to_string(app_id);
     });
@@ -195,6 +202,14 @@ namespace proc {
     _env["SUNSHINE_CLIENT_GCMAP"] = std::to_string(launch_session->gcmap);
     _env["SUNSHINE_CLIENT_HOST_AUDIO"] = launch_session->host_audio ? "true" : "false";
     _env["SUNSHINE_CLIENT_ENABLE_SOPS"] = launch_session->enable_sops ? "true" : "false";
+    // Display picked for this session: the (translated) capture output name plus, when the pick
+    // targets the hook-managed virtual monitor, the switch the do/undo hooks branch on.
+    if (!launch_session->display_name.empty()) {
+      _env["SUNSHINE_CLIENT_DISPLAY_NAME"] = launch_session->display_name;
+    }
+    if (!launch_session->virtual_display.empty()) {
+      _env["SUNSHINE_CLIENT_VIRTUAL_DISPLAY"] = launch_session->virtual_display;
+    }
     int channelCount = launch_session->surround_info & 65535;
     switch (channelCount) {
       case 2:

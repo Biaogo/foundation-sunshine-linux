@@ -40,6 +40,9 @@ namespace rtsp_stream {
     bool enable_sops;  ///< Whether sequence output protection is requested.
     std::string client_name;  ///< Friendly client name from initial pairing.
 
+    std::string display_name;  ///< Display this session should capture (translated pick; empty = `config::video.output_name`).
+    std::string virtual_display;  ///< `kwin`/`kms` when the pick targets the hook-managed virtual monitor, else empty.
+
     std::optional<crypto::cipher::gcm_t> rtsp_cipher;  ///< AES-GCM cipher used once encrypted RTSP is negotiated.
     std::string rtsp_url_scheme;  ///< URL scheme selected by the RTSP SETUP flow.
     uint32_t rtsp_iv_counter;  ///< Counter value mixed into encrypted RTSP IVs.

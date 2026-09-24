@@ -33,6 +33,9 @@
 #include "network.h"
 #include "nvhttp.h"
 #include "platform/common.h"
+#if defined(__linux__)
+  #include "platform/linux/virtual_display.h"
+#endif
 #include "process.h"
 #include "rtsp.h"
 #include "system_tray.h"
@@ -507,6 +510,32 @@ namespace nvhttp {
     launch_session->continuous_audio = util::from_view(get_arg(args, "continuousAudio", "0"));
     launch_session->gcmap = (int) util::from_view(get_arg(args, "gcmap", "0"));
     launch_session->enable_hdr = util::from_view(get_arg(args, "hdrMode", "0"));
+
+    // Per-session display pick from the client's display selector (Moonlight sends it as the
+    // `display_name` launch argument). A virtual id is translated here so that both the capture
+    // path and the prep hooks receive a concrete target, plus the hook switch that tells the
+    // do-hook which backend the client asked for.
+    const auto requested_display = get_arg(args, "display_name", "");
+    if (!requested_display.empty()) {
+      launch_session->display_name = requested_display;
+#if defined(__linux__)
+      if (requested_display == platf::VDISPLAY_KWIN_ID || requested_display == platf::VDISPLAY_KMS_ID) {
+        launch_session->virtual_display = requested_display == platf::VDISPLAY_KWIN_ID ?
+                                            platf::VIRTUAL_DISPLAY_HOOK_KWIN :
+                                            platf::VIRTUAL_DISPLAY_HOOK_KMS;
+        launch_session->display_name = platf::VIRTUAL_DISPLAY_OUTPUT_NAME;
+      }
+#endif
+      BOOST_LOG(info) << "Launch session will use display ["sv << requested_display << ']';
+    }
+#if defined(__linux__)
+    else if (config::video.output_name == platf::VIRTUAL_DISPLAY_OUTPUT_NAME) {
+      // Host-config pick: the client's "默认" entry mirrors `output_name`. When that names the
+      // hook-managed virtual monitor the do-hook still has to run, so inject the switch for this
+      // path too (otherwise the hook no-ops and the capture waits for a monitor nobody creates).
+      launch_session->virtual_display = platf::VIRTUAL_DISPLAY_HOOK_KWIN;
+    }
+#endif
 
     // Encrypted RTSP is enabled with client reported corever >= 1
     auto corever = util::from_view(get_arg(args, "corever", "0"));

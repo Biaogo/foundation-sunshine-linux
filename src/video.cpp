@@ -1496,15 +1496,49 @@ namespace video {
   }
 
   /**
+   * @brief Wait until a client-requested capture output appears in the enumeration.
+   *
+   * The virtual monitor is created by the stream's `global_prep_cmd` do-hook, which runs around
+   * stream start, so it may not be enumerated yet on the first lookup. Polling here keeps the
+   * session on the display the client asked for instead of silently falling back to whichever
+   * output enumerated first.
+   *
+   * @param dev_type The encoder device type used for display lookup.
+   * @param name Requested display name (empty = nothing to wait for).
+   * @param timeout Maximum total wait.
+   * @return True when the requested output is available (or nothing was requested).
+   */
+  bool wait_for_display(platf::mem_type_e dev_type, const std::string &name, std::chrono::milliseconds timeout) {
+    if (name.empty()) {
+      return true;
+    }
+
+    const auto deadline = std::chrono::steady_clock::now() + timeout;
+    do {
+      const auto names = platf::display_names(dev_type);
+      if (std::find(names.begin(), names.end(), name) != names.end()) {
+        BOOST_LOG(info) << "Requested display ["sv << name << "] is available"sv;
+        return true;
+      }
+      std::this_thread::sleep_for(200ms);
+    } while (std::chrono::steady_clock::now() < deadline);
+
+    BOOST_LOG(warning) << "Requested display ["sv << name << "] did not appear within "sv << timeout.count() << " ms"sv;
+    return false;
+  }
+
+  /**
    * @brief Update the list of display names before or during a stream.
    * @details This will attempt to keep `current_display_index` pointing at the same display.
    * @param dev_type The encoder device type used for display lookup.
    * @param display_names The list of display names to repopulate.
    * @param current_display_index The current display index or -1 if not yet known.
+   * @param requested_name Display picked for this session; empty = the host's configured `output_name`.
    */
-  void refresh_displays(platf::mem_type_e dev_type, std::vector<std::string> &display_names, int &current_display_index) {
+  void refresh_displays(platf::mem_type_e dev_type, std::vector<std::string> &display_names, int &current_display_index, const std::string &requested_name = {}) {
     // It is possible that the output name may be empty even if it wasn't before (device disconnected) or vice-versa
-    const auto output_name {display_device::map_output_name(config::video.output_name)};
+    // A display picked for this session wins over the host's global `output_name`.
+    const auto output_name {display_device::map_output_name(requested_name.empty() ? config::video.output_name : requested_name)};
     std::string current_display_name;
 
     // If we have a current display index, let's start with that
@@ -1590,7 +1624,10 @@ namespace video {
     // get the most up-to-date list available monitors
     std::vector<std::string> display_names;
     int display_p = -1;
-    refresh_displays(encoder.platform_formats->dev_type, display_names, display_p);
+    // A hook-created output (virtual display) may still be coming up when the capture thread starts:
+    // wait for the session's pick before falling back to whatever enumerates first.
+    wait_for_display(encoder.platform_formats->dev_type, capture_ctxs.front().config.display_name, 20s);
+    refresh_displays(encoder.platform_formats->dev_type, display_names, display_p, capture_ctxs.front().config.display_name);
     auto disp = platf::display(encoder.platform_formats->dev_type, display_names[display_p], capture_ctxs.front().config);
     if (!disp) {
       return;
@@ -1779,7 +1816,7 @@ namespace video {
               disp.reset();
 
               // Refresh display names since a display removal might have caused the reinitialization
-              refresh_displays(encoder.platform_formats->dev_type, display_names, display_p);
+              refresh_displays(encoder.platform_formats->dev_type, display_names, display_p, capture_ctxs.front().config.display_name);
 
               // Process any pending display switch with the new list of displays
               if (switch_display_event->peek()) {
@@ -2705,7 +2742,7 @@ namespace video {
 
     while (encode_session_ctx_queue.running()) {
       // Refresh display names since a display removal might have caused the reinitialization
-      refresh_displays(encoder.platform_formats->dev_type, display_names, display_p);
+      refresh_displays(encoder.platform_formats->dev_type, display_names, display_p, synced_session_ctxs.front()->config.display_name);
 
       // Process any pending display switch with the new list of displays
       if (switch_display_event->peek()) {

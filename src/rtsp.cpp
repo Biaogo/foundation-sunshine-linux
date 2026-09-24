@@ -1205,6 +1205,10 @@ namespace rtsp_stream {
       config.monitor.chromaSamplingType = (int) util::from_view(args.at("x-ss-video[0].chromaSamplingType"sv));
       config.monitor.enableIntraRefresh = (int) util::from_view(args.at("x-ss-video[0].intraRefresh"sv));
 
+      // Per-session display pick from the client's display selector (translated in the launch
+      // handler); empty means "use the host's configured output_name".
+      config.monitor.display_name = session.display_name;
+
       configuredBitrateKbps = util::from_view(args.at("x-ml-video.configuredBitrateKbps"sv));
     } catch (std::out_of_range &) {
       respond(sock, session, &option, 400, "BAD REQUEST", req->sequenceNumber, {});

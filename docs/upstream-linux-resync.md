@@ -227,6 +227,23 @@ deployment live in the NixOS repo (`modules/home/optional/sunshine-vdisplay.nix`
 docs `docs/linux-headless-sddm-streaming.md` and `docs/vdd-prerequisite-closure.md` are portable
 as-is.
 
+## 5b. Landed on `refork/linux` so far (build-verified each step)
+
+| Step | What | Where |
+|---|---|---|
+| 1 | Capability/probe traps re-applied: `has_effective_admin()` (EFFECTIVE-only), keep CAP_PERMITTED when shedding only EFFECTIVE, KWIN verified before KMS in auto mode | `src/platform/common.h`, `src/platform/linux/{misc,kwingrab}.cpp` |
+| 2 | Client-facing display list foundation: virtual-id constants plus the `OFFER_VIRTUAL_DISPLAY_IDS` gate (default **false** — the ids stay hidden until the launch path honours them), `platf::client_display_names()`, and the KWin routing for Wayland-side names inside `display()` (numeric/empty picks keep upstream's KMS-first path) | `src/platform/linux/virtual_display.h` (new), `src/platform/common.h`, `src/platform/linux/misc.cpp` |
+| 3 | `/displays` endpoint on the GameStream HTTPS server, JSON shape identical to the fork's (verified live: `{"count":1,…"display_name":"Virtual-SunshineVirt"…}` matching the backend actually used for capture) | `src/nvhttp.cpp` |
+| 4 | Per-session display pick: `display_name` launch argument → virtual-id translation + hook switch → `launch_session_t{display_name,virtual_display}` → `config.monitor.display_name` → `refresh_displays()` prefers it → 20 s wait for a hook-created output; prep-command env gets `SUNSHINE_CLIENT_DISPLAY_NAME`/`SUNSHINE_CLIENT_VIRTUAL_DISPLAY` with per-session erase | `src/nvhttp.cpp`, `src/rtsp.{h,cpp}`, `src/video.{h,cpp}`, `src/process.cpp` |
+
+Still pending from the queue: the pre-probe hook ordering (step 8 — on this base the prep commands and
+the encoder probe ordering must be checked with a real client before the gate is flipped) and the
+intent-translation redesign (step 9). **`OFFER_VIRTUAL_DISPLAY_IDS` stays false until a Moonlight
+session successfully launches on `虚拟-KWin` / `虚拟-KMS` / 默认 with the new build**: offering an id
+before the launch path is proven is the one regression this port must not introduce. Note also that
+with the host's `output_name` set to the virtual monitor, every session now runs the do-hook (that is
+the fork's rule-20 behaviour, intentional, but it means the hook must be safe for non-virtual picks).
+
 ## 6. Recovered artifacts
 
 - `sync/upstream-linux-batch` (commit `b48a1cfb`, 7 commits, 2026-09-25) — the previous session's
