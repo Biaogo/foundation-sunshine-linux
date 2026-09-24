@@ -1,0 +1,244 @@
+diff --git a/src/display_device/parsed_config.h b/src/display_device/parsed_config.h
+new file mode 100644
+index 00000000..aa542c49
+--- /dev/null
++++ b/src/display_device/parsed_config.h
+@@ -0,0 +1,238 @@
++#pragma once
++
++// standard includes
++#include <string>
++
++// local includes
++#include "display_device.h"
++
++// forward declarations
++namespace config {
++  struct video_t;
++}
++namespace rtsp_stream {
++  struct launch_session_t;
++}
++
++namespace display_device {
++
++  /**
++   * @brief Configuration containing parsed information from the user config (video related)
++   *        and the current session.
++   */
++  struct parsed_config_t {
++    /**
++     * @brief Enum detailing how to prepare the display device.
++     */
++    enum class device_prep_e : int {
++      no_operation, /**< Do not change display topology; resolution, refresh rate, and HDR are controlled by their own options. */
++      ensure_active, /**< Activate the device if needed. */
++      ensure_primary, /**< Activate the device if needed and make it a primary display. */
++      ensure_only_display, /**< Deactivate other displays and turn on the specified one only. */
++      ensure_secondary /**< Stream on the display as a secondary (extended) display. In VDD mode, physical stays primary+ VDD secondary. */
++    };
++
++    /**
++     * @brief Convert the string to the matching value of device_prep_e.
++     * @param value String value to map to device_prep_e.
++     * @returns A device_prep_e value (converted to int) that matches the string
++     *          or the default value if string does not match anything.
++     * @see device_prep_e
++     *
++     * EXAMPLES:
++     * ```cpp
++     * const int device_prep = device_prep_from_view("ensure_only_display");
++     * ```
++     */
++    static int
++    device_prep_from_view(std::string_view value);
++
++    /**
++     * @brief Enum detailing how to change the display's resolution.
++     */
++    enum class resolution_change_e : int {
++      no_operation, /**< Keep the current resolution. */
++      automatic, /**< Set the resolution to the one received from the client if the "Optimize game settings" option is also enabled in the client. */
++      manual /**< User has to specify the resolution ("Optimize game settings" option must be enabled in the client). */
++    };
++
++    /**
++     * @brief Convert the string to the matching value of resolution_change_e.
++     * @param value String value to map to resolution_change_e.
++     * @returns A resolution_change_e value (converted to int) that matches the string
++     *          or the default value if string does not match anything.
++     * @see resolution_change_e
++     *
++     * EXAMPLES:
++     * ```cpp
++     * const int resolution_change = resolution_change_from_view("manual");
++     * ```
++     */
++    static int
++    resolution_change_from_view(std::string_view value);
++
++    /**
++     * @brief Enum detailing how to change the display's refresh rate.
++     */
++    enum class refresh_rate_change_e : int {
++      no_operation, /**< Keep the current refresh rate. */
++      automatic, /**< Set the refresh rate to the FPS value received from the client. */
++      manual /**< User has to specify the refresh rate. */
++    };
++
++    /**
++     * @brief Convert the string to the matching value of refresh_rate_change_e.
++     * @param value String value to map to refresh_rate_change_e.
++     * @returns A refresh_rate_change_e value (converted to int) that matches the string
++     *          or the default value if string does not match anything.
++     * @see refresh_rate_change_e
++     *
++     * EXAMPLES:
++     * ```cpp
++     * const int refresh_rate_change = refresh_rate_change_from_view("manual");
++     * ```
++     */
++    static int
++    refresh_rate_change_from_view(std::string_view value);
++
++    /**
++     * @brief Enum detailing how to change the display's HDR state.
++     */
++    enum class hdr_prep_e : int {
++      no_operation, /**< User has to switch the HDR state manually */
++      automatic /**< Switch HDR state based on the session settings and if display supports it. */
++    };
++
++    /**
++     * @brief Convert the string to the matching value of hdr_prep_e.
++     * @param value String value to map to hdr_prep_e.
++     * @returns A hdr_prep_e value (converted to int) that matches the string
++     *          or the default value if string does not match anything.
++     * @see hdr_prep_e
++     *
++     * EXAMPLES:
++     * ```cpp
++     * const int hdr_prep = hdr_prep_from_view("automatic");
++     * ```
++     */
++    static int
++    hdr_prep_from_view(std::string_view value);
++
++    /**
++     * @brief Enum detailing how to prepare physical displays when using VDD (Virtual Display Device).
++     * @note In VDD mode, topology changes are handled by Windows automatically when displays are added/removed,
++     *       so we don't save/restore topology state - just modify it as requested.
++     */
++    enum class vdd_prep_e : int {
++      no_operation, /**< Do nothing to physical displays. */
++      vdd_as_primary, /**< VDD as primary display, physical displays as secondary (extend mode). */
++      vdd_as_secondary, /**< Physical displays as primary, VDD as secondary (extend mode). */
++      display_off /**< Turn off physical displays, only VDD remains active. */
++    };
++
++    /**
++     * @brief Convert the string to the matching value of vdd_prep_e.
++     * @param value String value to map to vdd_prep_e.
++     * @returns A vdd_prep_e value (converted to int) that matches the string
++     *          or the default value if string does not match anything.
++     * @see vdd_prep_e
++     *
++     * EXAMPLES:
++     * ```cpp
++     * const int vdd_prep = vdd_prep_from_view("display_off");
++     * ```
++     */
++    static int
++    vdd_prep_from_view(std::string_view value);
++
++    /**
++     * @brief Map unified device_prep_e to internal vdd_prep_e for VDD mode.
++     */
++    static vdd_prep_e
++    to_vdd_prep(device_prep_e unified);
++
++    /**
++     * @brief Map unified device_prep_e to internal device_prep_e for physical display mode.
++     */
++    static device_prep_e
++    to_physical_device_prep(device_prep_e unified);
++
++    std::string device_id; /**< Device id manually provided by the user via config. */
++    device_prep_e device_prep; /**< The device_prep_e value taken from config. */
++    vdd_prep_e vdd_prep; /**< The vdd_prep_e value mapped from device_prep for VDD mode. */
++    boost::optional<resolution_t> resolution; /**< Parsed resolution value we need to switch to. Empty optional if no action is required. */
++    boost::optional<refresh_rate_t> refresh_rate; /**< Parsed refresh rate value we need to switch to. Empty optional if no action is required. */
++    boost::optional<bool> change_hdr_state; /**< Parsed HDR state value we need to switch to (true == ON, false == OFF). Empty optional if no action is required. */
++    boost::optional<bool> use_vdd; /**< Parsed VDD state value we need to switch to (true == ON, false == OFF). */
++  };
++
++  /**
++   * @brief What a launch is actually aiming at.
++   *
++   * Both the display configuration and the stream startup recovery need to know
++   * the same three things - is this a virtual display, did the user pick the
++   * display on purpose, and how much are we allowed to rearrange - so they are
++   * resolved in one place instead of being re-derived per call site.
++   */
++  struct display_intent_t {
++    enum class target_e {
++      vdd, /**< A virtual display was explicitly requested by the config or the client. */
++      physical, /**< A physical display: the one that was named, or whichever is primary. */
++      unavailable /**< The client named a physical display that is not connected. */
++    };
++
++    target_e target;
++    std::string device_id; /**< Resolved device id. Empty means "whichever display is primary". */
++    bool user_named_display; /**< The device id above is an existing display the user picked on purpose. */
++    parsed_config_t::device_prep_e device_prep; /**< Config value, overridden by the client's custom screen mode. */
++  };
++
++  /**
++   * @brief Resolve what the launch is aiming at.
++   * @param config User's video related configuration.
++   * @param session Session information.
++   * @returns The resolved intent. A configured display that no longer exists is
++   *          downgraded to the primary display; a client-named one is reported
++   *          as unavailable instead.
++   */
++  display_intent_t
++  resolve_display_intent(const config::video_t &config, rtsp_stream::launch_session_t &session);
++
++  /**
++   * @brief Const overload for parse paths that receive the session as const.
++   * Same resolution logic; the virtual-display hook env is only injected when
++   * a mutable session is available.
++   */
++  display_intent_t
++  resolve_display_intent_mutable(const config::video_t &config, rtsp_stream::launch_session_t &session);
++
++  /**
++   * @brief Parse the user configuration and the session information.
++   * @param config User's video related configuration.
++   * @param session Session information.
++   * @param is_reconfigure True for Launch and dynamic reconfiguration; false for Resume.
++   * @returns Parsed configuration or empty optional if parsing has failed.
++   *
++   * EXAMPLES:
++   * ```cpp
++   * const std::shared_ptr<rtsp_stream::launch_session_t> launch_session; // Assuming ptr is properly initialized
++   * const config::video_t &video_config { config::video };
++   * const auto parsed_config = make_parsed_config(video_config, *launch_session, false);
++   * ```
++   */
++  boost::optional<parsed_config_t>
++  make_parsed_config(const config::video_t &config, const rtsp_stream::launch_session_t &session, bool is_reconfigure);
++
++  /**
++   * @brief Whether display preparation should put the source display in HDR mode.
++   * @param config User's video related configuration.
++   * @param session Session information.
++   * @returns The session's resolved source-display intent when available, with
++   *          the legacy enable_hdr/synthetic_hdr flags as fallback. This is the
++   *          single decision shared by HDR prep and every display-prep consumer
++   *          (e.g. the Vulkan HDR bridge); do not re-derive it from raw flags.
++   */
++  bool
++  display_prepared_for_hdr(const config::video_t &config, const rtsp_stream::launch_session_t &session);
++
++}  // namespace display_device

@@ -1,0 +1,671 @@
+diff --git a/src/config.h b/src/config.h
+index 78615387..98ea2692 100644
+--- a/src/config.h
++++ b/src/config.h
+@@ -4,393 +4,281 @@
+  */
+ #pragma once
+ 
+-// standard includes
+ #include <bitset>
+ #include <chrono>
++#include <map>
+ #include <optional>
++#include <set>
+ #include <string>
+-#include <string_view>
+ #include <unordered_map>
+ #include <vector>
+ 
+-// local includes
+ #include "nvenc/nvenc_config.h"
+ 
+ namespace config {
+-  namespace nv {
+-    /**
+-     * @brief Convert Sunshine's NVENC quality preset number to FFmpeg's stable symbolic name.
+-     *
+-     * @param quality_preset Validated Sunshine quality preset in the range 1 through 7.
+-     * @return FFmpeg preset name from `p1` through `p7`.
+-     */
+-    std::string ffmpeg_preset_from_quality(int quality_preset);
+-  }  // namespace nv
+-
+-  // Valid range for the packetsize limit
+-  constexpr int PACKETSIZE_MIN = 200;  ///< Lowest accepted configured packet size in bytes.
+-  constexpr int PACKETSIZE_MAX = 65535;  ///< Highest accepted configured packet size in bytes.
+-  constexpr int PACKETSIZE_SMALL = 500;  ///< Conservative packet size used for low-MTU links.
+-  constexpr int PACKETSIZE_LARGE = 1456;  ///< Default large packet size that avoids common MTU fragmentation.
+-
+-  inline constexpr std::string_view GAMEPAD_DRIVER_ALL = "all";  ///< Allow every available Windows virtual gamepad driver.
+-  inline constexpr std::string_view GAMEPAD_DRIVER_VIRTUALHID = "virtualhid";  ///< Allow only Virtual HID Driver for Windows gamepads.
+-  inline constexpr std::string_view GAMEPAD_DRIVER_VIGEMBUS = "vigembus";  ///< Allow only ViGEmBus for Windows gamepads.
+-
+   // track modified config options
+-  inline std::unordered_map<std::string, std::string> modified_config_settings;  ///< Configuration keys changed during the current parse or UI update.
++  inline std::unordered_map<std::string, std::string> modified_config_settings;
+ 
+-  // sensitive values that should be redacted from logging
+-  /**
+-   * @brief Configuration keys whose values must be hidden in logs.
+-   */
+-  inline constexpr std::array redacted_config = {
+-    "csrf_allowed_origins"
+-  };
+-
+-  /**
+-   * @brief Log configuration entries and optionally mark them for persistence.
+-   *
+-   * @param vars Parsed configuration entries to log.
+-   * @param save Whether modified configuration values should be written back to disk.
+-   */
+-  void log_config_settings(const std::unordered_map<std::string, std::string> &vars, bool save);
+-
+-  /**
+-   * @brief Video encoder, capture, and color settings loaded from configuration.
+-   */
+   struct video_t {
+     // ffmpeg params
+-    /**
+-     * @brief Quantization parameter used by encoders where higher values trade quality for compression.
+-     */
+     int qp;  // higher == more compression and less quality
+ 
+-    int hevc_mode;  ///< HEVC support mode advertised to clients.
+-    int av1_mode;  ///< AV1 support mode advertised to clients.
+-
+-    int min_threads;  ///< Minimum number of threads or slices for CPU encoding.
++    int hevc_mode;
++    int av1_mode;
+ 
++    int max_bitrate;  // Maximum bitrate, sets ceiling in kbps for bitrate requested from client
++    int min_threads;  // Minimum number of threads/slices for CPU encoding
+     struct {
+-      std::string sw_preset;  ///< FFmpeg software-encoder preset.
+-      std::string sw_tune;  ///< FFmpeg software-encoder tuning profile.
+-      std::optional<int> svtav1_preset;  ///< SVT-AV1 preset; unset uses the encoder default.
+-    } sw;  ///< Software encoder options.
+-
+-    nvenc::nvenc_config nv;  ///< NVIDIA NVENC encoder settings.
+-    bool nv_realtime_hags;  ///< Enable the NVIDIA realtime HAGS workaround.
+-    bool nv_opengl_vulkan_on_dxgi;  ///< Prefer NVIDIA OpenGL/Vulkan-on-DXGI interop.
+-    bool nv_sunshine_high_power_mode;  ///< Request NVIDIA high-power mode for Sunshine.
++      std::string sw_preset;
++      std::string sw_tune;
++      std::optional<int> svtav1_preset;
++    } sw;
++
++    nvenc::nvenc_config nv;
++    bool nv_realtime_hags;
++    bool nv_opengl_vulkan_on_dxgi;
++    bool nv_sunshine_high_power_mode;
++    bool vdd_keep_enabled;
++    /** When true, after stream end if no display is found (headless), create Zako VDD automatically. Default false. */
++    bool vdd_headless_create_enabled;
++    /** When true, reuse existing VDD on client switch instead of destroying and recreating. Default true. */
++    bool vdd_reuse;
++    /** When true, Zako Direct Capture borrows VDD shared textures instead of copying into Sunshine-owned capture textures. */
++    bool vdd_borrowed_texture;
++    /** Automatically validate and expose Vulkan HDR colorspaces for HDR VDD sessions. */
++    bool vdd_vulkan_hdr_bridge;
+ 
+     struct {
+-      std::string preset;  ///< FFmpeg NVENC preset name shared by supported FFmpeg versions.
+-      int multipass;  ///< Legacy NVENC multipass mode.
+-      int h264_coder;  ///< Legacy NVENC H.264 entropy-coding mode.
+-      int spatial_aq;  ///< FFmpeg NVENC spatial adaptive-quantization mode.
+-      int vbv_percentage_increase;  ///< Legacy NVENC VBV buffer-size percentage increase.
+-    } nv_legacy;  ///< Legacy NVIDIA encoder options kept for config compatibility.
++      int preset;
++      int multipass;
++      int h264_coder;
++      int aq;
++      int vbv_percentage_increase;
++    } nv_legacy;
+ 
+     struct {
+-      std::optional<int> qsv_preset;  ///< Intel Quick Sync preset; unset uses the encoder default.
+-      std::optional<int> qsv_cavlc;  ///< Intel Quick Sync CAVLC selection; unset uses the encoder default.
+-      bool qsv_slow_hevc;  ///< Whether to enable the slower Intel Quick Sync HEVC path.
+-    } qsv;  ///< Intel Quick Sync encoder options.
++      std::optional<int> qsv_preset;
++      std::optional<int> qsv_cavlc;
++      bool qsv_slow_hevc;
++    } qsv;
+ 
+     struct {
+-      std::optional<int> amd_usage_h264;  ///< AMF H.264 usage profile; unset uses the encoder default.
+-      std::optional<int> amd_usage_hevc;  ///< AMF HEVC usage profile; unset uses the encoder default.
+-      std::optional<int> amd_usage_av1;  ///< AMF AV1 usage profile; unset uses the encoder default.
+-      std::optional<int> amd_rc_h264;  ///< AMF H.264 rate-control mode; unset uses the encoder default.
+-      std::optional<int> amd_rc_hevc;  ///< AMF HEVC rate-control mode; unset uses the encoder default.
+-      std::optional<int> amd_rc_av1;  ///< AMF AV1 rate-control mode; unset uses the encoder default.
+-      std::optional<int> amd_enforce_hrd;  ///< AMF HRD enforcement setting; unset uses the encoder default.
+-      std::optional<int> amd_quality_h264;  ///< AMF H.264 quality preset; unset uses the encoder default.
+-      std::optional<int> amd_quality_hevc;  ///< AMF HEVC quality preset; unset uses the encoder default.
+-      std::optional<int> amd_quality_av1;  ///< AMF AV1 quality preset; unset uses the encoder default.
+-      std::optional<int> amd_preanalysis;  ///< AMF pre-analysis setting; unset uses the encoder default.
+-      std::optional<int> amd_vbaq;  ///< AMF variance-based adaptive-quantization setting; unset uses the encoder default.
+-      std::optional<int> amd_max_au_size;  ///< Maximum AMF H.264/HEVC access unit size in bits; unset uses the encoder default.
+-      int amd_coder;  ///< AMF entropy-coding mode.
+-    } amd;  ///< AMD AMF encoder options.
++      std::optional<int> amd_usage_h264;
++      std::optional<int> amd_usage_hevc;
++      std::optional<int> amd_usage_av1;
++      std::optional<int> amd_rc_h264;
++      std::optional<int> amd_rc_hevc;
++      std::optional<int> amd_rc_av1;
++      std::optional<int> amd_enforce_hrd;
++      std::optional<int> amd_quality_h264;
++      std::optional<int> amd_quality_hevc;
++      std::optional<int> amd_quality_av1;
++      std::optional<int> amd_preanalysis;
++      std::optional<int> amd_vbaq;
++      int amd_coder;
++      int amd_qvbr_quality = 23;  // QVBR quality level 1-51 (higher=better, default=23)
++      int amd_ltr_frames = 0;  // LTR frames for RFI (0=disabled by default; matches FFmpeg amfenc behavior to avoid static-region color blocks)
++      int amd_slices_per_frame = 0;  // Slices/tiles per frame (0=client decides, 1-4=minimum)
++      bool amd_avcodec_compat = false;  // Optional AVCodec-like AMF adapter; false keeps the clean standalone path.
++      std::optional<bool> amd_multi_hw_instance;
++      // The properties below historically had aggressive hardcoded defaults that
++      // forced AMF code paths FFmpeg never touches (HIGH_MOTION_QUALITY_BOOST=on,
++      // INPUT_QUEUE_SIZE=1, LOWLATENCY_MODE=on, AV1 LOWEST_LATENCY). Those paths
++      // expose latent AMD driver bugs (e.g. RDNA4 Adrenalin 26.5.x freeze after
++      // ~minutes, AlkaidLab/foundation-sunshine#666). Default is nullopt =
++      // "do not call SetProperty" so the driver picks its own default, matching
++      // FFmpeg amfenc behavior. Users can still opt in via the WebUI.
++      std::optional<bool> amd_high_motion_qb;
++      std::optional<bool> amd_lowlatency_mode;
++      // Standalone: AMF INPUT_QUEUE_SIZE. AVCodec compatibility: async_depth cap.
++      std::optional<int> amd_input_queue_size;   // 1-16
++      std::optional<int> amd_av1_latency_mode;   // AMF_VIDEO_ENCODER_AV1_ENCODING_LATENCY_MODE_*
++    } amd;
+ 
+     struct {
+-      int vt_allow_sw;  ///< Whether VideoToolbox may use software encoding.
+-      int vt_require_sw;  ///< Whether VideoToolbox must use software encoding.
+-      int vt_realtime;  ///< Whether VideoToolbox uses realtime encoding mode.
+-      int vt_coder;  ///< VideoToolbox entropy-coding mode.
+-    } vt;  ///< VideoToolbox encoder options.
++      int vt_allow_sw;
++      int vt_require_sw;
++      int vt_realtime;
++      int vt_coder;
++    } vt;
+ 
+     struct {
+-      std::optional<int> blbrc;  ///< VA-API block-level bitrate-control setting; unset uses the encoder default.
+-      std::optional<int> vaapi_quality;  ///< VA-API quality setting; unset uses the encoder default.
+-      std::optional<int> vaapi_rc;  ///< VA-API rate-control mode; unset uses the encoder default.
+-      std::string vaapi_rc_str;  ///< Text representation of the selected VA-API rate-control mode.
+-      bool strict_rc_buffer;  ///< Whether VA-API must strictly enforce the rate-control buffer.
+-    } vaapi;  ///< VA-API encoder options.
+-
+-    struct {
+-      int tune;  ///< Vulkan encoder tuning mode: default, HQ, LL, ULL, or lossless.
+-      int rc_mode;  ///< Vulkan encoder rate-control mode: driver, CQP, CBR, or VBR.
+-    } vk;  ///< Vulkan encoder options.
+-
+-    std::string capture;  ///< Capture backend name selected by configuration.
+-    std::string encoder;  ///< Encoder backend name selected by configuration.
+-    std::string adapter_name;  ///< Display adapter name selected in configuration.
+-    std::string output_name;  ///< Display output name selected in configuration.
+-
+-    /**
+-     * @brief Display-device integration settings.
+-     */
+-    struct dd_t {
+-      /**
+-       * @brief Compatibility workarounds for display-device control.
+-       */
+-      struct workarounds_t {
+-        std::chrono::milliseconds hdr_toggle_delay;  ///< Specify whether to apply HDR high-contrast color workaround and what delay to use.
+-      };
+-
+-      /**
+-       * @brief Selects how Sunshine prepares the active display before streaming.
+-       */
+-      enum class config_option_e {
+-        disabled,  ///< Disable the configuration for the device.
+-        verify_only,  ///< @seealso{display_device::SingleDisplayConfiguration::DevicePreparation}
+-        ensure_active,  ///< @seealso{display_device::SingleDisplayConfiguration::DevicePreparation}
+-        ensure_primary,  ///< @seealso{display_device::SingleDisplayConfiguration::DevicePreparation}
+-        ensure_only_display  ///< @seealso{display_device::SingleDisplayConfiguration::DevicePreparation}
+-      };
+-
+-      /**
+-       * @brief Selects how Sunshine chooses the stream display resolution.
+-       */
+-      enum class resolution_option_e {
+-        disabled,  ///< Do not change resolution.
+-        automatic,  ///< Change resolution and use the one received from Moonlight.
+-        manual  ///< Change resolution and use the manually provided one.
+-      };
+-
+-      /**
+-       * @brief Selects how Sunshine chooses the stream display refresh rate.
+-       */
+-      enum class refresh_rate_option_e {
+-        disabled,  ///< Do not change refresh rate.
+-        automatic,  ///< Change refresh rate and use the one received from Moonlight.
+-        manual  ///< Change refresh rate and use the manually provided one.
+-      };
+-
+-      /**
+-       * @brief Selects how Sunshine handles HDR state for the stream display.
+-       */
+-      enum class hdr_option_e {
+-        disabled,  ///< Do not change HDR settings.
+-        automatic  ///< Change HDR settings and use the state requested by Moonlight.
+-      };
+-
+-      /**
+-       * @brief Single display mode remapping rule from configuration.
+-       */
+-      struct mode_remapping_entry_t {
+-        std::string requested_resolution;  ///< Resolution string requested by the client.
+-        std::string requested_fps;  ///< Refresh-rate string requested by the client.
+-        std::string final_resolution;  ///< Resolution string to apply after remapping.
+-        std::string final_refresh_rate;  ///< Refresh-rate string to apply after remapping.
+-      };
+-
+-      /**
+-       * @brief Collection of display mode remapping rules.
+-       */
+-      struct mode_remapping_t {
+-        std::vector<mode_remapping_entry_t> mixed;  ///< To be used when `resolution_option` and `refresh_rate_option` is set to `automatic`.
+-        std::vector<mode_remapping_entry_t> resolution_only;  ///< To be use when only `resolution_option` is set to `automatic`.
+-        std::vector<mode_remapping_entry_t> refresh_rate_only;  ///< To be use when only `refresh_rate_option` is set to `automatic`.
+-      };
+-
+-      config_option_e configuration_option;  ///< Display-preparation mode selected by configuration.
+-      resolution_option_e resolution_option;  ///< Resolution-selection mode selected by configuration.
+-      std::string manual_resolution;  ///< Manual resolution in case `resolution_option == resolution_option_e::manual`.
+-      refresh_rate_option_e refresh_rate_option;  ///< Refresh-rate selection mode selected by configuration.
+-      std::string manual_refresh_rate;  ///< Manual refresh rate in case `refresh_rate_option == refresh_rate_option_e::manual`.
+-      hdr_option_e hdr_option;  ///< HDR-selection mode selected by configuration.
+-      std::chrono::milliseconds config_revert_delay;  ///< Time to wait until settings are reverted (after stream ends/app exists).
+-      bool config_revert_on_disconnect;  ///< Specify whether to revert display configuration on client disconnect.
+-      mode_remapping_t mode_remapping;  ///< Display mode remapping rules grouped by automatic selection mode.
+-      workarounds_t wa;  ///< Display-device compatibility workarounds.
+-    } dd;  ///< Display-device integration settings.
+-
+-    int max_bitrate;  ///< Maximum bitrate ceiling in kbps for bitrate requested from the client.
+-    double minimum_fps_target;  ///< Lowest framerate that will be used when streaming. Range 0-1000, 0 = half of client's requested framerate.
++      bool strict_rc_buffer;
++    } vaapi;
++
++    std::string capture;
++    std::string encoder;
++    std::string adapter_name;
++
++    std::string output_name;
++    std::string capture_target;  // "display" or "window" - determines whether to capture display or window
++    std::string window_title;     // Window title to capture when capture_target="window"
++    bool capture_cursor;          // Whether to composite the host mouse cursor into the stream (toggle: Ctrl+Alt+Shift+N)
++    int display_device_prep;
++    int resolution_change;
++    std::string manual_resolution;
++    int refresh_rate_change;
++    std::string manual_refresh_rate;
++    int hdr_prep;
++    bool variable_refresh_rate;  // Allow video stream framerate to match render framerate for VRR support
++    int minimum_fps_target;  // Minimum FPS target (0 = auto, 1-1000 = minimum FPS to maintain)
++    bool input_activity_boost;  // Temporarily raise encoding cadence after local input while VRR is active
++    int input_activity_boost_fps;  // Minimum FPS floor to maintain during the input activity boost window
++    int input_activity_boost_window_ms;  // Duration of the input activity boost window in milliseconds
++    std::string downscaling_quality;  // Downscaling quality: "fast" (bilinear+8pt), "balanced" (bicubic), "high_quality" (future: lanczos)
++    std::string hdr_luminance_analysis;  // Per-frame HDR analysis: "auto", "on", "off"
++    std::string capture_compute_shader;  // GPU frame conversion: "auto", "on", "off"
++    bool wgc_disable_secure_desktop;  // Auto-disable UAC secure desktop when using WGC capture
++    bool dynamic_resolution_follow_display;  // If true, follow mid-stream host display resolution changes and notify client via extension; if false, keep initial stream resolution and let scaler handle changes (compatible with legacy clients like PSVita Moonlight that don't implement the extension)
+   };
+ 
+-  /**
+-   * @brief Audio capture and encoder settings loaded from configuration.
+-   */
+   struct audio_t {
+-    std::string sink;  ///< Audio output device/sink to use for audio capture
+-    std::string virtual_sink;  ///< Virtual audio sink for audio routing
+-    bool stream;  ///< Enable audio streaming to clients
+-    bool install_steam_drivers;  ///< Install Steam audio drivers for enhanced compatibility
++    std::string sink;
++    std::string virtual_sink;
++    std::string microphone_redirect_backend;
++    bool stream;
++    bool stream_mic;
++    bool install_steam_drivers;
+   };
+ 
+-  /**
+-   * @brief Encryption policy that always sends unencrypted video.
+-   */
+   constexpr int ENCRYPTION_MODE_NEVER = 0;  // Never use video encryption, even if the client supports it
+-  /**
+-   * @brief Encryption policy that uses encrypted video only when the client supports it.
+-   */
+   constexpr int ENCRYPTION_MODE_OPPORTUNISTIC = 1;  // Use video encryption if available, but stream without it if not supported
+-  /**
+-   * @brief Encryption policy that rejects clients without video encryption support.
+-   */
+   constexpr int ENCRYPTION_MODE_MANDATORY = 2;  // Always use video encryption and refuse clients that can't encrypt
+ 
+-  /**
+-   * @brief Network stream settings shared by audio, video, and control channels.
+-   */
+   struct stream_t {
+-    std::chrono::milliseconds ping_timeout;  ///< Timeout used when waiting for client ping responses.
++    std::chrono::milliseconds ping_timeout;
++    bool stop_on_last_video_session;
+ 
+-    std::string file_apps;  ///< Path to the configured applications file.
++    std::string file_apps;
+ 
+-    int fec_percentage;  ///< Percentage of forward-error-correction packets to add to the stream.
++    int fec_percentage;
+ 
+     // Video encryption settings for LAN and WAN streams
+-    int lan_encryption_mode;  ///< Video encryption policy for LAN clients.
+-    int wan_encryption_mode;  ///< Video encryption policy for WAN clients.
+-
+-    // Limit the packetsize to avoid fragmentation on a low MTU link
+-    int packetsize;  ///< Maximum payload size for network packets.
++    int lan_encryption_mode;
++    int wan_encryption_mode;
+   };
+ 
+-  /**
+-   * @brief HTTP and HTTPS settings used by the GameStream pairing server.
+-   */
++  // Sleep mode options for PC sleep command
++  constexpr int SLEEP_MODE_SUSPEND = 0;   // S3 Sleep (traditional suspend via SetSuspendState)
++  constexpr int SLEEP_MODE_HIBERNATE = 1;  // S4 Hibernate (deeper sleep, saves to disk)
++  constexpr int SLEEP_MODE_AWAY = 2;       // Away Mode (display off, system stays on, instant wake)
++
+   struct nvhttp_t {
+     // Could be any of the following values:
+     // pc|lan|wan
+-    std::string origin_web_ui_allowed;  ///< Origin policy used for Web UI access checks.
++    std::string origin_web_ui_allowed;
+ 
+-    std::string pkey;  ///< Private key PEM string or path.
+-    std::string cert;  ///< Certificate PEM string or path.
++    std::string pkey;
++    std::string cert;
+ 
+-    std::string sunshine_name;  ///< Host name advertised to Moonlight clients.
++    std::string sunshine_name;
++    std::string clients;
+ 
+-    std::string file_state;  ///< Path to the persisted Sunshine state file.
++    std::string file_state;
++    std::string file_mappings;
++    std::uint16_t file_mapping_port;
++    bool usb_forwarding_enabled;
++    std::uint16_t usb_forwarding_port;  // 0: main port + 7; otherwise explicit override
+ 
+-    std::string external_ip;  ///< External address advertised to clients when configured.
+-  };
++    std::string external_ip;
++    std::vector<std::string> resolutions;
++    std::vector<std::string> fps;  // 支持小数刷新率，如 "119.88"
+ 
+-  /**
+-   * @brief Input emulation settings loaded from configuration.
+-   */
+-  struct input_t {
+-    std::unordered_map<int, int> keybindings;  ///< Client keycode to platform keycode bindings.
++    int sleep_mode;  // Sleep mode: 0=suspend(S3), 1=hibernate(S4), 2=away_mode
+ 
+-    std::chrono::milliseconds back_button_timeout;  ///< Hold duration that turns a controller Back button into a special action.
+-    std::chrono::milliseconds key_repeat_delay;  ///< Delay before repeating a held keyboard key.
+-    std::chrono::duration<double> key_repeat_period;  ///< Interval between repeated keyboard key events.
++    int pair_max_attempts;  // Max PIN pairing attempts per IP within 60s window. 0 disables limiting.
+ 
+-    std::string gamepad;  ///< Virtual controller profile selected by configuration.
+-    std::string gamepad_driver;  ///< Windows virtual gamepad driver policy, or empty until the user chooses one.
+-    bool ds4_back_as_touchpad_click;  ///< Map Back/Select to touchpad click for PlayStation-style gamepads.
+-    bool motion_as_ds4;  ///< Prefer PlayStation-style emulation for client gamepads with motion controls.
+-    bool touchpad_as_ds4;  ///< Prefer PlayStation-style emulation for client gamepads with touchpad input.
+-    bool virtualhid_randomize_mac;  ///< Randomize the libvirtualhid virtual controller MAC address.
+-
+-    bool keyboard;  ///< Enable keyboard input from clients.
+-    bool key_rightalt_to_key_win;  ///< Map the client Right Alt key to the Windows key.
+-    bool mouse;  ///< Enable mouse input from clients.
+-    bool controller;  ///< Enable controller input from clients.
+-
+-    bool always_send_scancodes;  ///< Always send keyboard scancodes when available.
++    // Signed, warning-only client fingerprint rule feed.
++    bool client_fingerprint_remote_rules;
++    std::string client_fingerprint_rules_url;
++    std::string client_fingerprint_rules_certificate;
++    int client_fingerprint_rules_refresh_hours;
++  };
+ 
+-    bool high_resolution_scrolling;  ///< Enable high-resolution mouse-wheel events.
+-    bool native_pen_touch;  ///< Enable native pen and touch injection.
++  struct input_t {
++    std::unordered_map<int, int> keybindings;
++
++    std::chrono::milliseconds back_button_timeout;
++    std::chrono::milliseconds key_repeat_delay;
++    std::chrono::duration<double> key_repeat_period;
++
++    std::string gamepad;
++    bool ds4_back_as_touchpad_click;
++    bool motion_as_ds4;
++    bool touchpad_as_ds4;
++    bool ds5_inputtino_randomize_mac;
++    bool enable_dsu_server;
++    uint16_t dsu_server_port;
++
++    bool keyboard;
++    bool mouse;
++    bool controller;
++
++    bool always_send_scancodes;
++
++    bool high_resolution_scrolling;
++    bool native_pen_touch;
++    bool native_touchpad_optimization;
++    bool virtual_mouse;
++    bool amf_draw_mouse_cursor;
++    bool clipboard_sync;  ///< Bidirectional clipboard sync (text + single image). On by default; effective only when the user-session GUI agent is alive. Set to false to force-disable.
++    bool client_gamepad_override;  ///< Honor the client-declared controller type carried on the /launch query (Sunshine extension). On by default; set false to keep host-side selection authoritative.
+   };
+ 
+   namespace flag {
+-    /**
+-     * @brief Enumerates supported flag options.
+-     */
+     enum flag_e : std::size_t {
+       PIN_STDIN = 0,  ///< Read PIN from stdin instead of http
+       FRESH_STATE,  ///< Do not load or save state
+       FORCE_VIDEO_HEADER_REPLACE,  ///< force replacing headers inside video data
+       UPNP,  ///< Try Universal Plug 'n Play
+       CONST_PIN,  ///< Use "universal" pin
++      CLOSE_VERIFY_SAFE,  ///< Close verify certificate chain safely
++      MDNS_BROADCAST,  ///< Enable mDNS broadcast
+       FLAG_SIZE  ///< Number of flags
+     };
+-  }  // namespace flag
++  }
+ 
+-  /**
+-   * @brief External preparation command plus its privilege requirement.
+-   */
+   struct prep_cmd_t {
+-    /**
+-     * @brief Build a preparation command entry from parsed configuration data.
+-     *
+-     * @param do_cmd Command to run before the application starts.
+-     * @param undo_cmd Command to run after the application exits.
+-     * @param elevated Whether the command should run with elevated privileges.
+-     */
+     prep_cmd_t(std::string &&do_cmd, std::string &&undo_cmd, bool &&elevated):
+-        do_cmd(std::move(do_cmd)),
+-        undo_cmd(std::move(undo_cmd)),
+-        elevated(std::move(elevated)) {
+-    }
+-
+-    /**
+-     * @brief Build a preparation command entry from parsed configuration data.
+-     *
+-     * @param do_cmd Command to run before the application starts.
+-     * @param elevated Whether the command should run with elevated privileges.
+-     */
++        do_cmd(std::move(do_cmd)), undo_cmd(std::move(undo_cmd)), elevated(std::move(elevated)) {}
+     explicit prep_cmd_t(std::string &&do_cmd, bool &&elevated):
+-        do_cmd(std::move(do_cmd)),
+-        elevated(std::move(elevated)) {
+-    }
+-
+-    std::string do_cmd;  ///< Command to run before the application starts.
+-    std::string undo_cmd;  ///< Command to run after the application exits.
+-    bool elevated;  ///< Whether the process should be launched elevated.
++        do_cmd(std::move(do_cmd)), elevated(std::move(elevated)) {}
++    std::string do_cmd;
++    std::string undo_cmd;
++    bool elevated;
+   };
+-
+-  /**
+-   * @brief Top-level Sunshine configuration and credential state.
+-   */
+   struct sunshine_t {
+-    std::string locale;  ///< Locale selected for Sunshine UI and log messages.
+-    int min_log_level;  ///< Minimum severity level written to the configured log sink.
+-    std::bitset<flag::FLAG_SIZE> flags;  ///< Runtime flags parsed from command-line options.
+-    std::string credentials_file;  ///< Path to the stored pairing credentials file.
++    std::string locale;
++    std::string tray_locale;
++    int min_log_level;
++    std::bitset<flag::FLAG_SIZE> flags;
++    std::string credentials_file;
++
++    std::string username;
++    std::string password;
++    std::string salt;
+ 
+-    std::string username;  ///< Username for the local Web UI account.
+-    std::string password;  ///< Password hash or secret for the local Web UI account.
+-    std::string salt;  ///< Salt used when hashing the Web UI password.
++    // Game Bar 小部件本地端点(/api/widget/*)的访问令牌;为空时该组端点不注册功能(404)
++    std::string widget_token;
+ 
+-    std::string config_file;  ///< Path to the active Sunshine configuration file.
++    std::string config_file;
+ 
+-    /**
+-     * @brief Command-line options parsed before configuration loading.
+-     */
+     struct cmd_t {
+-      std::string name;  ///< Executable name from the command line.
+-      int argc;  ///< Number of command-line arguments.
+-      char **argv;  ///< Command-line argument vector.
+-    } cmd;  ///< Command line used to launch the application.
+-
+-    std::uint16_t port;  ///< TCP port used by Sunshine services.
+-    std::string address_family;  ///< Address family requested for listening sockets.
+-    std::string bind_address;  ///< Local address Sunshine should bind to.
+-
+-    std::string log_file;  ///< Path to the configured log file.
+-    bool notify_pre_releases;  ///< Notify users about pre-release updates.
+-    bool system_tray;  ///< Enable the system tray integration.
+-    std::vector<prep_cmd_t> prep_cmds;  ///< Preparation commands executed around application launch.
+-
+-    // List of allowed origins for CSRF protection (e.g., "https://example.com,https://app.example.com")
+-    // Comma-separated list of additional origins. Default includes localhost variants and web UI port.
+-    std::vector<std::string> csrf_allowed_origins;  ///< Additional origins allowed by CSRF validation.
++      std::string name;
++      int argc;
++      char **argv;
++    } cmd;
++
++    std::uint16_t port;
++    std::string address_family;
++    std::string bind_address;
++
++    std::string log_file;
++    bool restore_log;  // 是否恢复日志文件（true=恢复，false=覆盖）
++    int max_log_size_mb;  // 日志文件最大大小（MB），超过后自动轮转，0=不限制
++    bool notify_pre_releases;
++    bool system_tray;
++    std::vector<prep_cmd_t> prep_cmds;
+   };
+ 
+   extern video_t video;
+@@ -400,48 +288,38 @@ namespace config {
+   extern input_t input;
+   extern sunshine_t sunshine;
+ 
+-#ifdef SUNSHINE_TESTS
+-  /**
+-   * @brief Parse and apply serialized configuration text for unit tests.
+-   *
+-   * @param file_content Raw configuration text to parse and apply.
+-   */
+-  void apply_config_for_test(std::string_view file_content);
+-#endif
++  int
++  parse(int argc, char *argv[]);
++  std::unordered_map<std::string, std::string>
++  parse_config(const std::string_view &file_content);
++
++  bool
++  update_config(const std::map<std::string, std::string> &updates);
++
++  std::optional<std::map<std::string, std::string>>
++  get_config_snapshot();
++
++  bool
++  update_full_config(const std::map<std::string, std::string> &fullConfig);
+ 
+   /**
+-   * @brief Parse serialized text into the corresponding runtime representation.
+-   *
+-   * @param argc Number of command-line arguments.
+-   * @param argv Command-line argument vector.
+-   * @return 0 on success; nonzero when command-line or configuration parsing fails.
+-   */
+-  int parse(int argc, char *argv[]);
+-  /**
+-   * @brief Parse Sunshine configuration text into key-value entries.
+-   *
+-   * @param file_content Raw configuration file contents to parse.
+-   * @return Parsed configuration key-value entries.
++   * Return a synchronized snapshot of the serialized per-client settings.
+    */
+-  std::unordered_map<std::string, std::string> parse_config(const std::string_view &file_content);
++  std::string
++  get_clients_config();
+ 
+   /**
+-   * @brief Persist a configuration option when the active file does not already define it.
+-   *
+-   * Existing text and comments are retained because the new setting is appended rather
+-   * than serializing the complete configuration again.
+-   *
+-   * @param name Configuration option name.
+-   * @param value Configuration option value.
+-   * @return True when the option was appended successfully; otherwise, false.
++   * Return the per-client touch-keyboard preference: true when the client
++   * entry exists and its touch.enabled is true.  Unknown clients and
++   * entries without a touch object default to false.
+    */
+-  bool persist_config_option_if_missing(std::string_view name, std::string_view value);
++  bool
++  get_client_touch_keyboard_enabled(const std::string &uuid);
+ 
+   /**
+-   * @brief Select all available gamepad drivers when a licensed user has not made a choice.
+-   *
+-   * @param virtualhid_licensed Whether Virtual HID Driver has an active machine license.
+-   * @return True when the `all` preference was persisted and applied; otherwise, false.
++   * Persist per-client settings and publish them to the running process.
++   * An unchanged value is treated as a successful save.
+    */
+-  bool select_all_gamepad_drivers_if_licensed(bool virtualhid_licensed);
++  bool
++  save_clients_config(const std::string &clients);
+ }  // namespace config

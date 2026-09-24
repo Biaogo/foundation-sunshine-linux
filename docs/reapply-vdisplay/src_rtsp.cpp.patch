@@ -1,0 +1,2112 @@
+diff --git a/src/rtsp.cpp b/src/rtsp.cpp
+index c7135ddf..d82d86dd 100644
+--- a/src/rtsp.cpp
++++ b/src/rtsp.cpp
+@@ -7,23 +7,32 @@
+ extern "C" {
+ #include <moonlight-common-c/src/Limelight-internal.h>
+ #include <moonlight-common-c/src/Rtsp.h>
++#include <libavcodec/avcodec.h>
+ }
+ 
++
+ // standard includes
++#include <algorithm>
+ #include <array>
+ #include <cctype>
+-#include <format>
++#include <cstring>
+ #include <set>
+ #include <unordered_map>
+ #include <utility>
++#include <vector>
+ 
+ // lib includes
++#include <boost/atomic.hpp>
+ #include <boost/asio.hpp>
+ #include <boost/bind.hpp>
+ 
+ // local includes
++#include "clipboard_bridge.h"
++#include "text_context/bridge.h"
+ #include "config.h"
++#include "cursor_channel.h"
+ #include "globals.h"
++#include "hdr/dynamic_hdr_selection.h"
+ #include "input.h"
+ #include "logging.h"
+ #include "network.h"
+@@ -40,12 +49,133 @@ using asio::ip::udp;
+ using namespace std::literals;
+ 
+ namespace rtsp_stream {
+-  /**
+-   * @brief Release msg resources.
+-   *
+-   * @param msg Raw RTSP message buffer being parsed or encrypted.
+-   */
+-  void free_msg(PRTSP_MESSAGE msg) {
++  namespace {
++    boost::atomic_uint32_t launch_preparations { 0 };
++  }
++
++  launch_preparation_guard_t::launch_preparation_guard_t() noexcept {
++    ++launch_preparations;
++  }
++
++  launch_preparation_guard_t::~launch_preparation_guard_t() noexcept {
++    --launch_preparations;
++  }
++
++  void
++  launch_session_t::set_hdr_target(
++    const hdr::client_display_capabilities_t &capabilities,
++    hdr::target_source_e source) {
++    hdr_capabilities = capabilities;
++    hdr_target_source = source;
++    sync_hdr_environment();
++  }
++
++  void
++  launch_session_t::sync_hdr_environment() {
++    env["SUNSHINE_CLIENT_HDR_BRIGHTNESS_REPORTED"] = reported_hdr_capabilities.reported ? "true" : "false";
++    env["SUNSHINE_CLIENT_HDR_BRIGHTNESS_SOURCE"] = std::string { hdr::to_string(hdr_target_source) };
++    env["SUNSHINE_CLIENT_HDR_MAX_NITS"] = std::to_string(hdr_capabilities.max_nits);
++    env["SUNSHINE_CLIENT_HDR_MIN_NITS"] = std::to_string(hdr_capabilities.min_nits);
++    env["SUNSHINE_CLIENT_HDR_MAX_FULL_FRAME_NITS"] = std::to_string(hdr_capabilities.max_full_frame_nits);
++  }
++
++  namespace {
++    bool
++    parse_legacy_surround_params(std::string_view params, int requested_channels, audio::stream_params_t &result) {
++      if (params.length() <= 3 || !std::all_of(params.begin(), params.end(), [](char c) { return std::isdigit((unsigned char) c); })) {
++        return false;
++      }
++
++      int channel_count = params[0] - '0';
++      int streams = params[1] - '0';
++      int coupled_streams = params[2] - '0';
++      if (channel_count != requested_channels || channel_count < 2 || channel_count > platf::speaker::MAX_SPEAKERS ||
++          streams + coupled_streams != channel_count || params.length() != (size_t) channel_count + 3) {
++        return false;
++      }
++
++      for (int i = 0; i < channel_count; ++i) {
++        auto map_value = params[i + 3] - '0';
++        if (map_value < 0 || map_value >= channel_count) {
++          return false;
++        }
++
++        result.mapping[i] = (std::uint8_t) map_value;
++      }
++
++      result.channelCount = channel_count;
++      result.streams = streams;
++      result.coupledStreams = coupled_streams;
++      return true;
++    }
++
++    bool
++    parse_delimited_surround_params(std::string_view params, int requested_channels, audio::stream_params_t &result) {
++      std::vector<int> values;
++      values.reserve(3 + platf::speaker::MAX_SPEAKERS);
++
++      int current = 0;
++      bool has_digit = false;
++      for (char ch : params) {
++        if (std::isdigit((unsigned char) ch)) {
++          current = current * 10 + (ch - '0');
++          has_digit = true;
++          continue;
++        }
++
++        if (ch == ',' || ch == ';' || ch == ':' || ch == '|' || std::isspace((unsigned char) ch)) {
++          if (has_digit) {
++            values.push_back(current);
++            current = 0;
++            has_digit = false;
++          }
++          continue;
++        }
++
++        return false;
++      }
++
++      if (has_digit) {
++        values.push_back(current);
++      }
++
++      if (values.size() < 3) {
++        return false;
++      }
++
++      int channel_count = values[0];
++      int streams = values[1];
++      int coupled_streams = values[2];
++
++      if (channel_count != requested_channels || channel_count < 2 || channel_count > platf::speaker::MAX_SPEAKERS ||
++          streams + coupled_streams != channel_count || values.size() != (size_t) channel_count + 3) {
++        return false;
++      }
++
++      for (int i = 0; i < channel_count; ++i) {
++        auto map_value = values[i + 3];
++        if (map_value < 0 || map_value >= channel_count) {
++          return false;
++        }
++
++        result.mapping[i] = (std::uint8_t) map_value;
++      }
++
++      result.channelCount = channel_count;
++      result.streams = streams;
++      result.coupledStreams = coupled_streams;
++      return true;
++    }
++
++    bool
++    parse_surround_params(std::string_view params, int requested_channels, audio::stream_params_t &result) {
++      return parse_legacy_surround_params(params, requested_channels, result) ||
++             parse_delimited_surround_params(params, requested_channels, result);
++    }
++  }  // namespace
++
++  void
++  free_msg(PRTSP_MESSAGE msg) {
+     freeMessage(msg);
+ 
+     delete msg;
+@@ -53,111 +183,154 @@ namespace rtsp_stream {
+ 
+ #pragma pack(push, 1)
+ 
+-  /**
+-   * @brief Encrypted RTSP message header used by GameStream.
+-   */
+   struct encrypted_rtsp_header_t {
+     // We set the MSB in encrypted RTSP messages to allow format-agnostic
+     // parsing code to be able to tell encrypted from plaintext messages.
+-    static constexpr std::uint32_t ENCRYPTED_MESSAGE_TYPE_BIT = 0x80000000;  ///< Protocol or platform constant for encrypted message type bit.
++    static constexpr std::uint32_t ENCRYPTED_MESSAGE_TYPE_BIT = 0x80000000;
+ 
+-    /**
+-     * @brief Return a pointer to the protocol payload following the packet header.
+-     *
+-     * @return Parsed or serialized payload data.
+-     */
+-    uint8_t *payload() {
++    uint8_t *
++    payload() {
+       return (uint8_t *) (this + 1);
+     }
+ 
+-    /**
+-     * @brief Decode the RTSP interleaved-frame payload length.
+-     *
+-     * @return Payload byte count with the encrypted-message flag masked out.
+-     */
+-    std::uint32_t payload_length() {
++    std::uint32_t
++    payload_length() {
+       return util::endian::big<std::uint32_t>(typeAndLength) & ~ENCRYPTED_MESSAGE_TYPE_BIT;
+     }
+ 
+-    /**
+-     * @brief Check whether encrypted.
+-     *
+-     * @return True when the RTSP connection is using TLS.
+-     */
+-    bool is_encrypted() {
++    bool
++    is_encrypted() {
+       return !!(util::endian::big<std::uint32_t>(typeAndLength) & ENCRYPTED_MESSAGE_TYPE_BIT);
+     }
+ 
+     // This field is the length of the payload + ENCRYPTED_MESSAGE_TYPE_BIT in big-endian
+-    std::uint32_t typeAndLength;  ///< Type and length.
++    std::uint32_t typeAndLength;
+ 
+     // This field is the number used to initialize the bottom 4 bytes of the AES IV in big-endian
+-    std::uint32_t sequenceNumber;  ///< Sequence number.
++    std::uint32_t sequenceNumber;
+ 
+     // This field is the AES GCM authentication tag
+-    std::uint8_t tag[16];  ///< Authentication tag appended to the encrypted payload.
++    std::uint8_t tag[16];
+   };
+ 
+ #pragma pack(pop)
+ 
+   class rtsp_server_t;
+ 
+-  /**
+-   * @brief Owning pointer for an RTSP message allocated by moonlight-common-c.
+-   */
+   using msg_t = util::safe_ptr<RTSP_MESSAGE, free_msg>;
+-  /**
+-   * @brief RTSP command handler signature used by the server dispatch table.
+-   */
+   using cmd_func_t = std::function<void(rtsp_server_t *server, tcp::socket &, launch_session_t &, msg_t &&)>;
+ 
+-  /**
+-   * @brief Write msg details to the log.
+-   *
+-   * @param msg Raw RTSP message buffer being parsed or encrypted.
+-   */
+-  void print_msg(PRTSP_MESSAGE msg);
+-  /**
+-   * @brief Send the RTSP response used for unsupported commands.
+-   *
+-   * @param sock Socket used to read or write the protocol message.
+-   * @param session Active streaming or pairing session for the request.
+-   * @param req Parsed RTSP request being handled.
+-   */
+-  void cmd_not_found(tcp::socket &sock, launch_session_t &, msg_t &&req);
+-  /**
+-   * @brief Send the protocol response for the current request.
+-   *
+-   * @param sock Socket used to read or write the protocol message.
+-   * @param session Active streaming or pairing session for the request.
+-   * @param options Request options or socket options to apply.
+-   * @param statuscode RTSP status code to send in the response.
+-   * @param status_msg Status msg.
+-   * @param seqn RTSP CSeq value associated with the request.
+-   * @param payload Optional payload body to include in the response.
+-   */
+-  void respond(tcp::socket &sock, launch_session_t &session, POPTION_ITEM options, int statuscode, const char *status_msg, int seqn, const std::string_view &payload);
++  void
++  print_msg(PRTSP_MESSAGE msg);
++  void
++  cmd_not_found(tcp::socket &sock, launch_session_t &, msg_t &&req);
++  void
++  respond(tcp::socket &sock, launch_session_t &session, POPTION_ITEM options, int statuscode, const char *status_msg, int seqn, const std::string_view &payload);
+ 
+-  /**
+-   * @brief RTSP client socket state and receive buffer parser.
+-   */
+   class socket_t: public std::enable_shared_from_this<socket_t> {
+   public:
+-    /**
+-     * @brief Construct an RTSP socket wrapper around an accepted TCP connection.
+-     *
+-     * @param io_context Io context.
+-     * @param handle_data_fn Handle data.
+-     */
+-    socket_t(boost::asio::io_context &io_context, std::function<void(tcp::socket &sock, launch_session_t &, msg_t &&)> &&handle_data_fn):
+-        handle_data_fn {std::move(handle_data_fn)},
+-        sock {io_context} {
++    using claim_plaintext_fn_t = std::function<std::shared_ptr<launch_session_t>(std::string_view)>;
++    using claim_encrypted_fn_t = std::function<encrypted_launch_claim_t(std::string_view, std::string_view, crypto::aes_t)>;
++    using release_claim_fn_t = std::function<void(std::uint32_t)>;
++
++    socket_t(boost::asio::io_context &io_context,
++             std::function<void(tcp::socket &sock, launch_session_t &, msg_t &&)> &&handle_data_fn,
++             claim_plaintext_fn_t &&claim_plaintext_fn,
++             claim_encrypted_fn_t &&claim_encrypted_fn,
++             release_claim_fn_t &&release_claim_fn):
++        handle_data_fn { std::move(handle_data_fn) },
++        claim_plaintext_fn { std::move(claim_plaintext_fn) },
++        claim_encrypted_fn { std::move(claim_encrypted_fn) },
++        release_claim_fn { std::move(release_claim_fn) },
++        sock { io_context },
++        handshake_timer { io_context } {
++    }
++
++    ~socket_t() {
++      if (session && release_claim_fn) {
++        release_claim_fn(session->id);
++      }
++    }
++
++    void
++    start(std::string remote, std::chrono::milliseconds timeout) {
++      remote_address = std::move(remote);
++      handshake_timer.expires_after(timeout);
++      handshake_timer.async_wait([socket = shared_from_this()](const boost::system::error_code &ec) {
++        if (ec == boost::asio::error::operation_aborted) {
++          return;
++        }
++        BOOST_LOG(debug) << "RTSP initial handshake timeout for peer "sv << socket->remote_address;
++        boost::system::error_code close_ec;
++        socket->sock.close(close_ec);
++      });
++      boost::asio::async_read(
++        sock,
++        boost::asio::buffer(&initial_type_and_length, sizeof(initial_type_and_length)),
++        boost::bind(&socket_t::handle_initial_read,
++                    shared_from_this(),
++                    boost::asio::placeholders::error,
++                    boost::asio::placeholders::bytes_transferred));
++    }
++
++    static void
++    handle_initial_read(std::shared_ptr<socket_t> &socket, const boost::system::error_code &ec, std::size_t bytes) {
++      if (ec || bytes < sizeof(socket->initial_type_and_length)) {
++        BOOST_LOG(debug) << "RTSP: unable to inspect initial message: "sv << ec.message();
++        boost::system::error_code close_ec;
++        socket->sock.close(close_ec);
++        return;
++      }
++
++      const auto initial = util::endian::big<std::uint32_t>(socket->initial_type_and_length);
++      if ((initial & encrypted_rtsp_header_t::ENCRYPTED_MESSAGE_TYPE_BIT) != 0) {
++        std::memcpy(socket->begin, &socket->initial_type_and_length, sizeof(socket->initial_type_and_length));
++        boost::asio::async_read(
++          socket->sock,
++          boost::asio::buffer(socket->begin + sizeof(socket->initial_type_and_length),
++                              sizeof(encrypted_rtsp_header_t) - sizeof(socket->initial_type_and_length)),
++          boost::bind(&socket_t::handle_initial_encrypted_header_rest,
++                      socket->shared_from_this(),
++                      boost::asio::placeholders::error,
++                      boost::asio::placeholders::bytes_transferred));
++        return;
++      }
++
++      socket->session = socket->claim_plaintext_fn(socket->remote_address);
++      if (!socket->session) {
++        BOOST_LOG(debug) << "No unambiguous plaintext RTSP launch ticket for peer "sv << socket->remote_address;
++        boost::system::error_code close_ec;
++        socket->sock.close(close_ec);
++        return;
++      }
++      std::memcpy(socket->msg_buf.data(), &socket->initial_type_and_length, sizeof(socket->initial_type_and_length));
++      socket->begin = socket->msg_buf.data() + sizeof(socket->initial_type_and_length);
++      socket->sock.async_read_some(
++        boost::asio::buffer(socket->begin, static_cast<std::size_t>(std::end(socket->msg_buf) - socket->begin)),
++        boost::bind(&socket_t::handle_read_plaintext,
++                    socket->shared_from_this(),
++                    boost::asio::placeholders::error,
++                    boost::asio::placeholders::bytes_transferred));
++    }
++
++    static void
++    handle_initial_encrypted_header_rest(std::shared_ptr<socket_t> &socket,
++                                         const boost::system::error_code &ec,
++                                         std::size_t bytes) {
++      if (ec || bytes < sizeof(encrypted_rtsp_header_t) - sizeof(socket->initial_type_and_length)) {
++        BOOST_LOG(debug) << "RTSP: unable to read initial encrypted header: "sv << ec.message();
++        boost::system::error_code close_ec;
++        socket->sock.close(close_ec);
++        return;
++      }
++      handle_read_encrypted_header(socket, {}, sizeof(encrypted_rtsp_header_t));
+     }
+ 
+     /**
+      * @brief Queue an asynchronous read to begin the next message.
+      */
+-    void read() {
++    void
++    read() {
+       if (begin == std::end(msg_buf) || (session->rtsp_cipher && begin + sizeof(encrypted_rtsp_header_t) >= std::end(msg_buf))) {
+         BOOST_LOG(error) << "RTSP: read(): Exceeded maximum rtsp packet size: "sv << msg_buf.size();
+ 
+@@ -165,6 +338,9 @@ namespace rtsp_stream {
+ 
+         boost::system::error_code ec;
+         sock.close(ec);
++        if (ec) {
++          BOOST_LOG(debug) << "Error closing socket: "sv << ec.message();
++        }
+ 
+         return;
+       }
+@@ -172,26 +348,26 @@ namespace rtsp_stream {
+       if (session->rtsp_cipher) {
+         // For encrypted RTSP, we will read the the entire header first
+         boost::asio::async_read(sock, boost::asio::buffer(begin, sizeof(encrypted_rtsp_header_t)), boost::bind(&socket_t::handle_read_encrypted_header, shared_from_this(), boost::asio::placeholders::error, boost::asio::placeholders::bytes_transferred));
+-      } else {
++      }
++      else {
+         sock.async_read_some(
+           boost::asio::buffer(begin, (std::size_t) (std::end(msg_buf) - begin)),
+           boost::bind(
+             &socket_t::handle_read_plaintext,
+             shared_from_this(),
+             boost::asio::placeholders::error,
+-            boost::asio::placeholders::bytes_transferred
+-          )
+-        );
++            boost::asio::placeholders::bytes_transferred));
+       }
+     }
+ 
+     /**
+-     * @brief Read the encrypted RTSP header before receiving the encrypted payload.
++     * @brief Handle the initial read of the header of an encrypted message.
+      * @param socket The socket the message was received on.
+      * @param ec The error code of the read operation.
+      * @param bytes The number of bytes read.
+      */
+-    static void handle_read_encrypted_header(std::shared_ptr<socket_t> &socket, const boost::system::error_code &ec, std::size_t bytes) {
++    static void
++    handle_read_encrypted_header(std::shared_ptr<socket_t> &socket, const boost::system::error_code &ec, std::size_t bytes) {
+       BOOST_LOG(debug) << "handle_read_encrypted_header(): Handle read of size: "sv << bytes << " bytes"sv;
+ 
+       auto sock_close = util::fail_guard([&socket]() {
+@@ -206,7 +382,9 @@ namespace rtsp_stream {
+       if (ec || bytes < sizeof(encrypted_rtsp_header_t)) {
+         BOOST_LOG(error) << "RTSP: handle_read_encrypted_header(): Couldn't read from tcp socket: "sv << ec.message();
+ 
+-        respond(socket->sock, *socket->session, nullptr, 400, "BAD REQUEST", 0, {});
++        if (socket->session) {
++          respond(socket->sock, *socket->session, nullptr, 400, "BAD REQUEST", 0, {});
++        }
+         return;
+       }
+ 
+@@ -214,7 +392,9 @@ namespace rtsp_stream {
+       if (!header->is_encrypted()) {
+         BOOST_LOG(error) << "RTSP: handle_read_encrypted_header(): Rejecting unencrypted RTSP message"sv;
+ 
+-        respond(socket->sock, *socket->session, nullptr, 400, "BAD REQUEST", 0, {});
++        if (socket->session) {
++          respond(socket->sock, *socket->session, nullptr, 400, "BAD REQUEST", 0, {});
++        }
+         return;
+       }
+ 
+@@ -224,7 +404,9 @@ namespace rtsp_stream {
+       if (socket->begin + sizeof(*header) + payload_length >= std::end(socket->msg_buf)) {
+         BOOST_LOG(error) << "RTSP: handle_read_encrypted_header(): Exceeded maximum rtsp packet size: "sv << socket->msg_buf.size();
+ 
+-        respond(socket->sock, *socket->session, nullptr, 400, "BAD REQUEST", 0, {});
++        if (socket->session) {
++          respond(socket->sock, *socket->session, nullptr, 400, "BAD REQUEST", 0, {});
++        }
+         return;
+       }
+ 
+@@ -235,12 +417,13 @@ namespace rtsp_stream {
+     }
+ 
+     /**
+-     * @brief Read and decrypt the encrypted RTSP payload.
++     * @brief Handle the final read of the content of an encrypted message.
+      * @param socket The socket the message was received on.
+      * @param ec The error code of the read operation.
+      * @param bytes The number of bytes read.
+      */
+-    static void handle_read_encrypted_message(std::shared_ptr<socket_t> &socket, const boost::system::error_code &ec, std::size_t bytes) {
++    static void
++    handle_read_encrypted_message(std::shared_ptr<socket_t> &socket, const boost::system::error_code &ec, std::size_t bytes) {
+       BOOST_LOG(debug) << "handle_read_encrypted(): Handle read of size: "sv << bytes << " bytes"sv;
+ 
+       auto sock_close = util::fail_guard([&socket]() {
+@@ -259,7 +442,9 @@ namespace rtsp_stream {
+       if (ec || bytes < payload_length) {
+         BOOST_LOG(error) << "RTSP: handle_read_encrypted(): Couldn't read from tcp socket: "sv << ec.message();
+ 
+-        respond(socket->sock, *socket->session, nullptr, 400, "BAD REQUEST", 0, {});
++        if (socket->session) {
++          respond(socket->sock, *socket->session, nullptr, 400, "BAD REQUEST", 0, {});
++        }
+         return;
+       }
+ 
+@@ -277,15 +462,26 @@ namespace rtsp_stream {
+       iv[11] = 'R';  // RTSP
+ 
+       std::vector<uint8_t> plaintext;
+-      if (socket->session->rtsp_cipher->decrypt(std::string_view {(const char *) header->tag, sizeof(header->tag) + bytes}, plaintext, &iv)) {
++      const auto tagged_cipher = std::string_view { (const char *) header->tag, sizeof(header->tag) + bytes };
++      if (!socket->session) {
++        auto claim = socket->claim_encrypted_fn(socket->remote_address, tagged_cipher, iv);
++        socket->session = std::move(claim.session);
++        plaintext = std::move(claim.plaintext);
++      }
++      else if (socket->session->rtsp_cipher->decrypt(tagged_cipher, plaintext, &iv)) {
+         BOOST_LOG(error) << "Failed to verify RTSP message tag"sv;
+ 
+         respond(socket->sock, *socket->session, nullptr, 400, "BAD REQUEST", 0, {});
+         return;
+       }
+ 
+-      msg_t req {new msg_t::element_type {}};
+-      if (auto status = parseRtspMessage(req.get(), (char *) plaintext.data(), (int) plaintext.size())) {
++      if (!socket->session) {
++        BOOST_LOG(warning) << "Unable to authenticate encrypted RTSP launch ticket from peer "sv << socket->remote_address;
++        return;
++      }
++
++      msg_t req { new msg_t::element_type {} };
++      if (auto status = parseRtspMessage(req.get(), (char *) plaintext.data(), plaintext.size())) {
+         BOOST_LOG(error) << "Malformed RTSP message: ["sv << status << ']';
+ 
+         respond(socket->sock, *socket->session, nullptr, 400, "BAD REQUEST", 0, {});
+@@ -302,7 +498,8 @@ namespace rtsp_stream {
+     /**
+      * @brief Queue an asynchronous read of the payload portion of a plaintext message.
+      */
+-    void read_plaintext_payload() {
++    void
++    read_plaintext_payload() {
+       if (begin == std::end(msg_buf)) {
+         BOOST_LOG(error) << "RTSP: read_plaintext_payload(): Exceeded maximum rtsp packet size: "sv << msg_buf.size();
+ 
+@@ -310,6 +507,9 @@ namespace rtsp_stream {
+ 
+         boost::system::error_code ec;
+         sock.close(ec);
++        if (ec) {
++          BOOST_LOG(debug) << "Error closing socket: "sv << ec.message();
++        }
+ 
+         return;
+       }
+@@ -320,18 +520,17 @@ namespace rtsp_stream {
+           &socket_t::handle_plaintext_payload,
+           shared_from_this(),
+           boost::asio::placeholders::error,
+-          boost::asio::placeholders::bytes_transferred
+-        )
+-      );
++          boost::asio::placeholders::bytes_transferred));
+     }
+ 
+     /**
+-     * @brief Read the plaintext RTSP payload after the header is parsed.
++     * @brief Handle the read of the payload portion of a plaintext message.
+      * @param socket The socket the message was received on.
+      * @param ec The error code of the read operation.
+      * @param bytes The number of bytes read.
+      */
+-    static void handle_plaintext_payload(std::shared_ptr<socket_t> &socket, const boost::system::error_code &ec, std::size_t bytes) {
++    static void
++    handle_plaintext_payload(std::shared_ptr<socket_t> &socket, const boost::system::error_code &ec, std::size_t bytes) {
+       BOOST_LOG(debug) << "handle_plaintext_payload(): Handle read of size: "sv << bytes << " bytes"sv;
+ 
+       auto sock_close = util::fail_guard([&socket]() {
+@@ -350,8 +549,8 @@ namespace rtsp_stream {
+       }
+ 
+       auto end = socket->begin + bytes;
+-      msg_t req {new msg_t::element_type {}};
+-      if (auto status = parseRtspMessage(req.get(), socket->msg_buf.data(), (int) (end - socket->msg_buf.data()))) {
++      msg_t req { new msg_t::element_type {} };
++      if (auto status = parseRtspMessage(req.get(), socket->msg_buf.data(), (std::size_t) (end - socket->msg_buf.data()))) {
+         BOOST_LOG(error) << "Malformed RTSP message: ["sv << status << ']';
+ 
+         respond(socket->sock, *socket->session, nullptr, 400, "BAD REQUEST", 0, {});
+@@ -371,12 +570,12 @@ namespace rtsp_stream {
+ 
+           // If content_length > bytes read, then we need to store current data read,
+           // to be appended by the next read.
+-          std::string_view content {option->content};
++          std::string_view content { option->content };
+           auto begin = std::find_if(std::begin(content), std::end(content), [](auto ch) {
+             return (bool) std::isdigit(ch);
+           });
+ 
+-          content_length = (int) util::from_chars(begin, std::end(content));
++          content_length = util::from_chars(begin, std::end(content));
+           break;
+         }
+       }
+@@ -396,12 +595,13 @@ namespace rtsp_stream {
+     }
+ 
+     /**
+-     * @brief Read and parse the plaintext RTSP request header.
++     * @brief Handle the read of the header portion of a plaintext message.
+      * @param socket The socket the message was received on.
+      * @param ec The error code of the read operation.
+      * @param bytes The number of bytes read.
+      */
+-    static void handle_read_plaintext(std::shared_ptr<socket_t> &socket, const boost::system::error_code &ec, std::size_t bytes) {
++    static void
++    handle_read_plaintext(std::shared_ptr<socket_t> &socket, const boost::system::error_code &ec, std::size_t bytes) {
+       BOOST_LOG(debug) << "handle_read_plaintext(): Handle read of size: "sv << bytes << " bytes"sv;
+ 
+       if (ec) {
+@@ -421,13 +621,13 @@ namespace rtsp_stream {
+         socket->read();
+       });
+ 
+-      auto begin = std::max(socket->begin - 4, socket->begin);
+-      auto buf_size = bytes + (begin - socket->begin);
+-      auto end = begin + buf_size;
++      auto begin = socket->msg_buf.data();
++      auto end = socket->begin + bytes;
++      auto buf_size = static_cast<std::size_t>(end - begin);
+ 
+       constexpr auto needle = "\r\n\r\n"sv;
+ 
+-      auto it = std::search(begin, begin + buf_size, std::begin(needle), std::end(needle));
++      auto it = std::search(begin, end, std::begin(needle), std::end(needle));
+       if (it == end) {
+         socket->begin = end;
+ 
+@@ -443,52 +643,62 @@ namespace rtsp_stream {
+       handle_plaintext_payload(socket, ec, buf_size);
+     }
+ 
+-    /**
+-     * @brief Dispatch a parsed RTSP request to the socket's command handler.
+-     *
+-     * @param req Parsed RTSP request being handled.
+-     */
+-    void handle_data(msg_t &&req) {
++    void
++    handle_data(msg_t &&req) {
++      handshake_timer.cancel();
+       handle_data_fn(sock, *session, std::move(req));
+     }
+ 
+-    std::function<void(tcp::socket &sock, launch_session_t &, msg_t &&)> handle_data_fn;  ///< Command dispatcher installed by the RTSP server.
++    std::function<void(tcp::socket &sock, launch_session_t &, msg_t &&)> handle_data_fn;
++    claim_plaintext_fn_t claim_plaintext_fn;
++    claim_encrypted_fn_t claim_encrypted_fn;
++    release_claim_fn_t release_claim_fn;
+ 
+-    tcp::socket sock;  ///< TCP socket connected to the RTSP client.
++    tcp::socket sock;
++    boost::asio::steady_timer handshake_timer;
+ 
+-    std::array<char, 2048> msg_buf;  ///< Receive buffer for one RTSP request header and payload.
++    std::array<char, 2048> msg_buf;
+ 
+-    char *crlf;  ///< Pointer to the next CRLF delimiter while parsing the receive buffer.
+-    char *begin = msg_buf.data();  ///< Start of the unparsed data currently in `msg_buf`.
++    char *crlf;
++    char *begin = msg_buf.data();
++    std::uint32_t initial_type_and_length { 0 };
++    std::string remote_address;
+ 
+-    std::shared_ptr<launch_session_t> session;  ///< Launch session claimed by this RTSP socket.
++    std::shared_ptr<launch_session_t> session;
+   };
+ 
+-  /**
+-   * @brief RTSP listener that matches incoming clients to pending launch sessions.
+-   */
+   class rtsp_server_t {
+   public:
+     ~rtsp_server_t() {
+       clear();
+     }
+ 
+-    /**
+-     * @brief Bind the underlying socket or graphics resource to its target.
+-     *
+-     * @param af Address family used for socket creation or binding.
+-     * @param port TCP or UDP port number.
+-     * @param ec Error code returned by the asynchronous operation.
+-     * @return Network operation status.
+-     */
+-    int bind(net::af_e af, std::uint16_t port, boost::system::error_code &ec) {
+-      af = net::get_effective_address_family(af);
++    std::shared_ptr<socket_t>
++    make_socket() {
++      return std::make_shared<socket_t>(
++        io_context,
++        [this](tcp::socket &sock, launch_session_t &session, msg_t &&msg) {
++          handle_msg(sock, session, std::move(msg));
++        },
++        [this](std::string_view remote_address) {
++          return _launch_sessions.claim_plaintext(remote_address);
++        },
++        [this](std::string_view remote_address, std::string_view tagged_cipher, crypto::aes_t iv) {
++          return _launch_sessions.claim_encrypted(remote_address, tagged_cipher, std::move(iv));
++        },
++        [this](std::uint32_t launch_session_id) {
++          _launch_sessions.release(launch_session_id, config::stream.ping_timeout);
++        });
++    }
++
++    int
++    bind(net::af_e af, std::uint16_t port, boost::system::error_code &ec) {
+       acceptor.open(af == net::IPV4 ? tcp::v4() : tcp::v6(), ec);
+       if (ec) {
+         return -1;
+       }
+ 
+-      acceptor.set_option(boost::asio::socket_base::reuse_address {true});
++      acceptor.set_option(boost::asio::socket_base::reuse_address { true });
+ 
+       auto bind_addr_str = net::get_bind_address(af);
+       const auto bind_addr = boost::asio::ip::make_address(bind_addr_str, ec);
+@@ -507,9 +717,7 @@ namespace rtsp_stream {
+         return -1;
+       }
+ 
+-      next_socket = std::make_shared<socket_t>(io_context, [this](tcp::socket &sock, launch_session_t &session, msg_t &&msg) {
+-        handle_msg(sock, session, std::move(msg));
+-      });
++      next_socket = make_socket();
+ 
+       acceptor.async_accept(next_socket->sock, [this](const auto &ec) {
+         handle_accept(ec);
+@@ -518,31 +726,25 @@ namespace rtsp_stream {
+       return 0;
+     }
+ 
+-    /**
+-     * @brief Dispatch a parsed RTSP request to its handler.
+-     *
+-     * @param sock Socket used to read or write the protocol message.
+-     * @param session Active streaming or pairing session for the request.
+-     * @param req Parsed RTSP request being handled.
+-     */
+-    void handle_msg(tcp::socket &sock, launch_session_t &session, msg_t &&req) {
++    void
++    handle_msg(tcp::socket &sock, launch_session_t &session, msg_t &&req) {
+       auto func = _map_cmd_cb.find(req->message.request.command);
+       if (func != std::end(_map_cmd_cb)) {
+         func->second(this, sock, session, std::move(req));
+-      } else {
++      }
++      else {
+         cmd_not_found(sock, session, std::move(req));
+       }
+ 
+       boost::system::error_code ec;
+       sock.shutdown(boost::asio::socket_base::shutdown_type::shutdown_both, ec);
++      if (ec) {
++        BOOST_LOG(debug) << "Error shutting down socket: "sv << ec.message();
++      }
+     }
+ 
+-    /**
+-     * @brief Accept a pending connection and arm the server for the next client.
+-     *
+-     * @param ec Error code returned by the asynchronous operation.
+-     */
+-    void handle_accept(const boost::system::error_code &ec) {
++    void
++    handle_accept(const boost::system::error_code &ec) {
+       if (ec) {
+         BOOST_LOG(error) << "Couldn't accept incoming connections: "sv << ec.message();
+ 
+@@ -553,36 +755,24 @@ namespace rtsp_stream {
+ 
+       auto socket = std::move(next_socket);
+ 
+-      auto launch_session {launch_event.view(0s)};
+-      if (launch_session) {
+-        // Associate the current RTSP session with this socket and start reading
+-        socket->session = launch_session;
+-        socket->read();
+-      } else {
+-        // This can happen due to normal things like port scanning, so let's not make these visible by default
+-        BOOST_LOG(debug) << "No pending session for incoming RTSP connection"sv;
+-
+-        // If there is no session pending, close the connection immediately
+-        boost::system::error_code ec;
+-        socket->sock.close(ec);
++      boost::system::error_code remote_ec;
++      const auto remote_endpoint = socket->sock.remote_endpoint(remote_ec);
++      const auto remote_address = remote_ec ? std::string {} : net::addr_to_normalized_string(remote_endpoint.address());
++      if (remote_ec) {
++        BOOST_LOG(debug) << "Unable to resolve RTSP peer address: "sv << remote_ec.message();
+       }
+ 
++      socket->start(remote_address, config::stream.ping_timeout);
++
+       // Queue another asynchronous accept for the next incoming connection
+-      next_socket = std::make_shared<socket_t>(io_context, [this](tcp::socket &sock, launch_session_t &session, msg_t &&msg) {
+-        handle_msg(sock, session, std::move(msg));
+-      });
++      next_socket = make_socket();
+       acceptor.async_accept(next_socket->sock, [this](const auto &ec) {
+         handle_accept(ec);
+       });
+     }
+ 
+-    /**
+-     * @brief Register or visit handlers stored in the map.
+-     *
+-     * @param type Protocol, message, or resource type selector.
+-     * @param cb Callback invoked for each matching message or session.
+-     */
+-    void map(const std::string_view &type, cmd_func_t cb) {
++    void
++    map(const std::string_view &type, cmd_func_t cb) {
+       _map_cmd_cb.emplace(type, std::move(cb));
+     }
+ 
+@@ -592,55 +782,68 @@ namespace rtsp_stream {
+      *       the session will be discarded.
+      * @param launch_session Streaming session information.
+      */
+-    void session_raise(std::shared_ptr<launch_session_t> launch_session) {
+-      // If a launch event is still pending, don't overwrite it.
+-      if (launch_event.view(0s)) {
+-        return;
++    launch_ticket_register_e
++    session_raise(std::shared_ptr<launch_session_t> launch_session) {
++      if (!launch_session) {
++        return launch_ticket_register_e::global_limit;
+       }
+ 
+-      // Raise the new launch session to prepare for the RTSP handshake
+-      launch_event.raise(std::move(launch_session));
+-
+-      // Arm the timer to expire this launch session if the client times out
+-      raised_timer.expires_after(config::stream.ping_timeout);
+-      raised_timer.async_wait([this](const boost::system::error_code &ec) {
+-        if (!ec) {
+-          auto discarded = launch_event.pop(0s);
+-          if (discarded) {
+-            BOOST_LOG(debug) << "Event timeout: "sv << discarded->unique_id;
+-          }
+-        }
+-      });
++      const auto result = _launch_sessions.register_session(
++        std::move(launch_session), config::stream.ping_timeout);
++      if (result == launch_ticket_register_e::accepted || result == launch_ticket_register_e::replaced) {
++        schedule_pending_prune();
++      }
++      return result;
+     }
+ 
+     /**
+      * @brief Clear state for the oldest launch session.
+      * @param launch_session_id The ID of the session to clear.
+      */
+-    void session_clear(uint32_t launch_session_id) {
+-      // We currently only support a single pending RTSP session,
+-      // so the ID should always match the one for that session.
+-      auto launch_session = launch_event.view(0s);
+-      if (launch_session) {
+-        if (launch_session->id != launch_session_id) {
+-          BOOST_LOG(error) << "Attempted to clear unexpected session: "sv << launch_session_id << " vs "sv << launch_session->id;
+-        } else {
+-          raised_timer.cancel();
+-          launch_event.pop();
+-        }
+-      }
++    void
++    session_clear(uint32_t launch_session_id) {
++      _launch_sessions.erase(launch_session_id);
+     }
+ 
+     /**
+      * @brief Get the number of active sessions.
+      * @return Count of active sessions.
+      */
+-    int session_count() {
++    int
++    session_count() {
+       auto lg = _session_slots.lock();
+-      return (int) _session_slots->size();
++      return _session_slots->size();
+     }
+ 
+-    safe::event_t<std::shared_ptr<launch_session_t>> launch_event;  ///< Launch event.
++    int
++    pending_session_count() {
++      return static_cast<int>(_launch_sessions.size());
++    }
++
++    bool
++    activate_launch_session(std::uint32_t launch_session_id) {
++      return _launch_sessions.activate(launch_session_id);
++    }
++
++    void
++    schedule_pending_prune() {
++      boost::asio::post(io_context, [this]() {
++        raised_timer.expires_after(config::stream.ping_timeout);
++        raised_timer.async_wait([this](const boost::system::error_code &ec) {
++          if (!ec) {
++            const auto pruned = _launch_sessions.prune();
++            if (pruned != 0) {
++              BOOST_LOG(debug) << "Expired "sv << pruned << " pending RTSP launch ticket(s)"sv;
++            }
++          }
++          else if (ec != boost::asio::error::operation_aborted) {
++            BOOST_LOG(debug) << "Timer error: "sv << ec.message();
++          }
++        });
++      });
++    }
++
++    launch_session_manager_t _launch_sessions;
+ 
+     /**
+      * @brief Clear launch sessions.
+@@ -649,46 +852,109 @@ namespace rtsp_stream {
+      * clear(false);
+      * @examples_end
+      */
+-    void clear(bool all = true) {
+-      auto lg = _session_slots.lock();
++    void
++    clear(bool all = true, stream::session::stop_reason_e reason = stream::session::stop_reason_e::host_terminate) {
++      if (all) {
++        _launch_sessions.clear();
++      }
++      else {
++        _launch_sessions.prune();
++      }
+ 
+-      for (auto i = _session_slots->begin(); i != _session_slots->end();) {
+-        auto &slot = *(*i);
+-        if (all || stream::session::state(slot) == stream::session::state_e::STOPPING) {
+-          stream::session::stop(slot);
+-          stream::session::join(slot);
++      std::vector<std::shared_ptr<stream::session_t>> sessions_to_join;
++      {
++        auto lg = _session_slots.lock();
+ 
+-          i = _session_slots->erase(i);
+-        } else {
+-          i++;
++        for (auto i = _session_slots->begin(); i != _session_slots->end();) {
++          auto &slot = *(*i);
++          if (all || stream::session::state(slot) == stream::session::state_e::STOPPING) {
++            stream::session::stop(slot, reason);
++            sessions_to_join.push_back(*i);
++            i = _session_slots->erase(i);
++          }
++          else {
++            i++;
++          }
+         }
+       }
++
++      // join 可能等待编码和网络线程，等待期间不能持有会话表锁，
++      // 否则其他 RTSP/NVHTTP 请求也会被一起堵住。
++      for (const auto &session : sessions_to_join) {
++        stream::session::join(*session);
++      }
+     }
+ 
+-    /**
+-     * @brief Clear by cert state.
+-     *
+-     * @param cert Certificate data or object used by the operation.
+-     */
+-    void clear_by_cert(std::string_view cert) {
+-      auto lg = _session_slots.lock();
+-      for (auto i = _session_slots->begin(); i != _session_slots->end();) {
+-        auto &slot = *(*i);
+-        if (stream::session::client_cert(slot) == cert) {
+-          stream::session::stop(slot);
+-          stream::session::join(slot);
+-          i = _session_slots->erase(i);
+-        } else {
+-          i++;
++    void
++    terminate_sessions_async(stream::session::stop_reason_e reason, boost::function<void()> completion) {
++      boost::asio::post(io_context, [this, reason, completion = std::move(completion)]() mutable {
++        try {
++          clear(true, reason);
+         }
+-      }
++        catch (const std::exception &e) {
++          BOOST_LOG(error) << "Failed to terminate streaming sessions asynchronously: "sv << e.what();
++        }
++        catch (...) {
++          BOOST_LOG(error) << "Failed to terminate streaming sessions asynchronously"sv;
++        }
++
++        try {
++          if (completion) {
++            completion();
++          }
++        }
++        catch (const std::exception &e) {
++          BOOST_LOG(error) << "Streaming session termination callback failed: "sv << e.what();
++        }
++        catch (...) {
++          BOOST_LOG(error) << "Streaming session termination callback failed"sv;
++        }
++      });
++    }
++
++    void
++    terminate_sessions_async_if(
++      stream::session::stop_reason_e reason,
++      boost::function<bool()> predicate,
++      boost::function<void(bool)> completion) {
++      boost::asio::post(io_context, [this, reason, predicate = std::move(predicate), completion = std::move(completion)]() mutable {
++        bool termination_started { false };
++        try {
++          if (!predicate || predicate()) {
++            termination_started = true;
++            clear(true, reason);
++          }
++          else {
++            BOOST_LOG(debug) << "Skipped asynchronous streaming termination because its precondition changed"sv;
++          }
++        }
++        catch (const std::exception &e) {
++          BOOST_LOG(error) << "Failed to terminate streaming sessions asynchronously: "sv << e.what();
++        }
++        catch (...) {
++          BOOST_LOG(error) << "Failed to terminate streaming sessions asynchronously"sv;
++        }
++
++        try {
++          if (completion) {
++            completion(termination_started);
++          }
++        }
++        catch (const std::exception &e) {
++          BOOST_LOG(error) << "Streaming session termination callback failed: "sv << e.what();
++        }
++        catch (...) {
++          BOOST_LOG(error) << "Streaming session termination callback failed"sv;
++        }
++      });
+     }
+ 
+     /**
+      * @brief Removes the provided session from the set of sessions.
+      * @param session The session to remove.
+      */
+-    void remove(const std::shared_ptr<stream::session_t> &session) {
++    void
++    remove(const std::shared_ptr<stream::session_t> &session) {
+       auto lg = _session_slots.lock();
+       _session_slots->erase(session);
+     }
+@@ -697,7 +963,8 @@ namespace rtsp_stream {
+      * @brief Inserts the provided session into the set of sessions.
+      * @param session The session to insert.
+      */
+-    void insert(const std::shared_ptr<stream::session_t> &session) {
++    void
++    insert(const std::shared_ptr<stream::session_t> &session) {
+       auto lg = _session_slots.lock();
+       _session_slots->emplace(session);
+       BOOST_LOG(info) << "New streaming session started [active sessions: "sv << _session_slots->size() << ']';
+@@ -706,12 +973,14 @@ namespace rtsp_stream {
+     /**
+      * @brief Runs an iteration of the RTSP server loop
+      */
+-    void iterate() {
++    void
++    iterate() {
+       // If we have a session, we will return to the server loop every
+       // 500ms to allow session cleanup to happen.
+       if (session_count() > 0) {
+         io_context.run_one_for(500ms);
+-      } else {
++      }
++      else {
+         io_context.run_one();
+       }
+     }
+@@ -719,7 +988,8 @@ namespace rtsp_stream {
+     /**
+      * @brief Stop the RTSP server.
+      */
+-    void stop() {
++    void
++    stop() {
+       acceptor.close();
+       io_context.stop();
+       clear();
+@@ -731,53 +1001,59 @@ namespace rtsp_stream {
+     sync_util::sync_t<std::set<std::shared_ptr<stream::session_t>>> _session_slots;
+ 
+     boost::asio::io_context io_context;
+-    tcp::acceptor acceptor {io_context};
+-    boost::asio::steady_timer raised_timer {io_context};
++    tcp::acceptor acceptor { io_context };
++    boost::asio::steady_timer raised_timer { io_context };
+ 
+     std::shared_ptr<socket_t> next_socket;
+   };
+ 
+-  rtsp_server_t server {};  ///< Singleton RTSP server used by GameStream launch sessions.
++  rtsp_server_t server {};
+ 
+-  /**
+-   * @brief Queue a launch session until the RTSP client connects.
+-   */
+-  void launch_session_raise(std::shared_ptr<launch_session_t> launch_session) {
+-    server.session_raise(std::move(launch_session));
++  launch_ticket_register_e
++  launch_session_raise(std::shared_ptr<launch_session_t> launch_session) {
++    return server.session_raise(std::move(launch_session));
+   }
+ 
+-  void launch_session_clear(uint32_t launch_session_id) {
++  void
++  launch_session_clear(uint32_t launch_session_id) {
+     server.session_clear(launch_session_id);
+   }
+ 
+-  int session_count() {
++  int
++  session_count() {
+     // Ensure session_count is up-to-date
+     server.clear(false);
+ 
+     return server.session_count();
+   }
+ 
+-  void terminate_sessions() {
+-    server.clear(true);
+-    input::terminate_gamepads();
++  int
++  pending_session_count() {
++    return server.pending_session_count();
+   }
+ 
+-  /**
+-   * @brief Terminate active sessions associated with a client certificate.
+-   */
+-  void terminate_sessions_by_cert(std::string_view cert) {
+-    server.clear_by_cert(cert);
+-    input::terminate_gamepads(cert);
++  bool
++  session_starting_or_active() {
++    return launch_preparations.load() != 0 ||
++           server.pending_session_count() != 0 ||
++           server.session_count() != 0;
+   }
+ 
+-  /**
+-   * @brief Send the serialized response over the active socket.
+-   *
+-   * @param sock Socket used to read or write the protocol message.
+-   * @param sv String view containing the text to inspect.
+-   * @return Network operation status.
+-   */
+-  int send(tcp::socket &sock, const std::string_view &sv) {
++  void
++  terminate_sessions_async(stream::session::stop_reason_e reason, boost::function<void()> completion) {
++    server.terminate_sessions_async(reason, std::move(completion));
++  }
++
++  void
++  terminate_sessions_async_if(
++    stream::session::stop_reason_e reason,
++    boost::function<bool()> predicate,
++    boost::function<void(bool)> completion) {
++    server.terminate_sessions_async_if(reason, std::move(predicate), std::move(completion));
++  }
++
++  int
++  send(tcp::socket &sock, const std::string_view &sv) {
+     std::size_t bytes_send = 0;
+ 
+     while (bytes_send != sv.size()) {
+@@ -793,14 +1069,8 @@ namespace rtsp_stream {
+     return 0;
+   }
+ 
+-  /**
+-   * @brief Send the protocol response for the current request.
+-   *
+-   * @param sock Socket used to read or write the protocol message.
+-   * @param session Active streaming or pairing session for the request.
+-   * @param resp RTSP response string to send to the client.
+-   */
+-  void respond(tcp::socket &sock, launch_session_t &session, msg_t &resp) {
++  void
++  respond(tcp::socket &sock, launch_session_t &session, msg_t &resp) {
+     auto payload = std::make_pair(resp->payload, resp->payloadLength);
+ 
+     // Restore response message for proper destruction
+@@ -813,11 +1083,11 @@ namespace rtsp_stream {
+     resp->payloadLength = 0;
+ 
+     int serialized_len;
+-    util::c_ptr<char> raw_resp {serializeRtspMessage(resp.get(), &serialized_len)};
++    util::c_ptr<char> raw_resp { serializeRtspMessage(resp.get(), &serialized_len) };
+     BOOST_LOG(debug)
+       << "---Begin Response---"sv << std::endl
+-      << std::string_view {raw_resp.get(), (std::size_t) serialized_len} << std::endl
+-      << std::string_view {payload.first, (std::size_t) payload.second} << std::endl
++      << std::string_view { raw_resp.get(), (std::size_t) serialized_len } << std::endl
++      << std::string_view { payload.first, (std::size_t) payload.second } << std::endl
+       << "---End Response---"sv << std::endl;
+ 
+     // Encrypt the RTSP message if encryption is enabled
+@@ -851,12 +1121,13 @@ namespace rtsp_stream {
+       header->sequenceNumber = util::endian::big<std::uint32_t>(session.rtsp_iv_counter);
+ 
+       // Encrypt the RTSP message in place
+-      session.rtsp_cipher->encrypt(std::string_view {(const char *) header->payload(), (std::size_t) payload_length}, header->tag, &iv);
++      session.rtsp_cipher->encrypt(std::string_view { (const char *) header->payload(), (std::size_t) payload_length }, header->tag, &iv);
+ 
+       // Send the full encrypted message
+-      send(sock, std::string_view {(char *) message.data(), message.size()});
+-    } else {
+-      std::string_view tmp_resp {raw_resp.get(), (size_t) serialized_len};
++      send(sock, std::string_view { (char *) message.data(), message.size() });
++    }
++    else {
++      std::string_view tmp_resp { raw_resp.get(), (size_t) serialized_len };
+ 
+       // Send the plaintext RTSP message header
+       if (send(sock, tmp_resp)) {
+@@ -864,36 +1135,25 @@ namespace rtsp_stream {
+       }
+ 
+       // Send the plaintext RTSP message payload (if present)
+-      send(sock, std::string_view {payload.first, (std::size_t) payload.second});
++      send(sock, std::string_view { payload.first, (std::size_t) payload.second });
+     }
+   }
+ 
+-  /**
+-   * @brief Send the protocol response for the current request.
+-   */
+-  void respond(tcp::socket &sock, launch_session_t &session, POPTION_ITEM options, int statuscode, const char *status_msg, int seqn, const std::string_view &payload) {
+-    msg_t resp {new msg_t::element_type};
++  void
++  respond(tcp::socket &sock, launch_session_t &session, POPTION_ITEM options, int statuscode, const char *status_msg, int seqn, const std::string_view &payload) {
++    msg_t resp { new msg_t::element_type };
+     createRtspResponse(resp.get(), nullptr, 0, const_cast<char *>("RTSP/1.0"), statuscode, const_cast<char *>(status_msg), seqn, options, const_cast<char *>(payload.data()), (int) payload.size());
+ 
+     respond(sock, session, resp);
+   }
+ 
+-  /**
+-   * @brief Handle an unsupported RTSP command.
+-   */
+-  void cmd_not_found(tcp::socket &sock, launch_session_t &session, msg_t &&req) {
++  void
++  cmd_not_found(tcp::socket &sock, launch_session_t &session, msg_t &&req) {
+     respond(sock, session, nullptr, 404, "NOT FOUND", req->sequenceNumber, {});
+   }
+ 
+-  /**
+-   * @brief Handle RTSP OPTIONS requests.
+-   *
+-   * @param server RTSP server instance handling the request.
+-   * @param sock Socket used to read or write the protocol message.
+-   * @param session Active streaming or pairing session for the request.
+-   * @param req Parsed RTSP request being handled.
+-   */
+-  void cmd_option(rtsp_server_t *server, tcp::socket &sock, launch_session_t &session, msg_t &&req) {
++  void
++  cmd_option(rtsp_server_t *server, tcp::socket &sock, launch_session_t &session, msg_t &&req) {
+     OPTION_ITEM option {};
+ 
+     // I know these string literals will not be modified
+@@ -905,15 +1165,8 @@ namespace rtsp_stream {
+     respond(sock, session, &option, 200, "OK", req->sequenceNumber, {});
+   }
+ 
+-  /**
+-   * @brief Handle RTSP DESCRIBE requests.
+-   *
+-   * @param server RTSP server instance.
+-   * @param sock Client socket.
+-   * @param session Launch session.
+-   * @param req RTSP request message.
+-   */
+-  void cmd_describe(rtsp_server_t *server, tcp::socket &sock, launch_session_t &session, msg_t &&req) {
++  void
++  cmd_describe(rtsp_server_t *server, tcp::socket &sock, launch_session_t &session, msg_t &&req) {
+     OPTION_ITEM option {};
+ 
+     // I know these string literals will not be modified
+@@ -925,10 +1178,28 @@ namespace rtsp_stream {
+     std::stringstream ss;
+ 
+     // Tell the client about our supported features
+-    ss << "a=x-ss-general.featureFlags:" << (uint32_t) platf::get_capabilities() << std::endl;
++    {
++      auto caps = (uint32_t) platf::get_capabilities(session.client_gamepad);
++      // Advertise clipboard sync only when the user opted in AND a user-session
++      // GUI agent is currently subscribed; otherwise the client would attempt
++      // sync into a black hole.
++      if (config::input.clipboard_sync && clipboard_bridge::bridge_t::instance().gui_alive()) {
++        caps |= platf::platform_caps::clipboard_text | platf::platform_caps::clipboard_image;
++      }
++      if (cursor_channel::producer_available()) {
++        caps |= platf::platform_caps::cursor_shape;
++      }
++      if (video::active_encoder_supports_dynamic_sdr_white()) {
++        caps |= platf::platform_caps::dynamic_sdr_white;
++      }
++      if (text_context::bridge_t::instance().gui_alive()) {
++        caps |= platf::platform_caps::remote_text_context;
++      }
++      ss << "a=x-ss-general.featureFlags:" << caps << std::endl;
++    }
+ 
+     // Always request new control stream encryption if the client supports it
+-    uint32_t encryption_flags_supported = SS_ENC_CONTROL_V2 | SS_ENC_AUDIO;
++    uint32_t encryption_flags_supported = SS_ENC_CONTROL_V2 | SS_ENC_AUDIO | SS_ENC_MIC;
+     uint32_t encryption_flags_requested = SS_ENC_CONTROL_V2;
+ 
+     // Determine the encryption desired for this remote endpoint
+@@ -940,13 +1211,25 @@ namespace rtsp_stream {
+       // If it's mandatory, also request it to enable use if the client
+       // didn't explicitly opt in, but it otherwise has support.
+       if (encryption_mode == config::ENCRYPTION_MODE_MANDATORY) {
+-        encryption_flags_requested |= SS_ENC_VIDEO | SS_ENC_AUDIO;
++        encryption_flags_requested |= SS_ENC_VIDEO | SS_ENC_AUDIO | SS_ENC_MIC;
++      } else {
++        // Even if not mandatory, request audio and mic encryption if encryption is enabled
++        // This ensures clients that check encryptionRequested will enable audio and MIC encryption
++        encryption_flags_requested |= SS_ENC_AUDIO | SS_ENC_MIC;
+       }
+     }
+ 
+     // Report supported and required encryption flags
+     ss << "a=x-ss-general.encryptionSupported:" << encryption_flags_supported << std::endl;
+     ss << "a=x-ss-general.encryptionRequested:" << encryption_flags_requested << std::endl;
++    
++    // 记录加密请求状态用于调试
++    BOOST_LOG(info) << "RTSP DESCRIBE encryption flags: supported=0x" << std::hex << encryption_flags_supported << std::dec
++                    << ", requested=0x" << std::hex << encryption_flags_requested << std::dec
++                    << " (CONTROL_V2=" << ((encryption_flags_requested & SS_ENC_CONTROL_V2) ? "1" : "0")
++                    << ", VIDEO=" << ((encryption_flags_requested & SS_ENC_VIDEO) ? "1" : "0")
++                    << ", AUDIO=" << ((encryption_flags_requested & SS_ENC_AUDIO) ? "1" : "0")
++                    << ", MIC=" << ((encryption_flags_requested & SS_ENC_MIC) ? "1" : "0") << ")";
+ 
+     if (video::last_encoder_probe_supported_ref_frames_invalidation) {
+       ss << "a=x-nv-video[0].refPicInvalidation:1"sv << std::endl;
+@@ -966,6 +1249,15 @@ namespace rtsp_stream {
+       ss << "a=fmtp:97 surround-params="sv << session.surround_params << std::endl;
+     }
+ 
++    // 添加麦克风流支持（仅在启用时）
++    if (config::audio.stream_mic) {
++      ss << "m=audio " << net::map_port(stream::MIC_STREAM_PORT) << " RTP/AVP 96" << std::endl;
++      ss << "a=rtpmap:96 opus/48000/2" << std::endl;
++      ss << "a=fmtp:96 minptime=20;useinbandfec=1" << std::endl;
++      ss << "a=ptime:20" << std::endl;
++      ss << "a=maxptime:20" << std::endl;
++    }
++
+     for (int x = 0; x < audio::MAX_STREAM_CONFIG; ++x) {
+       auto &stream_config = audio::stream_configs[x];
+       std::uint8_t mapping[platf::speaker::MAX_SPEAKERS];
+@@ -979,16 +1271,30 @@ namespace rtsp_stream {
+        */
+       if (x == audio::SURROUND51 || x == audio::SURROUND71) {
+         std::copy_n(mapping_p, stream_config.channelCount, mapping);
+-        std::rotate(mapping + 3, mapping + 4, mapping + audio::MAX_STREAM_CONFIG);
++        std::rotate(mapping + 3, mapping + 4, mapping + stream_config.channelCount);
+ 
+         mapping_p = mapping;
+       }
+ 
+-      ss << "a=fmtp:97 surround-params="sv << stream_config.channelCount << stream_config.streams << stream_config.coupledStreams;
++      // For channel counts > 8 (e.g., 7.1.4 with 12 channels), use comma-delimited format
++      // because mapping values can exceed single digits (e.g., 10, 11)
++      if (stream_config.channelCount > 8) {
++        ss << "a=fmtp:97 surround-params="sv << stream_config.channelCount;
+ 
+-      std::for_each_n(mapping_p, stream_config.channelCount, [&ss](std::uint8_t digit) {
+-        ss << (char) (digit + '0');
+-      });
++        // Use comma-delimited format: channelCount,streams,coupledStreams,m0,m1,...
++        ss << ',' << (int) stream_config.streams << ',' << (int) stream_config.coupledStreams;
++
++        std::for_each_n(mapping_p, stream_config.channelCount, [&ss](std::uint8_t val) {
++          ss << ',' << (int) val;
++        });
++      }
++      else {
++        ss << "a=fmtp:97 surround-params="sv << stream_config.channelCount << stream_config.streams << stream_config.coupledStreams;
++
++        std::for_each_n(mapping_p, stream_config.channelCount, [&ss](std::uint8_t digit) {
++          ss << (char) (digit + '0');
++        });
++      }
+ 
+       ss << std::endl;
+     }
+@@ -996,15 +1302,8 @@ namespace rtsp_stream {
+     respond(sock, session, &option, 200, "OK", req->sequenceNumber, ss.str());
+   }
+ 
+-  /**
+-   * @brief Handle RTSP SETUP requests and prepare transport state.
+-   *
+-   * @param server RTSP server instance handling the request.
+-   * @param sock Socket used to read or write the protocol message.
+-   * @param session Active streaming or pairing session for the request.
+-   * @param req Parsed RTSP request being handled.
+-   */
+-  void cmd_setup(rtsp_server_t *server, tcp::socket &sock, launch_session_t &session, msg_t &&req) {
++  void
++  cmd_setup(rtsp_server_t *server, tcp::socket &sock, launch_session_t &session, msg_t &&req) {
+     OPTION_ITEM options[4] {};
+ 
+     auto &seqn = options[0];
+@@ -1017,19 +1316,38 @@ namespace rtsp_stream {
+     auto seqn_str = std::to_string(req->sequenceNumber);
+     seqn.content = const_cast<char *>(seqn_str.c_str());
+ 
+-    std::string_view target {req->message.request.target};
++    std::string_view target { req->message.request.target };
+     auto begin = std::find(std::begin(target), std::end(target), '=') + 1;
+     auto end = std::find(begin, std::end(target), '/');
+-    std::string_view type {begin, (size_t) std::distance(begin, end)};
++    std::string_view type { begin, (size_t) std::distance(begin, end) };
+ 
+     std::uint16_t port;
+     if (type == "audio"sv) {
++      session.setup_audio = true;
+       port = net::map_port(stream::AUDIO_STREAM_PORT);
+-    } else if (type == "video"sv) {
++    }
++    else if (type == "video"sv) {
++      session.setup_video = true;
+       port = net::map_port(stream::VIDEO_STREAM_PORT);
+-    } else if (type == "control"sv) {
++    }
++    else if (type == "control"sv) {
++      session.setup_control = true;
+       port = net::map_port(stream::CONTROL_PORT);
+-    } else {
++    }
++    else if (type == "mic"sv) {
++      port = net::map_port(stream::MIC_STREAM_PORT);
++      if (config::audio.stream_mic) {
++        session.enable_mic = true;
++        session.setup_mic = true;
++      }
++      else {
++        // 兼容未检查 SDP 仍请求麦克风的客户端，但不授权接收麦克风数据。
++        session.enable_mic = false;
++        session.setup_mic = false;
++        BOOST_LOG(info) << "Ignoring microphone SETUP while microphone streaming is disabled"sv;
++      }
++    }
++    else {
+       cmd_not_found(sock, session, std::move(req));
+ 
+       return;
+@@ -1043,7 +1361,7 @@ namespace rtsp_stream {
+     session_option.next = &port_option;
+ 
+     // Moonlight merely requires 'server_port=<port>'
+-    auto port_value = std::format("server_port={}", static_cast<int>(port));
++    auto port_value = "server_port=" + std::to_string(port);
+ 
+     port_option.option = const_cast<char *>("Transport");
+     port_option.content = port_value.data();
+@@ -1053,7 +1371,8 @@ namespace rtsp_stream {
+     if (type == "control"sv) {
+       payload_option.option = const_cast<char *>("X-SS-Connect-Data");
+       payload_option.content = connect_data.data();
+-    } else {
++    }
++    else {
+       payload_option.option = const_cast<char *>("X-SS-Ping-Payload");
+       payload_option.content = session.av_ping_payload.data();
+     }
+@@ -1064,14 +1383,38 @@ namespace rtsp_stream {
+   }
+ 
+   /**
+-   * @brief Handle RTSP ANNOUNCE requests from the client.
+-   *
+-   * @param server RTSP server instance handling the request.
+-   * @param sock Socket used to read or write the protocol message.
+-   * @param session Active streaming or pairing session for the request.
+-   * @param req Parsed RTSP request being handled.
++   * The X-SS-Dynamic-HDR response option chain. Both the first ANNOUNCE and
++   * its idempotent retry must return the same headers — a retrying client
++   * has no other way to learn the host's selection — so the chain is built
++   * from the result stored on the launch session. The strings live in this
++   * object, which must outlive the respond() call it is attached to.
+    */
+-  void cmd_announce(rtsp_server_t *server, tcp::socket &sock, launch_session_t &session, msg_t &&req) {
++  struct dynamic_hdr_response_headers_t {
++    std::string format_value;
++    std::string fallback_value;
++    OPTION_ITEM format_item {};
++    OPTION_ITEM fallback_item {};
++
++    dynamic_hdr_response_headers_t(int format, std::string_view fallback_reason):
++        format_value(std::to_string(format)),
++        fallback_value(fallback_reason) {
++      format_item.option = const_cast<char *>("X-SS-Dynamic-HDR");
++      format_item.content = format_value.data();
++      if (!fallback_value.empty()) {
++        fallback_item.option = const_cast<char *>("X-SS-Dynamic-HDR-Fallback");
++        fallback_item.content = fallback_value.data();
++        format_item.next = &fallback_item;
++      }
++    }
++
++    void
++    attach(OPTION_ITEM &head) {
++      head.next = &format_item;
++    }
++  };
++
++  void
++  cmd_announce(rtsp_server_t *server, tcp::socket &sock, launch_session_t &session, msg_t &&req) {
+     OPTION_ITEM option {};
+ 
+     // I know these string literals will not be modified
+@@ -1080,7 +1423,26 @@ namespace rtsp_stream {
+     auto seqn_str = std::to_string(req->sequenceNumber);
+     option.content = const_cast<char *>(seqn_str.c_str());
+ 
+-    std::string_view payload {req->payload, (size_t) req->payloadLength};
++    std::string_view payload { req->payload, (size_t) req->payloadLength };
++
++    // GameStream 的 DESCRIBE、SETUP、ANNOUNCE 和 PLAY 会使用不同连接，
++    // 因此启动票据需要在握手期间保持可认领。重复 ANNOUNCE 只作为幂等重试，
++    // 不能再次创建媒体会话。RTSP 命令由服务器 io_context 串行处理。
++    if (session.stream_session_started) {
++      if (payload == session.stream_announce_payload) {
++        BOOST_LOG(debug) << "Ignoring duplicate ANNOUNCE for launch session "sv << session.id;
++        dynamic_hdr_response_headers_t dynamic_hdr_headers(
++          session.negotiated_dynamic_hdr_format,
++          session.negotiated_dynamic_hdr_fallback);
++        dynamic_hdr_headers.attach(option);
++        respond(sock, session, &option, 200, "OK", req->sequenceNumber, {});
++      }
++      else {
++        BOOST_LOG(warning) << "Rejecting ANNOUNCE reconfiguration for active launch session "sv << session.id;
++        respond(sock, session, &option, 455, "Method Not Valid in This State", req->sequenceNumber, {});
++      }
++      return;
++    }
+ 
+     std::vector<std::string_view> lines;
+ 
+@@ -1110,7 +1472,8 @@ namespace rtsp_stream {
+       auto type = line.substr(0, 2);
+       if (type == "s="sv) {
+         client = line.substr(2);
+-      } else if (type == "a=") {
++      }
++      else if (type == "a=") {
+         auto pos = line.find(':');
+ 
+         auto name = line.substr(2, pos - 2);
+@@ -1138,75 +1501,216 @@ namespace rtsp_stream {
+     args.try_emplace("x-ss-general.encryptionEnabled"sv, "0"sv);
+     args.try_emplace("x-ss-video[0].chromaSamplingType"sv, "0"sv);
+     args.try_emplace("x-ss-video[0].intraRefresh"sv, "0"sv);
+-    args.try_emplace("x-nv-video[0].clientRefreshRateX100"sv, "0"sv);
++    args.try_emplace("x-nv-video[0].clientRefreshRateX100"sv, "0"sv);  // NTSC framerate support (e.g., 5994 = 59.94fps)
++
++    // Dynamic HDR negotiation (Sunshine extension, opt-in by client).
++    // Deliberately NO try_emplace defaults here: an absent attribute must
++    // reach the parser as absent, not as "0" — a defaulted "0" would look
++    // like a client that reported "no capabilities" and get it downgraded
++    // from the unconditional HDR10+ of previous versions (see
++    // parse_dynamic_hdr_request()'s caps_reported contract).
++
++    // Audio codec selection (Sunshine extension, opt-in by client).
++    // 0 = Opus (default, backward compatible)
++    // 1 = AC3 passthrough
++    // 2 = E-AC3 passthrough
++    args.try_emplace("x-ml-audio.codec"sv, "opus"sv);
++    args.try_emplace("x-ml-audio.bitrate"sv, "0"sv);
+ 
+     stream::config_t config;
+ 
+     std::int64_t configuredBitrateKbps;
+     config.audio.flags[audio::config_t::HOST_AUDIO] = session.host_audio;
+-    try {
+-      config.audio.channels = (int) util::from_view(args.at("x-nv-audio.surround.numChannels"sv));
+-      config.audio.mask = (int) util::from_view(args.at("x-nv-audio.surround.channelMask"sv));
+-      config.audio.packetDuration = (int) util::from_view(args.at("x-nv-aqos.packetDuration"sv));
++    // Set inside the SDP parse below; consumed by the dynamic HDR selection.
++    bool post_process_hdr_active = false;
++    // Signal-preserving neural filter; declared unconditionally so the policy resolve
++    // below compiles on every platform.
++    bool post_process_nr_active = false;
++    auto getArg = [&args](std::string_view key) {
++      return util::from_view(args.at(key));
++    };
+ 
+-      config.audio.flags[audio::config_t::HIGH_QUALITY] =
+-        util::from_view(args.at("x-nv-audio.surround.AudioQuality"sv));
++    try {
++      config.audio.channels = getArg("x-nv-audio.surround.numChannels"sv);
++      config.audio.mask = getArg("x-nv-audio.surround.channelMask"sv);
++      config.audio.packetDuration = getArg("x-nv-aqos.packetDuration"sv);
++      config.audio.flags[audio::config_t::HIGH_QUALITY] = getArg("x-nv-audio.surround.AudioQuality"sv);
++
++      // Parse Moonlight audio codec selection (string -> enum).
++      // Unknown values fall back to Opus to preserve compatibility.
++      {
++        const auto &codecStr = args.at("x-ml-audio.codec"sv);
++        if (codecStr == "ac3"sv) {
++          config.audio.codec = audio::CODEC_AC3;
++        }
++        else if (codecStr == "eac3"sv) {
++          config.audio.codec = audio::CODEC_EAC3;
++        }
++        else if (codecStr == "pcm"sv || codecStr == "pcm_s16"sv || codecStr == "s16"sv) {
++          // Accept several spellings: "pcm" (legacy short form), "pcm_s16"
++          // (matches the codec_e enum name on both client and server) and
++          // "s16" (FFmpeg-style sample format hint). All map to the same
++          // signed-16-bit interleaved LPCM passthrough.
++          config.audio.codec = audio::CODEC_PCM_S16;
++        }
++        else {
++          config.audio.codec = audio::CODEC_OPUS;
++        }
++        config.audio.bitrate = getArg("x-ml-audio.bitrate"sv);
++
++        // AC3/E-AC3 uses a fixed 1536-sample (32 ms) frame at 48 kHz, override
++        // whatever Opus packet duration the client requested for QoS purposes.
++        if (config.audio.codec == audio::CODEC_AC3 || config.audio.codec == audio::CODEC_EAC3) {
++          config.audio.packetDuration = 32;
++
++          // Validate the request can actually be honored. AC3 maxes out at
++          // 5.1 (6 channels), and the linked FFmpeg may have been built
++          // without audio encoders. If we silently fell back to Opus here
++          // the client would still expect AC3 bitstream and play garbage,
++          // so reject the ANNOUNCE explicitly to force the client to retry
++          // with a valid configuration.
++          AVCodecID needed = (config.audio.codec == audio::CODEC_EAC3)
++                                 ? AV_CODEC_ID_EAC3 : AV_CODEC_ID_AC3;
++          const char *codecName = (config.audio.codec == audio::CODEC_EAC3) ? "E-AC3" : "AC3";
++          if (config.audio.channels > 6) {
++            BOOST_LOG(warning) << codecName << " passthrough rejected: "sv
++                               << config.audio.channels << " channels exceeds 5.1 limit"sv;
++            respond(sock, session, &option, 415, "UNSUPPORTED MEDIA TYPE", req->sequenceNumber, {});
++            return;
++          }
++          if (avcodec_find_encoder(needed) == nullptr) {
++            BOOST_LOG(warning) << codecName << " passthrough rejected: encoder not built into linked FFmpeg "sv
++                               << "(rebuild build-deps with --enable-encoder=ac3,eac3)"sv;
++            respond(sock, session, &option, 415, "UNSUPPORTED MEDIA TYPE", req->sequenceNumber, {});
++            return;
++          }
++        }
++        else if (config.audio.codec == audio::CODEC_PCM_S16) {
++          // Force 5 ms framing: 48k * 5ms = 240 samples, 5.1ch * 16bit = 2880 B
++          // (fits the 4 KB receiver buffer).
++          config.audio.packetDuration = 5;
++          if (config.audio.channels > 6) {
++            BOOST_LOG(warning) << "PCM_S16 passthrough rejected: "sv
++                               << config.audio.channels << " channels exceeds 5.1 limit"sv;
++            respond(sock, session, &option, 415, "UNSUPPORTED MEDIA TYPE", req->sequenceNumber, {});
++            return;
++          }
++        }
++      }
+ 
+-      config.controlProtocolType = (int) util::from_view(args.at("x-nv-general.useReliableUdp"sv));
+-      config.packetsize = (int) util::from_view(args.at("x-nv-video[0].packetSize"sv));
+-      config.minRequiredFecPackets = (int) util::from_view(args.at("x-nv-vqos[0].fec.minRequiredFecPackets"sv));
+-      config.mlFeatureFlags = (int) util::from_view(args.at("x-ml-general.featureFlags"sv));
+-      config.audioQosType = (int) util::from_view(args.at("x-nv-aqos.qosTrafficType"sv));
+-      config.videoQosType = (int) util::from_view(args.at("x-nv-vqos[0].qosTrafficType"sv));
+-      config.encryptionFlagsEnabled = (uint32_t) util::from_view(args.at("x-ss-general.encryptionEnabled"sv));
++      config.controlProtocolType = getArg("x-nv-general.useReliableUdp"sv);
++      config.packetsize = getArg("x-nv-video[0].packetSize"sv);
++      config.minRequiredFecPackets = getArg("x-nv-vqos[0].fec.minRequiredFecPackets"sv);
++      config.mlFeatureFlags = getArg("x-ml-general.featureFlags"sv);
++      BOOST_LOG(debug) << "Moonlight feature flags: 0x" << std::hex << config.mlFeatureFlags
++                      << std::dec << ", remote_text_context="
++                      << ((config.mlFeatureFlags & ML_FF_REMOTE_TEXT_CONTEXT) != 0);
++      config.audioQosType = getArg("x-nv-aqos.qosTrafficType"sv);
++      config.videoQosType = getArg("x-nv-vqos[0].qosTrafficType"sv);
++      config.encryptionFlagsEnabled = getArg("x-ss-general.encryptionEnabled"sv);
+ 
+       // Legacy clients use nvFeatureFlags to indicate support for audio encryption
+-      if (util::from_view(args.at("x-nv-general.featureFlags"sv)) & 0x20) {
++      if (getArg("x-nv-general.featureFlags"sv) & 0x20) {
+         config.encryptionFlagsEnabled |= SS_ENC_AUDIO;
+       }
+ 
+-      // Limit the packetsize to avoid fragmentation with clients that cannot configure this value
+-      if (config::stream.packetsize && config::stream.packetsize < config.packetsize) {
+-        if (config::stream.packetsize < config::PACKETSIZE_MIN || config::stream.packetsize > config::PACKETSIZE_MAX) {
+-          BOOST_LOG(warning) << "packetsize range: ["sv << config::PACKETSIZE_MIN << "-"sv << config::PACKETSIZE_MAX
+-                             << "] invalid value: "sv << config::stream.packetsize;
+-        } else {
+-          if (config::stream.packetsize < config::PACKETSIZE_SMALL) {
+-            BOOST_LOG(info) << "packetsize is small < "sv << config::PACKETSIZE_SMALL << " bytes, reduce bitrate if the stream breaks"sv;
+-          } else if (config::stream.packetsize > config::PACKETSIZE_LARGE) {
+-            BOOST_LOG(info) << "packetsize is large > "sv << config::PACKETSIZE_LARGE << " bytes, jumbo frames may be used"sv;
+-          }
++      auto &monitor = config.monitor;
++      monitor.height = getArg("x-nv-video[0].clientViewportHt"sv);
++      monitor.width = getArg("x-nv-video[0].clientViewportWd"sv);
++      BOOST_LOG(info) << "Client requested stream resolution (clientViewport): " << monitor.width << "x" << monitor.height;
++      monitor.framerate = getArg("x-nv-video[0].maxFPS"sv);
++      monitor.bitrate = getArg("x-nv-vqos[0].bw.maximumBitrateKbps"sv);
++      monitor.slicesPerFrame = getArg("x-nv-video[0].videoEncoderSlicesPerFrame"sv);
++      monitor.numRefFrames = getArg("x-nv-video[0].maxNumReferenceFrames"sv);
++      monitor.encoderCscMode = getArg("x-nv-video[0].encoderCscMode"sv);
++      monitor.videoFormat = getArg("x-nv-vqos[0].bitStreamFormat"sv);
++      monitor.dynamicRange = getArg("x-nv-video[0].dynamicRangeMode"sv);
++#ifdef _WIN32
++      // The TrueHDR output and synthetic metadata are defined for PQ. HLG keeps
++      // the original capture path so the encoded pixels and wire signal agree.
++      post_process_hdr_active = session.synthetic_hdr.enabled && session.hdr_backend && monitor.dynamicRange == 1;
++      if (!post_process_hdr_active) session.hdr_backend.reset();
++      if (session.synthetic_hdr.enabled && monitor.dynamicRange == 2) {
++        BOOST_LOG(warning) << "RTX HDR requires PQ (dynamicRangeMode=1); ignoring it for this HLG session"sv;
++      }
++      if (post_process_hdr_active) {
++        monitor.pre_encode_filter = platf::pre_encode_filter_e::external_sdr_to_hdr;
++        monitor.pre_encode_filter_config = {
++          .contrast = static_cast<float>(session.synthetic_hdr.contrast),
++          .saturation = static_cast<float>(session.synthetic_hdr.saturation),
++          .middle_gray_nits = static_cast<float>(session.synthetic_hdr.middle_gray),
++          .peak_nits = static_cast<float>(session.synthetic_hdr.peak_nits),
++        };
++        monitor.enhancement_backend = session.hdr_backend;
++      }
++      // NR preserves the captured SDR or native HDR signal. Synthetic RTX HDR
++      // owns the single filter slot when selected; do not overwrite its policy.
++      post_process_nr_active = !post_process_hdr_active && session.dlssnr_params.enabled &&
++                               static_cast<bool>(session.dlssnr_backend);
++      if (!post_process_nr_active) session.dlssnr_backend.reset();
++      if (post_process_nr_active) {
++        monitor.pre_encode_filter = platf::pre_encode_filter_e::external_neural_enhancement;
++        monitor.pre_encode_filter_config = {
++          .nr_intensity = session.dlssnr_params.intensity,
++          .nr_local_tone_strength = session.dlssnr_params.local_tone_strength,
++          .nr_local_structure_strength = session.dlssnr_params.local_structure_strength,
++          .nr_skin_structure_strength = session.dlssnr_params.skin_structure_strength,
++          .nr_style = session.dlssnr_params.style,
++          .nr_motion_quality = session.dlssnr_params.motion_quality,
++          .nr_auto_mask = session.dlssnr_params.auto_mask,
++          .nr_ui_correction = session.dlssnr_params.ui_correction,
++        };
++        monitor.enhancement_backend = session.dlssnr_backend;
++      }
++#endif
++      monitor.frame_pipeline_policy =
++        platf::resolve_frame_pipeline_policy(monitor.dynamicRange, post_process_hdr_active, post_process_nr_active);
++      monitor.frame_pipeline_policy_resolved = true;
++#ifdef _WIN32
++      // Publish the resolved policy on the launch session so display
++      // preparation consumes the same decision as the capture/encode side
++      // instead of re-deriving it from raw flags.
++      session.frame_pipeline_policy = monitor.frame_pipeline_policy;
++      session.frame_pipeline_policy_resolved = true;
++#endif
++      monitor.chromaSamplingType = getArg("x-ss-video[0].chromaSamplingType"sv);
++      monitor.enableIntraRefresh = getArg("x-ss-video[0].intraRefresh"sv);
++      monitor.hdr_capabilities = session.hdr_capabilities;
++
++      int clientRefreshRateX100 = getArg("x-nv-video[0].clientRefreshRateX100"sv);
++
++      // Only use clientRefreshRateX100 if it's within 2% of maxFPS
++      bool useClientRefreshRate = false;
++      if (clientRefreshRateX100 > 0 && monitor.framerate > 0) {
++        double ratio = (clientRefreshRateX100 / 100.0) / monitor.framerate;
++        useClientRefreshRate = (ratio > 0.98 && ratio < 1.02);
++      }
+ 
+-          BOOST_LOG(info) << "packetsize limit: "sv << config.packetsize << " -> "sv << config::stream.packetsize << " bytes"sv;
+-          config.packetsize = config::stream.packetsize;
+-        }
++      if (useClientRefreshRate) {
++        int remainder = clientRefreshRateX100 % 100;
++        monitor.frameRateNum = (remainder == 0) ? clientRefreshRateX100 / 100 : clientRefreshRateX100;
++        monitor.frameRateDen = (remainder == 0) ? 1 : 100;
++
++        BOOST_LOG(info) << "Client framerate: " << clientRefreshRateX100 / 100.0 << " fps ("
++                        << monitor.frameRateNum << "/" << monitor.frameRateDen << ")";
++      }
++      else {
++        monitor.frameRateNum = monitor.framerate;
++        monitor.frameRateDen = 1;
+       }
+ 
+-      config.monitor.height = (int) util::from_view(args.at("x-nv-video[0].clientViewportHt"sv));
+-      config.monitor.width = (int) util::from_view(args.at("x-nv-video[0].clientViewportWd"sv));
+-      config.monitor.framerate = (int) util::from_view(args.at("x-nv-video[0].maxFPS"sv));
+-      config.monitor.framerateX100 = (int) util::from_view(args.at("x-nv-video[0].clientRefreshRateX100"sv));
+-      // Validate framerateX100 against framerate. Some clients (e.g. Moonlight Android) send the
+-      // client display's refresh rate as clientRefreshRateX100, which may differ from the requested
+-      // streaming framerate. Discard framerateX100 if the derived fps is not within 1% of framerate.
+-      if (config.monitor.framerateX100 > 0) {
+-        double fps_strict = config.monitor.framerateX100 / 100.0;
+-        double ratio = fps_strict / config.monitor.framerate;
+-        if (ratio < 0.99 || ratio > 1.01) {
+-          config.monitor.framerateX100 = 0;
+-        }
++      configuredBitrateKbps = getArg("x-ml-video.configuredBitrateKbps"sv);
++
++      // Set display_name from session environment or use global configuration
++      if (auto it = session.env.find("SUNSHINE_CLIENT_DISPLAY_NAME"); it != session.env.end()) {
++        monitor.display_name = it->to_string();
++        BOOST_LOG(info) << "Session using specified display: " << monitor.display_name;
+       }
+-      config.monitor.bitrate = (int) util::from_view(args.at("x-nv-vqos[0].bw.maximumBitrateKbps"sv));
+-      config.monitor.slicesPerFrame = (int) util::from_view(args.at("x-nv-video[0].videoEncoderSlicesPerFrame"sv));
+-      config.monitor.numRefFrames = (int) util::from_view(args.at("x-nv-video[0].maxNumReferenceFrames"sv));
+-      config.monitor.encoderCscMode = (int) util::from_view(args.at("x-nv-video[0].encoderCscMode"sv));
+-      config.monitor.videoFormat = (int) util::from_view(args.at("x-nv-vqos[0].bitStreamFormat"sv));
+-      config.monitor.dynamicRange = (int) util::from_view(args.at("x-nv-video[0].dynamicRangeMode"sv));
+-      config.monitor.chromaSamplingType = (int) util::from_view(args.at("x-ss-video[0].chromaSamplingType"sv));
+-      config.monitor.enableIntraRefresh = (int) util::from_view(args.at("x-ss-video[0].intraRefresh"sv));
+-
+-      configuredBitrateKbps = util::from_view(args.at("x-ml-video.configuredBitrateKbps"sv));
+-    } catch (std::out_of_range &) {
++      else {
++        monitor.display_name = config::video.output_name;
++      }
++    }
++    catch (std::out_of_range &) {
+       respond(sock, session, &option, 400, "BAD REQUEST", req->sequenceNumber, {});
+       return;
+     }
+@@ -1217,33 +1721,23 @@ namespace rtsp_stream {
+     if (config.audio.channels == 2) {
+       for (auto option = req->options; option != nullptr; option = option->next) {
+         if ("Host"sv == option->option) {
+-          std::string_view content {option->content};
++          std::string_view content { option->content };
+           BOOST_LOG(debug) << "Found Host: "sv << content;
+           config.audio.flags[audio::config_t::HIGH_QUALITY] = (content.find("0.0.0.0"sv) == std::string::npos);
+         }
+       }
+-    } else if (session.surround_params.length() > 3) {
+-      // Channels
+-      std::uint8_t c = session.surround_params[0] - '0';
+-      // Streams
+-      std::uint8_t n = session.surround_params[1] - '0';
+-      // Coupled streams
+-      std::uint8_t m = session.surround_params[2] - '0';
+-      auto valid = false;
+-      if ((c == 6 || c == 8) && c == config.audio.channels && n + m == c && session.surround_params.length() == c + 3) {
+-        config.audio.customStreamParams.channelCount = c;
+-        config.audio.customStreamParams.streams = n;
+-        config.audio.customStreamParams.coupledStreams = m;
+-        valid = true;
+-        for (std::uint8_t i = 0; i < c; i++) {
+-          config.audio.customStreamParams.mapping[i] = session.surround_params[i + 3] - '0';
+-          if (config.audio.customStreamParams.mapping[i] >= c) {
+-            valid = false;
+-            break;
+-          }
+-        }
+-      }
+-      config.audio.flags[audio::config_t::CUSTOM_SURROUND_PARAMS] = valid;
++    }
++    else if (!session.surround_params.empty()) {
++      config.audio.flags[audio::config_t::CUSTOM_SURROUND_PARAMS] =
++        parse_surround_params(session.surround_params, config.audio.channels, config.audio.customStreamParams);
++    }
++
++    if (config.audio.channels == 12 && !config.audio.flags[audio::config_t::CUSTOM_SURROUND_PARAMS]) {
++      config.audio.customStreamParams.channelCount = 12;
++      config.audio.customStreamParams.streams = 8;
++      config.audio.customStreamParams.coupledStreams = 4;
++      std::copy_n(std::begin(platf::speaker::map_surround714), 12, std::begin(config.audio.customStreamParams.mapping));
++      config.audio.flags[audio::config_t::CUSTOM_SURROUND_PARAMS] = true;
+     }
+     if (session.continuous_audio) {
+       BOOST_LOG(info) << "Client requested continuous audio"sv;
+@@ -1273,7 +1767,7 @@ namespace rtsp_stream {
+       configuredBitrateKbps -= std::min((std::int64_t) 500, configuredBitrateKbps / 10);
+ 
+       BOOST_LOG(debug) << "Final adjusted video encoding bitrate is "sv << configuredBitrateKbps << " Kbps"sv;
+-      config.monitor.bitrate = (int) configuredBitrateKbps;
++      config.monitor.bitrate = configuredBitrateKbps;
+     }
+ 
+     if (config.monitor.videoFormat == 1 && video::active_hevc_mode == 1) {
+@@ -1290,15 +1784,62 @@ namespace rtsp_stream {
+       return;
+     }
+ 
+-    // Check that any required encryption is enabled
+-    auto encryption_mode = net::encryption_mode_for_address(sock.remote_endpoint().address());
+-    if (encryption_mode == config::ENCRYPTION_MODE_MANDATORY && (config.encryptionFlagsEnabled & (SS_ENC_VIDEO | SS_ENC_AUDIO)) != (SS_ENC_VIDEO | SS_ENC_AUDIO)) {
+-      BOOST_LOG(error) << "Rejecting client that cannot comply with mandatory encryption requirement"sv;
++    // One-shot dynamic HDR selection (docs/dolby_vision_profile81.md §4). The
++    // client's report arrived with this ANNOUNCE; the verdict rides back in
++    // the response headers and config.monitor carries it to the encode path.
++    const auto find_arg = [&args](std::string_view key) -> std::optional<std::string_view> {
++      const auto entry = args.find(key);
++      if (entry == args.end()) {
++        return std::nullopt;
++      }
++      return entry->second;
++    };
++    const auto dynamic_hdr_request = hdr::parse_dynamic_hdr_request(
++      find_arg("x-ss-video[0].dynamicHdrCaps"sv),
++      find_arg("x-ss-video[0].dolbyVisionDirectSurface"sv),
++      find_arg("x-ss-video[0].dynamicHdrPreference"sv));
++    const hdr::dynamic_hdr_selection_t dynamic_hdr_selection = hdr::select_dynamic_hdr(
++      dynamic_hdr_request,
++      {
++        .video_format = config.monitor.videoFormat,
++        .dynamic_range_mode = config.monitor.dynamicRange,
++        .synthetic_hdr_enabled = session.synthetic_hdr.enabled,
++      });
++    config.monitor.dynamic_hdr_format = hdr::to_wire(dynamic_hdr_selection.format);
++    session.negotiated_dynamic_hdr_format = config.monitor.dynamic_hdr_format;
++    session.negotiated_dynamic_hdr_fallback =
++      dynamic_hdr_selection.fallback_reason != hdr::dynamic_hdr_fallback_e::none
++        ? std::string(hdr::to_string(dynamic_hdr_selection.fallback_reason))
++        : std::string {};
++    if (dynamic_hdr_selection.dolby_vision_active()) {
++      BOOST_LOG(info) << "Dynamic HDR negotiated: "sv << hdr::to_string(dynamic_hdr_selection.format);
++    }
++    else if (dynamic_hdr_selection.fallback_reason != hdr::dynamic_hdr_fallback_e::none) {
++      BOOST_LOG(info) << "Dynamic HDR negotiated: "sv << hdr::to_string(dynamic_hdr_selection.format)
++                      << " (dolby vision fallback: "sv
++                      << hdr::to_string(dynamic_hdr_selection.fallback_reason) << ')';
++    }
+ 
+-      respond(sock, session, &option, 403, "Forbidden", req->sequenceNumber, {});
+-      return;
++    // 检测是否仅控制流会话（只有 control 流被设置，没有 video 和 audio）
++    session.control_only = session.setup_control && !session.setup_video && !session.setup_audio;
++    if (session.control_only) {
++      BOOST_LOG(info) << "Control-only session detected: client ["sv << session.client_name << "] will only provide input control"sv;
++    }
++
++    // Check that any required encryption is enabled
++    // 对于仅控制流会话，跳过视频/音频加密检查
++    if (!session.control_only) {
++      auto encryption_mode = net::encryption_mode_for_address(sock.remote_endpoint().address());
++      if (encryption_mode == config::ENCRYPTION_MODE_MANDATORY &&
++          (config.encryptionFlagsEnabled & (SS_ENC_VIDEO | SS_ENC_AUDIO)) != (SS_ENC_VIDEO | SS_ENC_AUDIO)) {
++        BOOST_LOG(error) << "Rejecting client that cannot comply with mandatory encryption requirement"sv;
++
++        respond(sock, session, &option, 403, "Forbidden", req->sequenceNumber, {});
++        return;
++      }
+     }
+ 
++    std::string announce_payload { payload };
+     auto stream_session = stream::session::alloc(config, session);
+     server->insert(stream_session);
+ 
+@@ -1310,18 +1851,19 @@ namespace rtsp_stream {
+       return;
+     }
+ 
++    session.stream_announce_payload = std::move(announce_payload);
++    session.stream_session_started = true;
++
++    dynamic_hdr_response_headers_t dynamic_hdr_headers(
++      session.negotiated_dynamic_hdr_format,
++      session.negotiated_dynamic_hdr_fallback);
++    dynamic_hdr_headers.attach(option);
++
+     respond(sock, session, &option, 200, "OK", req->sequenceNumber, {});
+   }
+ 
+-  /**
+-   * @brief Handle RTSP PLAY requests and start streaming.
+-   *
+-   * @param server RTSP server instance handling the request.
+-   * @param sock Socket used to read or write the protocol message.
+-   * @param session Active streaming or pairing session for the request.
+-   * @param req Parsed RTSP request being handled.
+-   */
+-  void cmd_play(rtsp_server_t *server, tcp::socket &sock, launch_session_t &session, msg_t &&req) {
++  void
++  cmd_play(rtsp_server_t *server, tcp::socket &sock, launch_session_t &session, msg_t &&req) {
+     OPTION_ITEM option {};
+ 
+     // I know these string literals will not be modified
+@@ -1333,8 +1875,8 @@ namespace rtsp_stream {
+     respond(sock, session, &option, 200, "OK", req->sequenceNumber, {});
+   }
+ 
+-  void start() {
+-    platf::set_thread_name("rtsp");
++  void
++  start() {
+     auto shutdown_event = mail::man->event<bool>(mail::shutdown);
+ 
+     server.map("OPTIONS"sv, &cmd_option);
+@@ -1351,8 +1893,7 @@ namespace rtsp_stream {
+       return;
+     }
+ 
+-    std::jthread rtsp_thread {[&shutdown_event] {
+-      platf::set_thread_name("rtsp::handler");
++    std::thread rtsp_thread { [&shutdown_event] {
+       auto broadcast_shutdown_event = mail::man->event<bool>(mail::broadcast_shutdown);
+ 
+       while (!shutdown_event->peek()) {
+@@ -1360,14 +1901,15 @@ namespace rtsp_stream {
+ 
+         if (broadcast_shutdown_event->peek()) {
+           server.clear();
+-        } else {
++        }
++        else {
+           // cleanup all stopped sessions
+           server.clear(false);
+         }
+       }
+ 
+       server.clear();
+-    }};
++    } };
+ 
+     // Wait for shutdown
+     shutdown_event->view();
+@@ -1377,49 +1919,46 @@ namespace rtsp_stream {
+     rtsp_thread.join();
+   }
+ 
+-  /**
+-   * @brief Write msg details to the log.
+-   */
+-  void print_msg(PRTSP_MESSAGE msg) {
++  void
++  print_msg(PRTSP_MESSAGE msg) {
+     std::string_view type = msg->type == TYPE_RESPONSE ? "RESPONSE"sv : "REQUEST"sv;
+ 
+-    std::string_view payload {msg->payload, (size_t) msg->payloadLength};
+-    std::string_view protocol {msg->protocol};
++    std::string_view payload { msg->payload, (size_t) msg->payloadLength };
++    std::string_view protocol { msg->protocol };
+     auto seqnm = msg->sequenceNumber;
+-    std::string_view messageBuffer {msg->messageBuffer};
++    std::string_view messageBuffer { msg->messageBuffer };
+ 
+-    BOOST_LOG(debug) << "type ["sv << type << ']';
+-    BOOST_LOG(debug) << "sequence number ["sv << seqnm << ']';
+-    BOOST_LOG(debug) << "protocol :: "sv << protocol;
+-    BOOST_LOG(debug) << "payload :: "sv << payload;
++    std::ostringstream log_stream;
++    log_stream << "type ["sv << type << "], sequence number ["sv << seqnm << "], protocol :: "sv << protocol << ", payload :: "sv << payload;
+ 
+     if (msg->type == TYPE_RESPONSE) {
+       auto &resp = msg->message.response;
+ 
+       auto statuscode = resp.statusCode;
+-      std::string_view status {resp.statusString};
++      std::string_view status { resp.statusString };
+ 
+-      BOOST_LOG(debug) << "statuscode :: "sv << statuscode;
+-      BOOST_LOG(debug) << "status :: "sv << status;
+-    } else {
++      log_stream << "statuscode :: "sv << statuscode << ", status :: "sv << status;
++    }
++    else {
+       auto &req = msg->message.request;
+ 
+-      std::string_view command {req.command};
+-      std::string_view target {req.target};
++      std::string_view command { req.command };
++      std::string_view target { req.target };
+ 
+-      BOOST_LOG(debug) << "command :: "sv << command;
+-      BOOST_LOG(debug) << "target :: "sv << target;
++      log_stream << "command :: "sv << command << ", target :: "sv << target;
+     }
+ 
+     for (auto option = msg->options; option != nullptr; option = option->next) {
+-      std::string_view content {option->content};
+-      std::string_view name {option->option};
++      std::string_view content { option->content };
++      std::string_view name { option->option };
+ 
+-      BOOST_LOG(debug) << name << " :: "sv << content;
++      log_stream << name << " :: "sv << content;
+     }
+ 
+-    BOOST_LOG(debug) << "---Begin MessageBuffer---"sv << std::endl
+-                     << messageBuffer << std::endl
+-                     << "---End MessageBuffer---"sv << std::endl;
++    log_stream << std::endl
++               << "---Begin MessageBuffer---"sv << std::endl
++               << messageBuffer << std::endl
++               << "---End MessageBuffer---"sv;
++    BOOST_LOG(debug) << log_stream.str();
+   }
+ }  // namespace rtsp_stream
