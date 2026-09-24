@@ -313,11 +313,17 @@ this tree tracks real files under `third-party/`), then a `nix-build` of the pac
   prebuilt ffmpeg FOD, KWin+portal+KMS+VAAPI+Vulkan backends, CUDA toggle) plus the matching flake
   outputs (`packages`, `overlays.default`, `checks`). The old `foundation-sunshine` package stays
   in place until the new one is pinned, so the current NixOS config keeps working.
-* **Known-broken pin.** `pkgs/foundation-sunshine/default.nix` still pins
-  `v2026.09.25-linux @ b48a1cfb` (the abandoned batch-port lineage). Re-tag or re-pin before the
-  next `nix flake update`; `update-pin-and-cache.yml`'s tag regex is
-  `^v[0-9]{4}\.[0-9]{2}\.[0-9]{2}-linux$`, so a release of this lane must use that shape if it is
-  to be picked up automatically.
+* **Tag.** `v2026.09.25-linux` (annotated, `bd9ed95a`) is pushed. The name matches
+  `update-pin-and-cache.yml`'s regex `^v[0-9]{4}\.[0-9]{2}\.[0-9]{2}-linux$`, so the automation
+  picks this lane up; it reuses the name of the abandoned batch-port tag, which no longer existed
+  on the remote.
+* **Pin state, both packages.** The old AlkaidLab package is no longer dangling: the workflow
+  re-pinned it to `v2026.09.10-linux @ e4dbcca1` before this work landed, so it still builds.
+  `scripts/update-pin.py` and the workflow now target `pkgs/foundation-sunshine-upstream` — the
+  new lineage is the one that gets pinned, built and cached. The workflow's "prefetch source hash"
+  step uses the **archive** tarball, which cannot see submodules, so the first build of a release
+  deliberately trips the `hash mismatch` fix-up retry, which writes the submodule-aware hash and
+  rebuilds; that path is expected here, not a failure.
 * **Portal capture is interactive.** The XDG portal backend shows a desktop approval dialog; the
   user has to accept it (observed on the target host). The default path does not hit portal (non
   numeric names route to KWin), so this only matters when KWin is unavailable, e.g. before login —
