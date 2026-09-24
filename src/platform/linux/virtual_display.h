@@ -34,10 +34,12 @@ namespace platf {
   /**
    * @brief Whether the display list served to clients may advertise the virtual ids.
    *
-   * Keep this false until the launch path honours them (display-intent resolution plus the
-   * `global_prep_cmd` do-hook that creates the monitor before the encoder probe runs). Advertising
-   * an id that launch cannot honour makes a client that picks it receive a hard 503 instead of a
-   * working stream, which is worse than not offering the feature at all.
+   * Flipped on 2026-09-25 after the launch path was verified end-to-end on the target host: the
+   * host-config (默认) pick ran the global do-hook before the encoder probe and streamed through
+   * KWin ScreenCast with the virtual monitor created by the hook. Both virtual ids resolve to the
+   * same plumbing (id -> VIRTUAL_DISPLAY_OUTPUT_NAME + the hook switch), so they share that path.
+   * Turn it back off if a client picking `虚拟-KWin`/`虚拟-KMS` cannot start a session: an id that
+   * launch cannot honour yields a hard 503 instead of a working stream.
    */
-  inline constexpr bool OFFER_VIRTUAL_DISPLAY_IDS = false;
+  inline constexpr bool OFFER_VIRTUAL_DISPLAY_IDS = true;
 }  // namespace platf

@@ -13,6 +13,7 @@
 #endif
 
 // standard includes
+#include <algorithm>
 #include <array>
 #include <cerrno>
 #include <cstring>
@@ -20,6 +21,7 @@
 #include <iomanip>
 #include <iostream>
 #include <sstream>
+#include <vector>
 
 // platform includes
 #include <arpa/inet.h>
@@ -63,6 +65,7 @@
 #include "src/entry_handler.h"
 #include "src/logging.h"
 #include "src/platform/common.h"
+#include "src/platform/linux/virtual_display.h"
 #include "vaapi.h"
 
 #ifdef __GNUC__
@@ -1271,6 +1274,31 @@ namespace platf {
     return {};
   }
 
+  std::vector<std::string> client_display_names(mem_type_e hwdevice_type) {
+    // The list a client may pick from has to match what `display()` will resolve the pick against:
+    // Wayland-side names (connector names, the virtual ids) go to KWin whenever it is alive. KMS
+    // enumeration, in contrast, can succeed without the capability that capturing needs (it only
+    // reads DRM resources), so serving its connector names here would offer clients outputs the
+    // session cannot actually use — verified on the target host: the client list showed `eDP-1`
+    // while the session captured through KWin.
+#ifdef SUNSHINE_BUILD_KWIN
+    if (sources[source::KWIN]) {
+      auto names = kwin_display_names();
+      // A single empty name is the probing-phase placeholder (the process still holds the elevated
+      // caps): treat it as "KWin is not ready yet" and fall through to the backend list.
+      const bool probing_placeholder = names.size() == 1 && names[0].empty();
+      if (!probing_placeholder && !names.empty()) {
+        if (OFFER_VIRTUAL_DISPLAY_IDS) {
+          names.emplace_back(VDISPLAY_KWIN_ID);
+          names.emplace_back(VDISPLAY_KMS_ID);
+        }
+        return names;
+      }
+    }
+#endif
+    return display_names(hwdevice_type);
+  }
+
   /**
    * @brief Report whether encoder backends should be probed again before streaming.
    *
@@ -1292,6 +1320,20 @@ namespace platf {
   std::shared_ptr<display_t> display(mem_type_e hwdevice_type, const std::string &display_name, const video::config_t &config) {
     // Please ensure that KMS followed by CUDA remains at the top so that we can
     // drop DRM worker privileges once neither backend requires it.
+
+#ifdef SUNSHINE_BUILD_KWIN
+    // Wayland-side names — physical connector names (HDMI-A-1) and the virtual display ids — only
+    // exist in the compositor's enumeration, while KMS understands numeric ids exclusively
+    // ("0", "1", …). With the linger/SDDM design both sources are alive in-session, so without
+    // this routing the KMS branch below would consume a KWin name and fail with
+    // "Couldn't find monitor [-N]". Numeric and empty picks keep the KMS-first path untouched, so
+    // the upstream privilege-ordering note above still holds.
+    if (sources[source::KWIN] && !display_name.empty() &&
+        display_name.find_first_not_of("0123456789") != std::string::npos) {
+      BOOST_LOG(info) << "Screencasting with KWin ScreenCast"sv;
+      return kwin_display(hwdevice_type, display_name, config);
+    }
+#endif
 
 #ifdef SUNSHINE_BUILD_DRM
     if (sources[source::KMS]) {
