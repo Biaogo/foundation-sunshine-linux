@@ -7,12 +7,15 @@
 
    Usage:
      nix-build upstream-sunshine.nix --arg configureOnly true          # deps probe only (fast)
+     nix-build upstream-sunshine.nix --arg buildTests true             # unit tests (gtest)
      nix-build upstream-sunshine.nix --arg cudaSupport true -o result  # real build
 */
 { pkgs ? import <nixpkgs> { config.allowUnfree = true; }  # CUDA EULA for cudaSupport
 , srcPath ? /tmp/fsl-refork-src
 , configureOnly ? false
 , configureStop ? false   # full configure, no build (dependency-detection probe)
+, buildTests ? false      # build tests/test_sunshine (needs the nested googletest submodule)
+, testFilter ? ""        # gtest --gtest_filter value; the full suite has sandbox-dependent cases
 , cudaSupport ? false
 }:
 
@@ -47,6 +50,13 @@ stdenv'.mkDerivation (finalAttrs: {
     substituteInPlace cmake/packaging/linux.cmake \
       --replace-fail 'find_package(Systemd)' "" \
       --replace-fail 'find_package(Udev)' ""
+  '' + lib.optionalString buildTests ''
+    # tests/CMakeLists.txt add_subdirectory's the googletest that lives in a NESTED submodule
+    # (third-party/lizardbyte-common/third-party/googletest), which a submodule fetch does not
+    # populate. Stage nixpkgs' copy of the same release (the gitlink pins v1.17.0).
+    rm -rf third-party/lizardbyte-common/third-party/googletest
+    mkdir -p third-party/lizardbyte-common/third-party/googletest
+    cp -r --no-preserve=mode,ownership ${pkgs.gtest.src}/. third-party/lizardbyte-common/third-party/googletest/
   '';
 
   nativeBuildInputs = [
@@ -117,7 +127,7 @@ stdenv'.mkDerivation (finalAttrs: {
     "-Wno-dev"
     (lib.cmakeBool "BOOST_USE_STATIC" false)
     (lib.cmakeBool "BUILD_DOCS" false)
-    (lib.cmakeBool "BUILD_TESTS" false)
+    (lib.cmakeBool "BUILD_TESTS" buildTests)
     (lib.cmakeBool "BUILD_WERROR" false)
     (lib.cmakeBool "GLAD_SKIP_PIP_INSTALL" true)
     (lib.cmakeBool "SUNSHINE_ENABLE_CUDA" cudaSupport)
@@ -156,9 +166,20 @@ stdenv'.mkDerivation (finalAttrs: {
     COMMIT = "refork01";
   };
 
+  checkPhase = lib.optionalString buildTests ''
+    runHook preCheck
+    # The upstream suite is not sandbox-clean: DownloadFileTests wants the network, and the
+    # ExternalCommand/FileHandler cases want a writable cwd. testFilter narrows the run so the
+    # suite can still gate a build (e.g. testFilter = "MicMixerTest.*").
+    ./tests/test_sunshine ${lib.optionalString (testFilter != "") "--gtest_filter=${testFilter}"}
+    runHook postCheck
+  '';
+
+  doCheck = buildTests;
+
   buildPhase = if (configureOnly || configureStop) then ":" else ''
     runHook preBuild
-    cmake --build . --target sunshine -j $NIX_BUILD_CORES
+    cmake --build . --target sunshine ${lib.optionalString buildTests "test_sunshine"} -j $NIX_BUILD_CORES
     runHook postBuild
   '';
 

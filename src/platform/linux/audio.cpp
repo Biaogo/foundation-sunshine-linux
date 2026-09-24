@@ -305,6 +305,15 @@ namespace platf {
         std::uint32_t surround714 = PA_INVALID_INDEX;  ///< PulseAudio module index for the 7.1.4 null sink.
       } index;  ///< PulseAudio module indexes for Sunshine-created null sinks.
 
+      /// Virtual microphone (client microphone redirect) state.
+      struct {
+        std::uint32_t null_sink = PA_INVALID_INDEX;  ///< Module index of the microphone null sink.
+        std::uint32_t remap_source = PA_INVALID_INDEX;  ///< Module index of the virtual microphone source.
+        std::string sink_name;  ///< Name of the null sink the mixed microphone audio is written into.
+        pa_simple *stream = nullptr;  ///< Blocking playback stream feeding the null sink.
+        bool initialized = false;  ///< Whether init_mic_redirect_device() already ran (and is usable).
+      } mic;  ///< PulseAudio module indexes for Sunshine-created null sinks.
+
       std::unique_ptr<safe::event_t<ctx_event_e>> events;  ///< Event queue receiving PulseAudio context state changes.
       std::unique_ptr<std::function<void(ctx_t::pointer)>> events_cb;  ///< Callback that translates PulseAudio context updates into events.
 
@@ -398,7 +407,31 @@ namespace platf {
       }
 
       /**
-       * @brief Unload a Sunshine-created PulseAudio null sink.
+       * @brief Load any PulseAudio module and wait for the result.
+       *
+       * @param module Module name, for example "module-null-sink".
+       * @param args Module arguments.
+       * @return PulseAudio module index, or PA_INVALID_INDEX on failure.
+       */
+      int load_module(const char *module, const std::string &args) {
+        auto alarm = safe::make_alarm<int>();
+
+        op_t op {
+          pa_context_load_module(
+            ctx.get(),
+            module,
+            args.c_str(),
+            cb_i,
+            alarm.get()
+          ),
+        };
+
+        alarm->wait();
+        return *alarm->status();
+      }
+
+      /**
+       * @brief Unload a Sunshine-created PulseAudio module (null sink, remap source, ...).
        *
        * @param i PulseAudio introspection info supplied to the callback.
        * @return 0 when the sink is absent or unloaded; nonzero on PulseAudio failure.
@@ -546,6 +579,120 @@ namespace platf {
       }
 
       /**
+       * @brief Create the virtual microphone: a null sink plus a remap source that exposes it.
+       *
+       * The remap source is what applications and games select as a microphone; the mixed client
+       * audio is played into the null sink behind it.
+       *
+       * @return 0 when the virtual microphone is ready, -1 otherwise.
+       */
+      int init_mic_redirect_device() override {
+        constexpr auto mic_sink = "sunshine-mic";
+        constexpr auto mic_source = "Sunshine-Microphone";
+
+        if (mic.initialized) {
+          return mic.stream ? 0 : -1;
+        }
+
+        mic.null_sink = load_module(
+          "module-null-sink",
+          "sink_name="s + mic_sink + " sink_properties=device.description="s + mic_source
+        );
+        if (mic.null_sink == PA_INVALID_INDEX) {
+          BOOST_LOG(error) << "Couldn't create the microphone null sink: "sv << pa_strerror(pa_context_errno(ctx.get()));
+          return -1;
+        }
+
+        mic.remap_source = load_module(
+          "module-remap-source",
+          "master="s + mic_sink + ".monitor source_name="s + mic_source + " source_properties=device.description="s + mic_source
+        );
+        if (mic.remap_source == PA_INVALID_INDEX) {
+          BOOST_LOG(error) << "Couldn't create the virtual microphone source: "sv << pa_strerror(pa_context_errno(ctx.get()));
+          unload_null(mic.null_sink);
+          mic.null_sink = PA_INVALID_INDEX;
+          return -1;
+        }
+
+        pa_sample_spec spec {};
+        spec.format = PA_SAMPLE_S16LE;
+        spec.rate = 48000;
+        spec.channels = 1;
+
+        mic.sink_name = mic_sink;
+
+        int pa_error = 0;
+        mic.stream = pa_simple_new(
+          nullptr,
+          "Sunshine",
+          PA_STREAM_PLAYBACK,
+          mic.sink_name.c_str(),
+          "Sunshine microphone",
+          &spec,
+          nullptr,
+          nullptr,
+          &pa_error
+        );
+        if (!mic.stream) {
+          BOOST_LOG(error) << "Couldn't open the Sunshine microphone stream: "sv << pa_strerror(pa_error);
+          unload_null(mic.remap_source);
+          mic.remap_source = PA_INVALID_INDEX;
+          unload_null(mic.null_sink);
+          mic.null_sink = PA_INVALID_INDEX;
+          return -1;
+        }
+
+        mic.initialized = true;
+        BOOST_LOG(info) << "Virtual microphone ["sv << mic_source << "] is ready"sv;
+        return 0;
+      }
+
+      /**
+       * @brief Write mixed mono 48 kHz signed 16-bit PCM into the virtual microphone.
+       *
+       * @param samples Pointer to the PCM samples.
+       * @param frame_count Number of mono frames to write.
+       * @return Number of bytes written, or -1 when no microphone device is available.
+       */
+      int write_mic_pcm(const std::int16_t *samples, std::size_t frame_count) override {
+        if (!mic.stream || !samples || frame_count == 0) {
+          return -1;
+        }
+
+        const auto bytes = frame_count * sizeof(std::int16_t);
+
+        int pa_error = 0;
+        if (pa_simple_write(mic.stream, samples, bytes, &pa_error) < 0) {
+          BOOST_LOG(warning) << "Couldn't write to the virtual microphone: "sv << pa_strerror(pa_error);
+          return -1;
+        }
+
+        return static_cast<int>(bytes);
+      }
+
+      /**
+       * @brief Release the virtual microphone and the modules that implement it.
+       */
+      void release_mic_redirect_device() override {
+        if (mic.stream) {
+          pa_simple_free(mic.stream);
+          mic.stream = nullptr;
+        }
+
+        if (mic.remap_source != PA_INVALID_INDEX) {
+          unload_null(mic.remap_source);
+          mic.remap_source = PA_INVALID_INDEX;
+        }
+
+        if (mic.null_sink != PA_INVALID_INDEX) {
+          unload_null(mic.null_sink);
+          mic.null_sink = PA_INVALID_INDEX;
+        }
+
+        mic.initialized = false;
+      }
+
+      /**
        * @brief Get default sink name.
        *
        * @return PulseAudio name of the current default sink, or an empty string.
@@ -681,6 +828,10 @@ namespace platf {
       }
 
       ~server_t() override {
+        if (mic.stream || mic.null_sink != PA_INVALID_INDEX || mic.remap_source != PA_INVALID_INDEX) {
+          release_mic_redirect_device();
+        }
+
         unload_null(index.stereo);
         unload_null(index.surround51);
         unload_null(index.surround71);
@@ -703,6 +854,18 @@ namespace platf {
   /**
    * @brief Create the platform audio controller.
    */
+  /**
+   * @brief Initialize platform audio services for the calling thread.
+   *
+   * PulseAudio has no per-thread requirement here; Windows needs it for COM, so callers must use
+   * this hook instead of assuming the current thread is ready.
+   *
+   * @return A lifetime guard for the calling thread.
+   */
+  [[nodiscard]] std::unique_ptr<deinit_t> init_audio_thread() {
+    return std::make_unique<deinit_t>();
+  }
+
   std::unique_ptr<audio_control_t> audio_control() {
     auto audio = std::make_unique<pa::server_t>();
 

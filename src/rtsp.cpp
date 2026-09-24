@@ -56,7 +56,9 @@ namespace rtsp_stream {
       int channel_count = params[0] - '0';
       int streams = params[1] - '0';
       int coupled_streams = params[2] - '0';
-      if (channel_count != requested_channels || channel_count < 2 || channel_count > platf::speaker::MAX_SPEAKERS ||
+      // Bound by the destination array so the copies below are provably in range.
+      if (channel_count != requested_channels || channel_count < 2 ||
+          channel_count > static_cast<int>(sizeof(result.mapping)) ||
           streams + coupled_streams != channel_count || params.length() != (size_t) channel_count + 3) {
         return false;
       }
@@ -120,7 +122,9 @@ namespace rtsp_stream {
       int streams = values[1];
       int coupled_streams = values[2];
 
-      if (channel_count != requested_channels || channel_count < 2 || channel_count > platf::speaker::MAX_SPEAKERS ||
+      // Bound by the destination array so the copies below are provably in range.
+      if (channel_count != requested_channels || channel_count < 2 ||
+          channel_count > static_cast<int>(sizeof(result.mapping)) ||
           streams + coupled_streams != channel_count || values.size() != (size_t) channel_count + 3) {
         return false;
       }

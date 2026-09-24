@@ -878,6 +878,40 @@ namespace platf {
     virtual std::optional<sink_t> sink_info() = 0;
 
     /**
+     * @brief Create the virtual microphone device that client microphone audio is played into.
+     *
+     * Called once before the first mixed frame is written; backends without microphone redirect
+     * keep the default implementation, which reports the capability as unavailable.
+     *
+     * @return 0 when a virtual microphone is available, nonzero when the platform has none.
+     */
+    virtual int
+    init_mic_redirect_device() {
+      return -1;
+    }
+
+    /**
+     * @brief Write mixed mono 48 kHz signed 16-bit PCM to the virtual microphone device.
+     *
+     * @param samples Pointer to the PCM samples.
+     * @param frame_count Number of mono frames to write.
+     * @return Number of bytes written, or -1 on error.
+     */
+    virtual int
+    write_mic_pcm(const std::int16_t *samples, std::size_t frame_count) {
+      (void) samples;
+      (void) frame_count;
+
+      return -1;
+    }
+
+    /**
+     * @brief Release the virtual microphone device created by init_mic_redirect_device().
+     */
+    virtual void
+    release_mic_redirect_device() {}
+
+    /**
      * @brief Destroy the audio control.
      */
     virtual ~audio_control_t() = default;
