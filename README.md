@@ -132,7 +132,7 @@ HDR10 静态元数据（Mastering Display Info + Content Light Level）完整透
 
 **NixOS 打包**：本仓库可通过独立 flake 构建（`nix build github:Biaogo/foundation-sunshine-linux.nix`），包表达式见 [foundation-sunshine-linux.nix](https://github.com/Biaogo/foundation-sunshine-linux.nix)。
 
-**预编译产物**：[Releases](https://github.com/Biaogo/foundation-sunshine-linux/releases/tag/v2026.09.07-linux) 提供 x86_64-linux tarball（由 Nix 构建、开启动态 CUDA）。Nix 用户建议直接用上面的 flake（自动处理 CUDA/依赖 closure）；非 NixOS 发行版可用 tarball，解压后运行 `foundation-sunshine-2026.09.07-linux-support/bin/sunshine`（需自行安装 ffmpeg/boost 等运行时依赖，或仅用于参考版本号）。
+**预编译产物**：[Releases](https://github.com/Biaogo/foundation-sunshine-linux/releases/tag/v2026.09.07-linux) 提供 x86_64-linux tarball（由 Nix 构建、开启动态 CUDA）。Nix 用户建议直接用上面的 flake（自动处理 CUDA/依赖 closure）。**注意：裸 tarball 是 Nix store 原始产物，在未装 Nix 的发行版上无法直接运行**（interpreter/RPATH/shebang 全是 `/nix/store` 绝对路径）——非 NixOS 发行版请用免依赖的 **portable tarball**（整个闭包重定位到 `/opt/sunshine-portable`，解压即用，目标机零依赖）：由 [`scripts/make-portable-tarball.sh`](scripts/make-portable-tarball.sh) 产出，用法与原理见 [docs/portable-tarball.md](docs/portable-tarball.md)。
 
 **Linux 侧已知运维要点（NixOS/包装器部署）**
 - **KWin ScreenCast 权限**：KWin ≥ 6.6 对 `zkde_screencast_unstable_v1` 按客户端白名单放行（读 `/proc/<pid>/exe` 匹配 `.desktop` 文件的 `Exec=`）。经 setcap wrapper / file-capabilities 启动的 sunshine 进程不可转储（non-dumpable），KWin 无法识别 —— 现象为 `zkde_screencast_unstable_v1 not found in registry`。解法：会话环境与服务环境同时设置 `KWIN_WAYLAND_NO_PERMISSION_CHECKS=1`（上游 Sunshine 文档同款 workaround），或在无 file-cap 的环境下运行以生成 `~/.local/share/applications/sunshine.*.kwin*.desktop` 权限文件。
