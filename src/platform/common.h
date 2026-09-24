@@ -1355,6 +1355,18 @@ namespace platf {
   bool has_elevated_privileges(bool all_caps);
 
   /**
+   * @brief Check whether CAP_SYS_ADMIN is currently in the EFFECTIVE set.
+   *
+   * PERMITTED is deliberately excluded: the linger/SDDM flow keeps the capability in PERMITTED
+   * for the whole process lifetime (kmsgrab must be able to re-raise it), so keying the KWin
+   * "still probing" placeholder off PERMITTED would serve an empty display name to clients
+   * forever (Moonlight shows it as a bogus "Display 1" entry).
+   *
+   * @return True only while the capability is actually effective (the elevated probing phase).
+   */
+  bool has_effective_admin();
+
+  /**
    * @brief Drop elevated privileges (e.g. system admin/nice etc.)
    * @param all_caps Bool that specifies whether to drop all caps or only CAP_SYS_ADMIN
    */

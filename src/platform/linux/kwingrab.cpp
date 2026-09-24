@@ -720,7 +720,11 @@ namespace platf {
    * @return KWin display names, or an empty list when KWin capture is unavailable.
    */
   std::vector<std::string> kwin_display_names() {
-    if (has_elevated_privileges(false)) {
+    // Note: when the permission system is deactivated there is no capability dance and no need for
+    // the placeholder. The probing-phase check must key on EFFECTIVE only (has_effective_admin):
+    // with the linger/SDDM design CAP_SYS_ADMIN stays in PERMITTED for the whole process lifetime,
+    // so has_elevated_privileges(false) would serve this empty placeholder to clients forever.
+    if (!kwin::screencast_permission_helper_t::is_permission_system_deactivated() && has_effective_admin()) {
       // We're still in the probing phase of Sunshine startup. Dropping portal security early will break KMS.
       // Just return a dummy screen for now. Display re-enumeration after encoder probing will yield full result.
       std::vector<std::string> display_names;

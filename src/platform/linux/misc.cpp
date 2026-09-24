@@ -1382,6 +1382,16 @@ namespace platf {
       sources[source::WAYLAND] = true;
     }
 #endif
+#ifdef SUNSHINE_BUILD_KWIN
+    // Probe the compositor backend BEFORE kms in auto mode. Once any source has been claimed the
+    // remaining "capture.empty() && sources.none()" branches are skipped, and kms only understands
+    // numeric monitor ids — a KWin output name (e.g. Virtual-SunshineVirt) fed to KMS makes the
+    // lookup fail ("Couldn't find monitor [-N]") and every encoder probe with it. verify_kwin()
+    // fails while no compositor is reachable (pre-login SDDM), so auto still falls through to kms.
+    if (((config::video.capture.empty() && sources.none()) || config::video.capture == "kwin") && verify_kwin()) {
+      sources[source::KWIN] = true;
+    }
+#endif
 #ifdef SUNSHINE_BUILD_DRM
     if (((config::video.capture.empty() && sources.none()) || config::video.capture == "kms") && verify_kms()) {
       sources[source::KMS] = true;
@@ -1397,11 +1407,6 @@ namespace platf {
 #ifdef SUNSHINE_BUILD_PORTAL
     if ((config::video.capture.empty() || config::video.capture == "portal") && verify_portal()) {
       sources[source::PORTAL] = true;
-    }
-#endif
-#ifdef SUNSHINE_BUILD_KWIN
-    if (((config::video.capture.empty() && sources.none()) || config::video.capture == "kwin") && verify_kwin()) {
-      sources[source::KWIN] = true;
     }
 #endif
 
@@ -1534,6 +1539,21 @@ namespace platf {
     return false;
   }
 
+  bool has_effective_admin() {
+#if !defined(__FreeBSD__)
+    const cap_t caps = cap_get_proc();
+    if (!caps) {
+      return false;
+    }
+    cap_flag_value_t flag = CAP_CLEAR;
+    cap_get_flag(caps, CAP_SYS_ADMIN, CAP_EFFECTIVE, &flag);
+    cap_free(caps);
+    return flag == CAP_SET;
+#else
+    return false;
+#endif
+  }
+
   void drop_elevated_privileges(bool all_caps) {
 #if !defined(__FreeBSD__)
     bool failed = false;
@@ -1544,8 +1564,15 @@ namespace platf {
       return;
     }
 
+    // Clear EFFECTIVE always. Keep PERMITTED when only CAP_SYS_ADMIN is being shed for a
+    // permission check: kmsgrab's RAII helper re-raises CAP_SYS_ADMIN with cap_set_proc, which
+    // requires it to still be in PERMITTED. Wiping PERMITTED here killed KMS for the rest of the
+    // process lifetime after the first in-session KWin attempt ("Failed to gain CAP_SYS_ADMIN" /
+    // /dev/dri/cardN: Permission denied at SDDM).
     cap_set_flag(caps, CAP_EFFECTIVE, caps_to_drop.size(), caps_to_drop.data(), CAP_CLEAR);
-    cap_set_flag(caps, CAP_PERMITTED, caps_to_drop.size(), caps_to_drop.data(), CAP_CLEAR);
+    if (all_caps) {
+      cap_set_flag(caps, CAP_PERMITTED, caps_to_drop.size(), caps_to_drop.data(), CAP_CLEAR);
+    }
 
     if (cap_set_proc(caps) != 0) {
       BOOST_LOG(error) << "[misc] drop_elevated_privileges failed to prune capabilities: "sv << std::strerror(errno);
