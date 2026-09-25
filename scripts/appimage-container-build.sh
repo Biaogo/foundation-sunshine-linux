@@ -55,8 +55,11 @@ echo "== source: $SRC"
 
 # ------------------------------------------------------------------- container
 podman rm -f "$NAME" >/dev/null 2>&1 || true
+# /src only appears with the `podman cp` further down, and podman validates --workdir at run
+# time, so the container has to start somewhere that already exists; the execs below still
+# pass -w /src, which by then does exist.
 podman run -d --name "$NAME" --network host -v "$REPO:/repo:ro" \
-  -w /src "$IMAGE" sleep infinity >/dev/null
+  -w / "$IMAGE" sleep infinity >/dev/null
 echo "== container up"
 
 run_in() {
