@@ -331,13 +331,18 @@ namespace platf {
       if (plain_value(device_property(path, "outputName")) == output_name) {
         return true;
       }
-      boost::system::error_code ec;
-      boost::process::v1::child child({busctl, "--user", "set-property", "org.kde.KWin", path, INPUT_DEVICE_IFACE,
-                                       "outputName", "s", output_name}, ec);
-      if (ec) {
+      // boost::process v1 takes the executable and its arguments as separate parameters; the
+      // brace-enclosed command vector with an error_code does not compile (and neither does it with
+      // the error_code omitted for this overload).
+      try {
+        boost::process::v1::child child(busctl, "--user", "set-property", "org.kde.KWin", path, INPUT_DEVICE_IFACE,
+                                       "outputName", "s", output_name);
+        child.wait();
+      }
+      catch (const std::exception &e) {
+        BOOST_LOG(debug) << "Could not set outputName on "sv << path << ": "sv << e.what();
         return false;
       }
-      child.wait();
       return plain_value(device_property(path, "outputName")) == output_name;
     }
   }  // namespace
