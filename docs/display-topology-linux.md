@@ -128,3 +128,42 @@ their events dropped, which shows up as "touch does nothing / sticks to a corner
   before. Binding once at session start (today's hook) is sufficient only while the topology stays
   untouched.
 
+## 二期：把组合逻辑搬进 C++（方案已定，2026-09-25 晚）
+
+一期（钩子 `sunshine-topology.sh` + kscreen）已在本机对全部 5 个 `config_option_e` 值端到端验证通过：
+
+| 模式 | 钩子动作 | 实测 |
+|---|---|---|
+| `disabled` / `verify_only` | 不动作 | ✓ |
+| `ensure_active` | `enable` 目标 | ✓ |
+| `ensure_primary` | `enable` + `priority 1` | ✓ |
+| `ensure_only_display` | `enable` 目标 + `disable` 其它 | ✓ |
+
+（`ensure_active` / `ensure_primary` / `ensure_only_display` 三轮均跑完整闭环：apply → 会话 → 断开 → `revert: pre-session topology restored`。）
+
+二期就是把这套逻辑搬进进程内，让没有钩子的安装（.deb / AppImage）也能用。
+
+### 落点
+- 入口：`src/nvhttp.cpp` 的会话启动路径，**紧挨内置虚拟屏那次调用**（同一处 `if (…virtual_display…)` 分支），
+  启动后调用 `session_apply_topology(<目标屏名>, config::video.dd.configuration_option)`。
+- 释放：`src/stream.cpp` 最后一个会话结束处（与 `session_virtual_display_stop()` 同一位置）调用 `session_revert_topology()`。
+- 实现：`src/platform/linux/virtual_display.cpp`（已有 `capture_stdout` / `kwin_call` 两个可用原语）。
+
+### 实现要点（含今晚踩过的坑）
+1. **不要用 detached 线程 + 自建子进程读输出**：会话进行中它会被进程自己的 SIGCHLD 处理抢走回收，
+   `system()` 返回非零、自己的管道读到空——同一命令在 shell 里完全正常。进程内能用的两条路是：
+   `capture_stdout()`（会话**启动阶段**已实测可用，与 `kscreen-output` 同源）和 `kwin_call()`（GDBus）。
+2. `disabled` / `verify_only`：直接返回，日志写 `topology: mode=<m> — leaving the topology untouched`。
+3. `ensure_active`：`enable(目标)`。
+4. `ensure_primary`：`enable(目标)` + `priority(目标, 1)`。
+5. `ensure_only_display`：`enable(目标)` + 对其余**当前 enabled** 的输出逐个 `disable`。
+6. 快照/还原：会话开始前记录 `{uuid: {enabled, priority, position}}` 到进程内状态，
+   结束时按快照还原（对应钩子的 `revert: pre-session topology restored`）。
+7. 日志文案与钩子保持一致（`topology: mode=… applied to <屏>`），便于与一期结果逐行对照。
+
+### 不变量
+- **钩子存在时完全不执行**（纯增量；回退方式 = 删掉这两处调用）。
+- 只动 `enabled` / `priority`，**不改分辨率**（一期约定）。
+- **eDP-1 的 `disabled` 是用户基线**（该机笔记本面板物理损坏、常驻关闭）：还原必须回到该基线，
+  任何模式下都不得"顺手启用"它。
+- 不做 `SUNSHINE_CLIENT_*` 环境依赖（那是钩子的接口）——C++ 侧直接读 `config::video.dd`。
