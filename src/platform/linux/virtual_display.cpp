@@ -474,6 +474,58 @@ namespace platf {
       return outputs;
     }
 
+    /// @brief One output as KWin's own configuration file describes it.
+    ///
+    /// Verified shape on the target host (the flat assumption this started with silently yielded
+    /// zero outputs): the file is a list of named setups; a setup's `data` array holds one
+    /// descriptor per output with `uuid` and the output name in **`connectorName`**, while the
+    /// enabled/priority state lives in a separate `outputs` array whose entries carry an
+    /// `outputIndex` pointing back into that descriptor array.
+    struct raw_output_t {
+      std::string uuid;
+      std::string connector;
+      std::size_t index {};
+    };
+
+    /// @brief Walk KWin's config: collect output descriptors (uuid + connectorName) and their state.
+    void collect_outputs(const nlohmann::json &node, std::vector<raw_output_t> &descriptors,
+                         std::vector<std::pair<std::size_t, std::pair<bool, int>>> &states) {
+      if (node.is_array()) {
+        std::size_t index = 0;
+        for (const auto &child : node) {
+          if (child.is_object()) {
+            // Descriptors and state entries are told apart by their keys.
+            if (child.contains("uuid") && child["uuid"].is_string() && !child["uuid"].get<std::string>().empty()) {
+              raw_output_t descriptor;
+              descriptor.uuid = child["uuid"].get<std::string>();
+              descriptor.connector = child.contains("connectorName") && child["connectorName"].is_string()
+                                       ? child["connectorName"].get<std::string>()
+                                       : (child.contains("name") && child["name"].is_string() ? child["name"].get<std::string>() : std::string {});
+              descriptor.index = index;
+              descriptors.push_back(descriptor);
+            }
+            else if (child.contains("outputIndex") && child["outputIndex"].is_number_integer()) {
+              const bool enabled = child.contains("enabled") && child["enabled"].is_boolean() && child["enabled"].get<bool>();
+              const int priority = child.contains("priority") && child["priority"].is_number_integer() ? child["priority"].get<int>() : 0;
+              states.push_back({static_cast<std::size_t>(child["outputIndex"].get<int>()), {enabled, priority}});
+            }
+          }
+          ++index;
+        }
+      }
+
+      if (node.is_object()) {
+        for (const auto &item : node.items()) {
+          collect_outputs(item.value(), descriptors, states);
+        }
+      }
+      else if (node.is_array()) {
+        for (const auto &child : node) {
+          collect_outputs(child, descriptors, states);
+        }
+      }
+    }
+
     /// @brief Where KWin keeps its output configuration (updated live while it runs).
     ///
     /// KWin writes it in the user's real home, which is not necessarily where this process looks:
@@ -517,18 +569,39 @@ namespace platf {
 
       try {
         const auto data = nlohmann::json::parse(file);
-        const auto &list = data.is_array() ? data : (data.contains("outputs") ? data["outputs"] : nlohmann::json::array());
-        for (const auto &entry : list) {
-          if (!entry.is_object()) {
-            continue;
+
+        std::vector<raw_output_t> descriptors;
+        std::vector<std::pair<std::size_t, std::pair<bool, int>>> states;
+        collect_outputs(data, descriptors, states);
+
+        for (const auto &descriptor : descriptors) {
+          kscreen_output_t output;
+          output.uuid = descriptor.uuid;
+          output.name = descriptor.connector;
+
+          // Match the state by outputIndex; when a setup nests differently and no state matches, the
+          // conservative defaults (off, no priority) keep the caller from acting on a wrong output.
+          for (const auto &state : states) {
+            if (state.first == descriptor.index) {
+              output.enabled = state.second.first;
+              output.priority = state.second.second;
+              break;
+            }
           }
 
-          kscreen_output_t output;
-          output.name = entry.contains("name") && entry["name"].is_string() ? entry["name"].get<std::string>() : std::string {};
-          output.uuid = entry.contains("uuid") && entry["uuid"].is_string() ? entry["uuid"].get<std::string>() : std::string {};
-          output.enabled = entry.contains("enabled") && entry["enabled"].is_boolean() && entry["enabled"].get<bool>();
-          output.priority = entry.contains("priority") && entry["priority"].is_number_integer() ? entry["priority"].get<int>() : 0;
-          if (!output.uuid.empty()) {
+          // The same uuid appears in more than one setup (lid open/closed): keep the enabled variant.
+          bool merged = false;
+          for (auto &existing : outputs) {
+            if (existing.uuid != descriptor.uuid) {
+              continue;
+            }
+            if (!existing.enabled && output.enabled) {
+              existing = output;
+            }
+            merged = true;
+            break;
+          }
+          if (!merged) {
             outputs.push_back(output);
           }
         }
