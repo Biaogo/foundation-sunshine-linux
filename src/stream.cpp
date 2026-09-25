@@ -2218,8 +2218,13 @@ namespace stream {
       // Current Nvidia drivers have a bug where NVENC can deadlock the encoder thread with hardware-accelerated
       // GPU scheduling enabled. If this happens, we will terminate ourselves and the service can restart.
       // The alternative is that Sunshine can never start another session until it's manually restarted.
-      auto task = []() {
-        BOOST_LOG(fatal) << "Hang detected! Session failed to terminate in 10 seconds."sv;
+      //
+      // Name the stage that never finished: without it a hang report only says a
+      // session did not terminate, and the culprit thread (video capture,
+      // audio, control) has to be guessed from unrelated log lines.
+      auto stage = std::make_shared<std::atomic<const char *>>("setup");
+      auto task = [stage]() {
+        BOOST_LOG(fatal) << "Hang detected! Session failed to terminate in 10 seconds (still waiting for the "sv << stage->load() << ")"sv;
         logging::log_flush();
         lifetime::debug_trap();
       };
@@ -2230,10 +2235,13 @@ namespace stream {
       });
 
       BOOST_LOG(debug) << "Waiting for video to end..."sv;
+      stage->store("video thread");
       session.videoThread.join();
       BOOST_LOG(debug) << "Waiting for audio to end..."sv;
+      stage->store("audio thread");
       session.audioThread.join();
       BOOST_LOG(debug) << "Waiting for control to end..."sv;
+      stage->store("control stream");
       session.controlEnd.view();
       // Reset input on session stop to avoid stuck repeated keys
       BOOST_LOG(debug) << "Resetting Input..."sv;
