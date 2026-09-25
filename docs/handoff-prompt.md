@@ -28,7 +28,7 @@
 | **3 打包层** | ✅ 已做 | `cmake/packaging/linux.cmake` 加 `Recommends: krfb, libkf5screen-bin \| libkscreen-bin`；README 加一节；真 cpack+dpkg 验到 control 字段 |
 | **4 KWin 抢跑竞态** | ⚠️ **实现完成，待你实测** | 立即 pass + `TOPOLOGY_SETTLE`(1s) 后复查（`outputs_to_reenable()` 纯函数，6 条单测）；判据见下 |
 | **6 清临时 debug 日志** | ✅ | 删 `Touch mapping:`、删每轮 `Touch binding poll`、顺手清掉 GDBus 重构遗留的孤儿 doxygen |
-| 7 真 HDR / 8 portal 默认 KWin / 9 上游同步 | ❌ 未动 | — |
+| 7 真 HDR / 8 portal 默认 KWin / 9 上游同步 | 7 ❌ · **8 ✅** · 9 ❌ | 8：`display_names()` 改成 `nvfbc → kwin → wlroots → kms → x11 → portal`（原来 kwin 排在 portal 之后，等于让 portal 的失败拖死 `wait_for_display()`） |
 
 ## 待办（按优先级）
 1. **★ 待办 4 的实测验收（唯一需要我连一次的事）**：`dd_configuration_option = ensure_active` 或
@@ -40,7 +40,7 @@
 3. **`src/rtsp.cpp:72` 的 GCC 15 告警**（**不是本次改动引入**，属 mic lane）：`-Werror=stringop-overflow`，GCC 15 在多层 inline 后的**误报**（守卫已挡 `channel_count > sizeof(mapping)`）。两条路：循环上界补一条本地可证的 `&& i < static_cast<int>(sizeof(result.mapping))`，或构建里加 `-Wno-error=stringop-overflow`。**Ubuntu 的 GCC 13/14 CI 不受影响**，只在"NixOS/GCC 15 + BUILD_WERROR=ON"时才炸。
 4. **新提交与发版**：第二批的 4 个提交连同本轮的 `test(linux): cover the client display pick` **已 push 到 `origin/refork/linux`**（未打 tag）。要发版时注意：`v*` tag 必须 `vYYYY.MM.DD-linux`、**不能移动同名 tag**（CI 按名字判新旧）。
 5. 真 HDR（虚拟输出宣告 BT.2020/PQ，独立工程）。
-6. portal 采集默认值：Linux 优先 KWin。
+6. ✅ portal 采集默认值：Linux 优先 KWin —— `display_names()` 已改成 `kwin` 优先于 `x11/portal`（见对账表最后一行的理由）。实测判据：会话里先出现 `Requested display [...] is available`，紧随 `Screencasting with KWin ScreenCast`。
 7. 上游 LizardByte 同步（人工分批；队列 `docs/upstream-linux-sync.md`）。
 8. **harness 的 `--argstr testFilter` 实际不生效**（drv 的 `checkPhase` 里带了 `--gtest_filter=…`，但跑的还是全量套件）——gate 参数现在是摆设，值得单独查。
 
@@ -80,8 +80,8 @@
 - 收尾必查：`topology: revert: pre-session topology restored`、`Virtual display helper stopped`、布局回到基线、无 `krfb-virtualmonitor` 残留。
 
 ## 第二批的验证证据（已跑过，别重复烧时间）
-- 沙箱全量套件：**619 passed / 15 failed**（15 条全是环境类，见铁律 12）。
-- 真机过滤跑（`HOME` 可写）：`VirtualDisplayHelperLookup` + `KwinOutputConfigParsing` + `TopologyReenable` + `LinuxHelperPathConfigTest` + `LocaleConsistencyTest` = **33/33 PASS**。
+- 沙箱全量套件：**626 passed / 15 failed**（15 条全是环境类，见铁律 12）。
+- 真机过滤跑（`HOME` 可写）：`VirtualDisplayHelperLookup` + `KwinOutputConfigParsing` + `TopologyReenable` + `DisplayPickResolution` + `LinuxHelperPathConfigTest` + `LocaleConsistencyTest` = **40/40 PASS**。
 - 官方严格度：`strict-build-relaxed.nix` **EXIT=0**（全项目 `-Werror` + Release，仅降级 rtsp 那条）；`strict-build.nix`（不降级）在 `src/rtsp.cpp:72` 停住，**那就是待办 3 的来源**。
 - 打包：真 cpack 出 `.deb`，`dpkg-deb -I` 里 `Recommends: krfb, libkf5screen-bin | libkscreen-bin`。
 - 改动过的每个 TU 都单独用官方 flag + `-Werror` 编过：CLEAN。

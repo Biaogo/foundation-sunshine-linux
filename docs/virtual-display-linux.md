@@ -31,6 +31,14 @@ advertise = <能创建> && <会话是 Plasma/Wayland>
 好处：菜单不再骗人；朋友那种“选了永远超时”的场景从根上消失。
 失败时也不要傻等 20 s —— 目标屏不在枚举里就快速返回一个明确错误。
 
+补充（2026-09-25 第二批）：**枚举顺序里 KWin 也必须排在 portal 前面**。`display_names()` 是
+`wait_for_display()` 判断"客户端要的输出出现了没"的唯一依据，而它原来是 `x11 → portal → kwin`：
+本机（service 里没有 `DISPLAY`，X11 源不成立）实际返回的是 **portal 的列表** —— portal 恰好能枚举到
+krfb 的虚拟输出，所以平时看不出问题；但它自己会失败（没 token、pre-login SDDM 没有会话），一失败就
+等于"即使 KWin 能供屏，也判定输出没出现" → 客户端 `Requested display [...] did not appear within 20000 ms`。
+现在顺序是 `nvfbc → kwin → wlroots → kms → x11 → portal`，与 `display()` 的派发顺序、客户端列表
+（`client_display_names()`）一致：**只要 KWin 源活着，就由它回答**。
+
 ### 第 2 步：虚拟输出的生命周期放进 Linux 后端
 
 新增 `src/platform/linux/virtual_display.cpp`（.h 已有），实现：

@@ -1281,6 +1281,19 @@ namespace platf {
       return nvfbc_display_names();
     }
 #endif
+#ifdef SUNSHINE_BUILD_KWIN
+    // The compositor's own enumeration comes first, like it does for the client-facing list: this is
+    // the view both the capture path and `wait_for_display()` resolve names against, and on a KDE
+    // host it is the only source that always carries the krfb virtual output. Portal can enumerate
+    // that output too, but it can fail on its own (no token, pre-login SDDM), and while it sat
+    // before this block a portal hiccup made `wait_for_display()` miss an output kwin was serving —
+    // which the client sees as "Requested display [...] did not appear within 20000 ms". KMS stays
+    // after this block for the reason recorded in the source probe below: it only understands
+    // numeric monitor ids, so a connector name handed to it fails the lookup.
+    if (sources[source::KWIN]) {
+      return kwin_display_names();
+    }
+#endif
 #ifdef SUNSHINE_BUILD_WAYLAND
     if (sources[source::WAYLAND]) {
       return wl_display_names();
@@ -1299,11 +1312,6 @@ namespace platf {
 #ifdef SUNSHINE_BUILD_PORTAL
     if (sources[source::PORTAL]) {
       return portal_display_names();
-    }
-#endif
-#ifdef SUNSHINE_BUILD_KWIN
-    if (sources[source::KWIN]) {
-      return kwin_display_names();
     }
 #endif
     return {};
