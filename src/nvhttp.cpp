@@ -1506,22 +1506,26 @@ namespace nvhttp {
       // `output_name` names it) does not exist until the global prep-command do-hook has run, while
       // the encoder probe below runs before the app/prep execution further down. Run the global
       // prep commands first for those sessions; proc::execute() skips them afterwards.
+#if defined(__linux__)
+      // Built-in session preparation for hosts without a global_prep_cmd do-hook. This runs for
+      // every target, not only the virtual one: the hook performed it for physical sessions as well,
+      // and it is what makes touch work at all (KWin drops events from an unbound device) and what
+      // applies the dd_configuration_option mode. Hook-based hosts keep using their hook.
+      if (config::sunshine.prep_cmds.empty() && launch_session->appid > 0) {
+        platf::session_bind_touch(launch_session->display_name);
+        platf::session_apply_topology(launch_session->display_name);
+      }
+#endif
+
       if (!launch_session->virtual_display.empty() && launch_session->appid > 0) {
 #if defined(__linux__)
-        // Hosts without a global_prep_cmd do-hook cannot create the monitor the client asked for:
-        // this build does it itself (docs/virtual-display-linux.md, step 2). Hosts that do carry a
-        // hook keep using it, so nothing changes for existing setups. Calling this twice for one
-        // session is harmless — start() returns early while the helper is already running.
+        // Hosts without a hook cannot create the monitor the client asked for: this build does it
+        // itself (docs/virtual-display-linux.md, step 2). Calling this twice for one session is
+        // harmless — start() returns early while the helper is already running.
         if (config::sunshine.prep_cmds.empty()) {
           if (!platf::session_virtual_display_start(launch_session->width, launch_session->height, launch_session->fps)) {
             BOOST_LOG(warning) << "Could not create the virtual display for this session"sv;
           }
-          // ...and point the touch devices at it: an unbound device makes KWin drop every touch
-          // event (they land in the corner), which is what the hook does on hook-based hosts.
-          platf::session_bind_touch(launch_session->display_name);
-          // Phase 2 of the topology work: the five dd_configuration_option modes, in-process, so
-          // hook-less installs get them too. Guarded by the same condition as the calls above.
-          platf::session_apply_topology(launch_session->display_name);
         }
 #endif
         if (const auto err = proc::proc.run_global_prep_cmds(launch_session)) {
@@ -1649,22 +1653,26 @@ namespace nvhttp {
       // `output_name` names it) does not exist until the global prep-command do-hook has run, while
       // the encoder probe below runs before the app/prep execution further down. Run the global
       // prep commands first for those sessions; proc::execute() skips them afterwards.
+#if defined(__linux__)
+      // Built-in session preparation for hosts without a global_prep_cmd do-hook. This runs for
+      // every target, not only the virtual one: the hook performed it for physical sessions as well,
+      // and it is what makes touch work at all (KWin drops events from an unbound device) and what
+      // applies the dd_configuration_option mode. Hook-based hosts keep using their hook.
+      if (config::sunshine.prep_cmds.empty() && launch_session->appid > 0) {
+        platf::session_bind_touch(launch_session->display_name);
+        platf::session_apply_topology(launch_session->display_name);
+      }
+#endif
+
       if (!launch_session->virtual_display.empty() && launch_session->appid > 0) {
 #if defined(__linux__)
-        // Hosts without a global_prep_cmd do-hook cannot create the monitor the client asked for:
-        // this build does it itself (docs/virtual-display-linux.md, step 2). Hosts that do carry a
-        // hook keep using it, so nothing changes for existing setups. Calling this twice for one
-        // session is harmless — start() returns early while the helper is already running.
+        // Hosts without a hook cannot create the monitor the client asked for: this build does it
+        // itself (docs/virtual-display-linux.md, step 2). Calling this twice for one session is
+        // harmless — start() returns early while the helper is already running.
         if (config::sunshine.prep_cmds.empty()) {
           if (!platf::session_virtual_display_start(launch_session->width, launch_session->height, launch_session->fps)) {
             BOOST_LOG(warning) << "Could not create the virtual display for this session"sv;
           }
-          // ...and point the touch devices at it: an unbound device makes KWin drop every touch
-          // event (they land in the corner), which is what the hook does on hook-based hosts.
-          platf::session_bind_touch(launch_session->display_name);
-          // Phase 2 of the topology work: the five dd_configuration_option modes, in-process, so
-          // hook-less installs get them too. Guarded by the same condition as the calls above.
-          platf::session_apply_topology(launch_session->display_name);
         }
 #endif
         if (const auto err = proc::proc.run_global_prep_cmds(launch_session)) {

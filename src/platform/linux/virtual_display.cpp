@@ -202,7 +202,16 @@ namespace platf {
     stop();
   }
 
+  namespace {
+    /// Defined with the other helper functions further down; declared here for start().
+    void cleanup_stale_helpers();
+  }  // namespace
+
   bool virtual_display_t::start(int width, int height, int fps) {
+    // A previous session (or a crashed one) may have left a virtual monitor behind; the hook used to
+    // clean that up before creating the new one.
+    cleanup_stale_helpers();
+
     if (impl_ && impl_->child.valid()) {
       return true;
     }
@@ -618,6 +627,17 @@ namespace platf {
         return outputs;
       }
       return kscreen_outputs_from_child();
+    }
+
+    /// @brief Kill helper processes a previous session left behind (the hook does the same).
+    ///
+    /// One-way by design: this build must never read a child's output (see the note above kwin_call),
+    /// so only the side effect is used. Called when no helper of ours is running.
+    void cleanup_stale_helpers() {
+      if (tool_path("pkill").empty()) {
+        return;
+      }
+      std::system("pkill -f '[k]rfb-virtualmonitor' >/dev/null 2>&1");
     }
 
     /// @brief Run one kscreen-doctor operation and wait for it.
