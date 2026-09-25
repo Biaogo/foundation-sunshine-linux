@@ -276,6 +276,115 @@ namespace platf {
     impl_.reset();
   }
 
+  namespace {
+    /// Property read from / written to KWin's input devices.
+    constexpr auto INPUT_DEVICE_IFACE = "org.kde.KWin.InputDevice";
+    constexpr auto INPUT_MANAGER_PATH = "/org/kde/KWin/InputDevice";
+
+    /**
+     * @brief Read one property of a KWin input device.
+     *
+     * @param path Device object path.
+     * @param property Property name.
+     * @return Raw busctl output (empty on failure).
+     */
+    std::string device_property(const std::string &path, const std::string &property) {
+      const auto busctl = tool_path("busctl");
+      if (busctl.empty()) {
+        return {};
+      }
+      return capture_stdout({busctl, "--user", "get-property", "org.kde.KWin", path, INPUT_DEVICE_IFACE, property});
+    }
+
+    /**
+     * @brief Strip busctl's type prefix and quotes from a value.
+     *
+     * @param raw Raw output line.
+     * @return Plain value.
+     */
+    std::string plain_value(std::string raw) {
+      while (!raw.empty() && (raw.back() == '\n' || raw.back() == '\r' || raw.back() == '"')) {
+        raw.pop_back();
+      }
+      const auto space = raw.find(' ');
+      if (space != std::string::npos) {
+        raw = raw.substr(space + 1);
+      }
+      while (!raw.empty() && raw.front() == '"') {
+        raw.erase(raw.begin());
+      }
+      return raw;
+    }
+
+    /**
+     * @brief Bind a device's absolute input to an output.
+     *
+     * @param path Device object path.
+     * @param output_name Target KWin output.
+     * @return True when the property now holds the wanted value.
+     */
+    bool bind_device(const std::string &path, const std::string &output_name) {
+      const auto busctl = tool_path("busctl");
+      if (busctl.empty()) {
+        return false;
+      }
+      if (plain_value(device_property(path, "outputName")) == output_name) {
+        return true;
+      }
+      boost::system::error_code ec;
+      boost::process::v1::child child({busctl, "--user", "set-property", "org.kde.KWin", path, INPUT_DEVICE_IFACE,
+                                       "outputName", "s", output_name}, ec);
+      if (ec) {
+        return false;
+      }
+      child.wait();
+      return plain_value(device_property(path, "outputName")) == output_name;
+    }
+  }  // namespace
+
+  bool session_bind_touch(const std::string &output_name) {
+    if (output_name.empty() || tool_path("busctl").empty()) {
+      return false;
+    }
+
+    std::thread([output_name]() {
+      // The client's devices show up within a second or two of connecting; keep looking for a
+      // minute in case a slow client is late, then give up quietly.
+      bool touch_bound = false;
+      for (int i = 0; i < 120 && !touch_bound; ++i) {
+        const auto sysnames = plain_value(device_property(INPUT_MANAGER_PATH, "devicesSysNames"));
+        std::istringstream names {sysnames};
+        std::string sysname;
+        while (names >> sysname) {
+          sysname.erase(std::remove(sysname.begin(), sysname.end(), '"'), sysname.end());
+          const std::string path = std::string {INPUT_MANAGER_PATH} + "/" + sysname;
+          const auto name = plain_value(device_property(path, "name"));
+          if (name.find("libvirtualhid") == std::string::npos) {
+            continue;
+          }
+          const bool is_touch = plain_value(device_property(path, "touch")) == "true";
+          const bool is_pen = plain_value(device_property(path, "supportsCalibrationMatrix")) == "true";
+          if (!is_touch && !is_pen) {
+            continue;
+          }
+          if (bind_device(path, output_name)) {
+            BOOST_LOG(debug) << "Bound input device "sv << sysname << " to ["sv << output_name << ']';
+            touch_bound = touch_bound || is_touch;
+          }
+        }
+        std::this_thread::sleep_for(std::chrono::milliseconds {500});
+      }
+      if (touch_bound) {
+        BOOST_LOG(info) << "Touch input bound to ["sv << output_name << ']';
+      }
+      else {
+        BOOST_LOG(warning) << "No libvirtualhid touchscreen appeared to bind to ["sv << output_name << ']';
+      }
+    }).detach();
+
+    return true;
+  }
+
   bool virtual_display_available() {
     return !tool_path("krfb-virtualmonitor").empty() && !tool_path("kscreen-doctor").empty();
   }

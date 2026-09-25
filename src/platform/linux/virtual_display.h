@@ -101,6 +101,19 @@ namespace platf {
   void session_virtual_display_stop();
 
   /**
+   * @brief Point the virtual touch/pen devices at the session's output.
+   *
+   * KWin drops absolute-input events from a device whose `outputName` is empty, and the
+   * libvirtualhid devices appear only once the client connects — so this polls (bounded) in the
+   * background and sets the property as soon as the touchscreen exists. It replaces the
+   * `sunshine-touchbind.sh` waiter for hosts that have no global_prep_cmd hook.
+   *
+   * @param output_name KWin output the session streams from.
+   * @return True when the poller was started.
+   */
+  bool session_bind_touch(const std::string &output_name);
+
+  /**
    * @brief Whether the display list served to clients may advertise the virtual ids.
    *
    * Flipped on 2026-09-25 after the launch path was verified end-to-end on the target host: the

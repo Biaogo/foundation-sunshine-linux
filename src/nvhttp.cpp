@@ -1516,6 +1516,9 @@ namespace nvhttp {
           if (!platf::session_virtual_display_start(launch_session->width, launch_session->height, launch_session->fps)) {
             BOOST_LOG(warning) << "Could not create the virtual display for this session"sv;
           }
+          // ...and point the touch devices at it: an unbound device makes KWin drop every touch
+          // event (they land in the corner), which is what the hook does on hook-based hosts.
+          platf::session_bind_touch(launch_session->display_name);
         }
 #endif
         if (const auto err = proc::proc.run_global_prep_cmds(launch_session)) {
@@ -1653,6 +1656,9 @@ namespace nvhttp {
           if (!platf::session_virtual_display_start(launch_session->width, launch_session->height, launch_session->fps)) {
             BOOST_LOG(warning) << "Could not create the virtual display for this session"sv;
           }
+          // ...and point the touch devices at it: an unbound device makes KWin drop every touch
+          // event (they land in the corner), which is what the hook does on hook-based hosts.
+          platf::session_bind_touch(launch_session->display_name);
         }
 #endif
         if (const auto err = proc::proc.run_global_prep_cmds(launch_session)) {
