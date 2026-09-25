@@ -153,6 +153,17 @@ endif()
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
 set(CPACK_RPM_PACKAGE_AUTOREQ ON)
 
+# The built-in virtual display (docs/virtual-display-linux.md) starts two KDE helpers at run time:
+# `krfb-virtualmonitor` and `kscreen-doctor`. Both are optional — without them Sunshine still
+# streams, it just does not offer the virtual display ids — so they belong in Recommends, never in
+# Depends. Package names verified against Ubuntu 24.04 on 2026-09-25: `krfb` ships
+# krfb-virtualmonitor; `kscreen-doctor` comes from `libkf5screen-bin` on Plasma 5/KF5 (the `kscreen`
+# package only carries kscreen-console) and from `libkscreen-bin` on Plasma 6/KF6. NixOS users get it
+# from `libkscreen`, so the Nix package does not need this at all.
+if(SUNSHINE_ENABLE_KWIN)
+    set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "krfb, libkf5screen-bin | libkscreen-bin")
+endif()
+
 # application icon
 install(FILES "${CMAKE_SOURCE_DIR}/sunshine.svg"
         DESTINATION "${CMAKE_INSTALL_DATAROOTDIR}/icons/hicolor/scalable/apps"

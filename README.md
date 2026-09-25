@@ -35,6 +35,27 @@ LizardByte has the full documentation hosted on [Read the Docs](https://docs.liz
 * [Stable Docs](https://docs.lizardbyte.dev/projects/sunshine/latest/)
 * [Beta Docs](https://docs.lizardbyte.dev/projects/sunshine/master/)
 
+> [!NOTE]
+> **Linux virtual display (this fork).** On Linux, Sunshine can create its own virtual monitor while a
+> client is connected (the client picks `虚拟-KWin` / `Virtual-KWin`), and it applies the display
+> combination the client asks for (`dd_configuration_option`). That path starts two KDE helpers at run
+> time: `krfb-virtualmonitor` (package `krfb`) and `kscreen-doctor` (Plasma 5/KF5: `libkf5screen-bin`,
+> Plasma 6/KF6: `libkscreen-bin`, NixOS: `libkscreen`). Neither is a hard dependency — without them
+> Sunshine still streams, it just does not offer the virtual display — but the .deb carries them as
+> *Recommends*.
+>
+> A service inherits a minimal `PATH`, so if a helper lives somewhere Sunshine cannot see, point it at
+> the binary in `sunshine.conf`:
+>
+> ```ini
+> virtual_display_helper = /usr/bin/krfb-virtualmonitor
+> kscreen_helper = /usr/bin/kscreen-doctor
+> ```
+>
+> The log says which of the two is missing (and what to install) when the virtual display ids are not
+> offered. Full details: [docs/virtual-display-linux.md](docs/virtual-display-linux.md) and
+> [docs/display-topology-linux.md](docs/display-topology-linux.md).
+
 ## 🎮 Feature Compatibility
 
 <table>
