@@ -102,7 +102,9 @@
       "hevc_mode": 0,
       "av1_mode": 0,
       "capture": "",
-      "encoder": ""
+      "encoder": "",
+      "virtual_display_helper": "",
+      "kscreen_helper": ""
     }
   },
   {

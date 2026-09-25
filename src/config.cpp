@@ -1737,6 +1737,13 @@ namespace config {
     string_f(vars, "external_ip", nvhttp.external_ip);
     list_prep_cmd_f(vars, "global_prep_cmd", config::sunshine.prep_cmds);
 
+    // Linux virtual display: the built-in path starts two KDE helpers (`krfb-virtualmonitor`,
+    // `kscreen-doctor`) and a service' PATH rarely carries them, so each may be pinned to an
+    // absolute path. `string_f` on purpose: `path_f` would resolve a relative value against the
+    // appdata directory and create that directory, neither of which makes sense for an executable.
+    string_f(vars, "virtual_display_helper", config::sunshine.virtual_display_helper);
+    string_f(vars, "kscreen_helper", config::sunshine.kscreen_helper);
+
     string_f(vars, "audio_sink", audio.sink);
     string_f(vars, "virtual_sink", audio.virtual_sink);
     bool_f(vars, "stream_audio", audio.stream);

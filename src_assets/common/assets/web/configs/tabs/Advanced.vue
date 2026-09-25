@@ -115,5 +115,19 @@ const config = ref(props.config)
       <div class="form-text">{{ $t('config.encoder_desc') }}</div>
     </div>
 
+    <!-- Virtual Display Helper (Linux) -->
+    <div class="mb-3" v-if="platform === 'linux'">
+      <label for="virtual_display_helper" class="form-label">{{ $t('config.virtual_display_helper') }}</label>
+      <input type="text" class="form-control" id="virtual_display_helper" placeholder="/usr/bin/krfb-virtualmonitor" v-model="config.virtual_display_helper" />
+      <div class="form-text">{{ $t('config.virtual_display_helper_desc') }}</div>
+    </div>
+
+    <!-- KScreen Helper (Linux) -->
+    <div class="mb-3" v-if="platform === 'linux'">
+      <label for="kscreen_helper" class="form-label">{{ $t('config.kscreen_helper') }}</label>
+      <input type="text" class="form-control" id="kscreen_helper" placeholder="/usr/bin/kscreen-doctor" v-model="config.kscreen_helper" />
+      <div class="form-text">{{ $t('config.kscreen_helper_desc') }}</div>
+    </div>
+
   </div>
 </template>

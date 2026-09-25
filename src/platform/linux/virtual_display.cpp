@@ -17,12 +17,16 @@
  */
 #include "virtual_display.h"
 
+#include <algorithm>
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
 #include <mutex>
 #include <random>
+#include <set>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -31,6 +35,7 @@
 
 #include <gio/gio.h>
 #include <nlohmann/json.hpp>
+#include <unistd.h>
 
 #include "src/boost_process_compat.h"
 #include "src/logging.h"
@@ -49,18 +54,150 @@ namespace platf {
     constexpr auto OUTPUT_POLL = std::chrono::milliseconds {300};
 
     /**
-     * @brief Resolve an executable through `PATH`.
+     * @brief Whether a path names a file this process is allowed to execute.
+     *
+     * @param path Candidate path.
+     * @return True when the file exists and carries an execute bit for this process.
+     */
+    bool executable_file(const std::string &path) {
+      return !path.empty() && ::access(path.c_str(), X_OK) == 0;
+    }
+
+    /**
+     * @brief Find an executable in a colon-separated directory list.
+     *
+     * Hand-rolled instead of `boost::process::search_path` because the list has to be injectable:
+     * the unit tests pin it rather than inherit the `PATH` of whoever runs them.
+     *
+     * @param tool Executable name.
+     * @param dirs Directory list to search.
+     * @return Absolute path, empty when no directory carries the tool.
+     */
+    std::string search_dirs(const std::string &tool, const std::string &dirs) {
+      std::istringstream stream {dirs};
+      std::string dir;
+      while (std::getline(stream, dir, ':')) {
+        if (dir.empty()) {
+          continue;
+        }
+        const auto candidate = dir + "/" + tool;
+        if (executable_file(candidate)) {
+          return candidate;
+        }
+      }
+      return {};
+    }
+
+    /**
+     * @brief Configured absolute path of a helper, as read from `sunshine.conf`.
+     *
+     * @param tool Executable name.
+     * @return Configured value, empty for tools that have no option.
+     */
+    const std::string &configured_helper(const std::string &tool) {
+      static const std::string none;
+      if (tool == VIRTUAL_DISPLAY_HELPER) {
+        return config::sunshine.virtual_display_helper;
+      }
+      if (tool == KSCREEN_HELPER) {
+        return config::sunshine.kscreen_helper;
+      }
+      return none;
+    }
+
+    /**
+     * @brief Name of the `sunshine.conf` option that points at a helper.
+     *
+     * @param tool Executable name.
+     * @return Option name, empty for tools that have no option.
+     */
+    std::string helper_option(const std::string &tool) {
+      if (tool == VIRTUAL_DISPLAY_HELPER) {
+        return "virtual_display_helper";
+      }
+      if (tool == KSCREEN_HELPER) {
+        return "kscreen_helper";
+      }
+      return {};
+    }
+
+    /**
+     * @brief Package that ships a helper, for the message shown when it is missing.
+     *
+     * @param tool Executable name.
+     * @return Human-readable hint, empty for tools that have no package.
+     */
+    std::string helper_package(const std::string &tool) {
+      if (tool == VIRTUAL_DISPLAY_HELPER) {
+        return "krfb";
+      }
+      if (tool == KSCREEN_HELPER) {
+        return "libkscreen";
+      }
+      return {};
+    }
+
+    /**
+     * @brief Comma-separated rendering of the fallback directory list.
+     *
+     * @return Directory list for a log message.
+     */
+    std::string fallback_dirs_text() {
+      std::string text;
+      for (const auto &dir : helper_fallback_dirs()) {
+        if (!text.empty()) {
+          text += ", ";
+        }
+        text += dir;
+      }
+      return text;
+    }
+
+    /**
+     * @brief Warn, once per process, that a helper cannot be resolved.
+     *
+     * The availability probe runs for every client display-list request, so a host without the KDE
+     * helpers must not repeat the same line per request — but it must say something at all: the
+     * failure used to be completely silent, which on 2026-09-25 showed up as the virtual display
+     * ids quietly disappearing from the client list with no hint anywhere in the log. One message
+     * per helper is enough, because nothing changes until the host is fixed.
+     *
+     * @param tool Executable name that could not be resolved.
+     */
+    void warn_helper_unavailable(const std::string &tool) {
+      static std::mutex mutex;
+      static std::set<std::string> warned;
+
+      const std::lock_guard<std::mutex> lock {mutex};
+      if (!warned.insert(tool).second) {
+        return;
+      }
+
+      const auto &configured = configured_helper(tool);
+      const auto option = helper_option(tool);
+
+      if (!configured.empty()) {
+        BOOST_LOG(warning) << "Configured "sv << option << " = ["sv << configured
+                           << "] is not an executable file; searched $PATH and "sv << fallback_dirs_text()
+                           << " instead. Helper "sv << tool << " is unavailable."sv;
+        return;
+      }
+
+      BOOST_LOG(warning) << "Helper "sv << tool << " was not found in $PATH or "sv << fallback_dirs_text()
+                         << "; the virtual display is disabled. Install "sv << helper_package(tool)
+                         << ", or set "sv << option << " to an absolute path (for example "sv
+                         << option << " = /usr/bin/"sv << tool << ")."sv;
+    }
+
+    /**
+     * @brief Resolve an executable through its configured path, `$PATH` and the standard locations.
      *
      * @param tool Executable name.
      * @return Absolute path, empty when not found.
      */
     std::string tool_path(const std::string &tool) {
-      try {
-        return boost::process::v1::search_path(tool).string();
-      }
-      catch (const std::exception &) {
-        return {};
-      }
+      const char *path = std::getenv("PATH");
+      return find_helper(tool, configured_helper(tool), path ? path : "");
     }
 
     /**
@@ -190,6 +327,50 @@ namespace platf {
     }
   }  // namespace
 
+  std::vector<std::string> helper_fallback_dirs() {
+    std::vector<std::string> dirs;
+
+    // Ordinary distribution locations, plus the NixOS system profile — the only place a service can
+    // see a globally installed Nix package, because /usr/bin does not exist on NixOS. A service'
+    // PATH rarely carries any of them, which is exactly the failure this list exists for.
+    for (const auto *dir : {"/usr/bin", "/usr/local/bin", "/run/current-system/sw/bin"}) {
+      dirs.emplace_back(dir);
+    }
+
+    // A portable installation (AppImage, tarball, a self-contained package) may ship the helper
+    // next to the running executable or in a `bin/` directory beside it. Last, because a
+    // distribution package would have installed the helper in one of the locations above.
+    std::array<char, 4096> self {};
+    const auto length = ::readlink("/proc/self/exe", self.data(), self.size() - 1);
+    if (length > 0) {
+      const std::filesystem::path executable {std::string {self.data(), static_cast<std::size_t>(length)}};
+      const auto directory = executable.parent_path();
+      dirs.emplace_back((directory / ".." / "bin").lexically_normal().string());
+      dirs.emplace_back(directory.string());
+    }
+
+    return dirs;
+  }
+
+  std::string find_helper(const std::string &tool, const std::string &configured, const std::string &path_env) {
+    if (executable_file(configured)) {
+      return configured;
+    }
+
+    if (const auto from_path = search_dirs(tool, path_env); !from_path.empty()) {
+      return from_path;
+    }
+
+    for (const auto &dir : helper_fallback_dirs()) {
+      const auto candidate = dir + "/" + tool;
+      if (executable_file(candidate)) {
+        return candidate;
+      }
+    }
+
+    return {};
+  }
+
   /**
    * @brief Implementation state: the helper process and the output it produced.
    */
@@ -216,13 +397,13 @@ namespace platf {
       return true;
     }
 
-    const auto helper = tool_path("krfb-virtualmonitor");
+    const auto helper = tool_path(VIRTUAL_DISPLAY_HELPER);
     if (helper.empty()) {
-      BOOST_LOG(warning) << "Virtual display requested but krfb-virtualmonitor is not installed"sv;
+      warn_helper_unavailable(VIRTUAL_DISPLAY_HELPER);
       return false;
     }
-    if (tool_path("kscreen-doctor").empty()) {
-      BOOST_LOG(warning) << "Virtual display requested but kscreen-doctor is not installed"sv;
+    if (tool_path(KSCREEN_HELPER).empty()) {
+      warn_helper_unavailable(KSCREEN_HELPER);
       return false;
     }
 
@@ -410,25 +591,9 @@ namespace platf {
   // ------------------------------------------------ display combination (phase 2 of the topology work)
 
   namespace {
-    /// One output as `kscreen-doctor -o` reports it.
-    struct kscreen_output_t {
-      std::string name;
-      std::string uuid;
-      bool enabled {};
-      int priority {};
-      std::string geometry;
-    };
-
-    /// Entry of the pre-session snapshot used to restore the topology.
-    struct topology_state_t {
-      std::string uuid;
-      bool enabled {};
-      int priority {};
-      std::string geometry;
-    };
-
     std::mutex g_topology_mutex;
-    std::vector<topology_state_t> g_topology_snapshot;
+    /// Outputs as they were before the session; kscreen output entries, the `name` is informational.
+    std::vector<kscreen_output_t> g_topology_snapshot;
     bool g_topology_applied {};
 
     /// @brief Drop leading blanks from a kscreen-doctor line.
@@ -563,60 +728,28 @@ namespace platf {
      * Reading a child process' output does not work from inside this process (three independent
      * attempts came back empty — see the note above kwin_call), and KWin exposes no outputs over
      * D-Bus (its object tree was checked), but it does keep this file current while it runs.
+     *
+     * @return Outputs as the file describes them, empty when it is unreadable.
      */
     std::vector<kscreen_output_t> kscreen_outputs_from_kwin_config() {
-      std::vector<kscreen_output_t> outputs;
       const auto path = kwin_output_config_path();
       if (path.empty()) {
-        return outputs;
+        return {};
       }
 
       std::ifstream file {path};
       if (!file) {
-        return outputs;
+        return {};
       }
 
-      try {
-        const auto data = nlohmann::json::parse(file);
+      std::ostringstream contents;
+      contents << file.rdbuf();
 
-        std::vector<raw_output_t> descriptors;
-        std::vector<std::pair<std::size_t, std::pair<bool, int>>> states;
-        collect_outputs(data, descriptors, states);
-
-        for (const auto &descriptor : descriptors) {
-          kscreen_output_t output;
-          output.uuid = descriptor.uuid;
-          output.name = descriptor.connector;
-
-          // Match the state by outputIndex; when a setup nests differently and no state matches, the
-          // conservative defaults (off, no priority) keep the caller from acting on a wrong output.
-          for (const auto &state : states) {
-            if (state.first == descriptor.index) {
-              output.enabled = state.second.first;
-              output.priority = state.second.second;
-              break;
-            }
-          }
-
-          // The same uuid appears in more than one setup (lid open/closed): keep the enabled variant.
-          bool merged = false;
-          for (auto &existing : outputs) {
-            if (existing.uuid != descriptor.uuid) {
-              continue;
-            }
-            if (!existing.enabled && output.enabled) {
-              existing = output;
-            }
-            merged = true;
-            break;
-          }
-          if (!merged) {
-            outputs.push_back(output);
-          }
-        }
-      }
-      catch (const std::exception &e) {
-        BOOST_LOG(warning) << "topology: could not parse "sv << path << ": "sv << e.what();
+      const auto outputs = kscreen_outputs_from_json_text(contents.str());
+      if (outputs.empty()) {
+        // An empty result was the shape of the earlier pitfall: the file was found but read with the
+        // wrong structure, and every later step silently did nothing.
+        BOOST_LOG(warning) << "topology: "sv << path << " lists no usable output"sv;
       }
       return outputs;
     }
@@ -647,9 +780,9 @@ namespace platf {
 
     /// @brief Run one kscreen-doctor operation and wait for it.
     void run_kscreen(const std::string &argument) {
-      const auto exe = tool_path("kscreen-doctor");
+      const auto exe = tool_path(KSCREEN_HELPER);
       if (exe.empty()) {
-        BOOST_LOG(warning) << "topology: kscreen-doctor not found in PATH"sv;
+        warn_helper_unavailable(KSCREEN_HELPER);
         return;
       }
 
@@ -686,6 +819,37 @@ namespace platf {
       return "disabled";
     }
 
+    /// How long to let the compositor finish its own output bookkeeping before asking again.
+    constexpr auto TOPOLOGY_SETTLE = std::chrono::milliseconds {1000};
+
+    /**
+     * @brief Second, settled pass of the re-enable step in @ref apply_topology_mode.
+     *
+     * KWin disables the other screens by itself when a new output shows up (measured 2026-09-25), and
+     * that bookkeeping can land after Sunshine's first pass — which then leaves the user's screens
+     * off for the rest of the session. Ask again once the compositor has settled, but only for the
+     * outputs the snapshot had on and that are off now, so the log stays honest.
+     *
+     * Stays on the launch thread on purpose: a detached thread cannot spawn kscreen-doctor from this
+     * process (see the note above kwin_call).
+     *
+     * @param target_uuid uuid of the session's own output.
+     */
+    void reenable_outputs_after_settle(const std::string &target_uuid) {
+      std::this_thread::sleep_for(TOPOLOGY_SETTLE);
+
+      std::vector<kscreen_output_t> snapshot;
+      {
+        std::scoped_lock lock {g_topology_mutex};
+        snapshot = g_topology_snapshot;
+      }
+
+      for (const auto &uuid : outputs_to_reenable(snapshot, kscreen_outputs(), target_uuid)) {
+        BOOST_LOG(info) << "topology: re-enabling "sv << uuid << " after the compositor settled"sv;
+        run_kscreen("output." + uuid + ".enable");
+      }
+    }
+
     /// @brief Shared body of @ref session_apply_topology.
     void apply_topology_mode(const std::string &target_name, const std::string &mode) {
       if (target_name.empty()) {
@@ -708,7 +872,7 @@ namespace platf {
         if (!g_topology_applied) {
           g_topology_snapshot.clear();
           for (const auto &output : kscreen_outputs()) {
-            g_topology_snapshot.push_back({output.uuid, output.enabled, output.priority, output.geometry});
+            g_topology_snapshot.push_back(output);
           }
           g_topology_applied = true;
           // Tells us whether KWin's output configuration was actually found (an empty snapshot was
@@ -752,11 +916,13 @@ namespace platf {
         }
       }
 
-      if (mode != "ensure_only_display"sv) {
+      if (mode == "ensure_active"sv || mode == "ensure_primary"sv) {
         // KWin re-ranks on its own when a new output shows up (it has been measured disabling the
         // other screens at that moment), while these two modes only ever change the target. Put the
-        // outputs the snapshot had on back on — idempotent, so harmless when KWin left them alone.
-        std::vector<topology_state_t> snapshot;
+        // outputs the snapshot had on back on — idempotent, so harmless when KWin left them alone —
+        // and repeat that once the compositor has settled, because this first pass can beat KWin's
+        // own bookkeeping by a frame (the race measured on 2026-09-25).
+        std::vector<kscreen_output_t> snapshot;
         {
           std::scoped_lock lock {g_topology_mutex};
           snapshot = g_topology_snapshot;
@@ -766,18 +932,93 @@ namespace platf {
             run_kscreen("output." + state.uuid + ".enable");
           }
         }
+
+        reenable_outputs_after_settle(uuid);
       }
 
       BOOST_LOG(info) << "topology: mode="sv << mode << " applied to "sv << target_name << " ("sv << uuid << ')';
     }
   }  // namespace
 
+  std::vector<kscreen_output_t> kscreen_outputs_from_json_text(const std::string &text) {
+    std::vector<kscreen_output_t> outputs;
+
+    try {
+      const auto data = nlohmann::json::parse(text);
+
+      std::vector<raw_output_t> descriptors;
+      std::vector<std::pair<std::size_t, std::pair<bool, int>>> states;
+      collect_outputs(data, descriptors, states);
+
+      for (const auto &descriptor : descriptors) {
+        kscreen_output_t output;
+        output.uuid = descriptor.uuid;
+        output.name = descriptor.connector;
+
+        // Match the state by outputIndex; when a setup nests differently and no state matches, the
+        // conservative defaults (off, no priority) keep the caller from acting on a wrong output.
+        for (const auto &state : states) {
+          if (state.first == descriptor.index) {
+            output.enabled = state.second.first;
+            output.priority = state.second.second;
+            break;
+          }
+        }
+
+        // The same uuid appears in more than one setup (lid open/closed): keep the enabled variant.
+        bool merged = false;
+        for (auto &existing : outputs) {
+          if (existing.uuid != descriptor.uuid) {
+            continue;
+          }
+          if (!existing.enabled && output.enabled) {
+            existing = output;
+          }
+          merged = true;
+          break;
+        }
+        if (!merged) {
+          outputs.push_back(output);
+        }
+      }
+    }
+    catch (const std::exception &e) {
+      BOOST_LOG(warning) << "topology: could not parse the KWin output configuration: "sv << e.what();
+    }
+
+    return outputs;
+  }
+
+  std::vector<std::string> outputs_to_reenable(const std::vector<kscreen_output_t> &snapshot,
+                                              const std::vector<kscreen_output_t> &current,
+                                              const std::string &target_uuid) {
+    std::vector<std::string> uuids;
+
+    for (const auto &before : snapshot) {
+      if (!before.enabled || before.uuid.empty() || before.uuid == target_uuid) {
+        continue;
+      }
+
+      const auto now = std::find_if(current.begin(), current.end(), [&](const kscreen_output_t &output) {
+        return output.uuid == before.uuid;
+      });
+
+      // An output the compositor no longer lists counts as off: the enable is a no-op there, while
+      // staying silent would hide a screen that did not come back.
+      if (now == current.end() || !now->enabled) {
+        uuids.push_back(before.uuid);
+      }
+    }
+
+    return uuids;
+  }
+
   void session_apply_topology(const std::string &target_name) {
     apply_topology_mode(target_name, topology_mode_name(config::video.dd.configuration_option));
   }
 
   void session_revert_topology() {
-    std::vector<topology_state_t> snapshot;
+    std::vector<kscreen_output_t> snapshot;
     {
       std::scoped_lock lock {g_topology_mutex};
       if (!g_topology_applied) {
@@ -867,7 +1108,21 @@ namespace platf {
   }
 
   bool virtual_display_available() {
-    return !tool_path("krfb-virtualmonitor").empty() && !tool_path("kscreen-doctor").empty();
+    const bool helper = !tool_path(VIRTUAL_DISPLAY_HELPER).empty();
+    const bool kscreen = !tool_path(KSCREEN_HELPER).empty();
+
+    // This probe backs the client display list, so it is the only place that can explain a missing
+    // virtual display id: on a host without the helpers nothing else runs, and the ids simply are
+    // not offered. Keep the message here rather than in the lookup itself, which also serves tools
+    // that have nothing to do with the virtual display.
+    if (!helper) {
+      warn_helper_unavailable(VIRTUAL_DISPLAY_HELPER);
+    }
+    if (!kscreen) {
+      warn_helper_unavailable(KSCREEN_HELPER);
+    }
+
+    return helper && kscreen;
   }
 
   namespace {

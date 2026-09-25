@@ -124,3 +124,52 @@ TEST_F(ConfigPersistenceTest, SelectsAllDriversOnlyForLicensedUsersWithoutAPrefe
   EXPECT_FALSE(config::select_all_gamepad_drivers_if_licensed(true));
   EXPECT_EQ(file_handler::read_file(config_file().string().c_str()), "gamepad_driver = all\n");
 }
+
+namespace {
+
+  /**
+   * @brief Fixture that parses configuration text and restores the global state afterwards.
+   */
+  class LinuxHelperPathConfigTest: public testing::Test {
+  protected:
+    /**
+     * @brief Remember the core configuration before a test overwrites it.
+     */
+    void SetUp() override {
+      original_sunshine_ = config::sunshine;
+    }
+
+    /**
+     * @brief Restore the core configuration.
+     */
+    void TearDown() override {
+      config::sunshine = std::move(original_sunshine_);
+    }
+
+  private:
+    config::sunshine_t original_sunshine_ {config::sunshine};  ///< Core configuration restored after each test.
+  };
+
+}  // namespace
+
+TEST_F(LinuxHelperPathConfigTest, ReadsTheConfiguredHelperPaths) {
+  config::apply_config_for_test(
+    "virtual_display_helper = /opt/kde/bin/krfb-virtualmonitor\n"
+    "kscreen_helper = /opt/kde/bin/kscreen-doctor\n"
+  );
+
+  EXPECT_EQ(config::sunshine.virtual_display_helper, "/opt/kde/bin/krfb-virtualmonitor");
+  EXPECT_EQ(config::sunshine.kscreen_helper, "/opt/kde/bin/kscreen-doctor");
+}
+
+TEST_F(LinuxHelperPathConfigTest, IgnoresAnEmptyValue) {
+  config::sunshine.virtual_display_helper.clear();
+  config::sunshine.kscreen_helper.clear();
+
+  // The parser drops a key with an empty value (see config::parse_option), so an empty entry cannot
+  // point the lookup anywhere — which is what makes the automatic search kick in.
+  config::apply_config_for_test("virtual_display_helper =\nkscreen_helper =\n");
+
+  EXPECT_TRUE(config::sunshine.virtual_display_helper.empty());
+  EXPECT_TRUE(config::sunshine.kscreen_helper.empty());
+}

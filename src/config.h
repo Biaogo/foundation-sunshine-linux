@@ -389,6 +389,11 @@ namespace config {
     bool system_tray;  ///< Enable the system tray integration.
     std::vector<prep_cmd_t> prep_cmds;  ///< Preparation commands executed around application launch.
 
+    /// Linux only: absolute path to `krfb-virtualmonitor`; empty searches `$PATH` and the standard locations.
+    std::string virtual_display_helper;
+    /// Linux only: absolute path to `kscreen-doctor`; empty searches `$PATH` and the standard locations.
+    std::string kscreen_helper;
+
     // List of allowed origins for CSRF protection (e.g., "https://example.com,https://app.example.com")
     // Comma-separated list of additional origins. Default includes localhost variants and web UI port.
     std::vector<std::string> csrf_allowed_origins;  ///< Additional origins allowed by CSRF validation.

@@ -2307,6 +2307,58 @@ supported on the current platform.
     </tr>
 </table>
 
+### virtual_display_helper
+
+<table>
+    <tr>
+        <td>Description</td>
+        <td colspan="2">
+            Absolute path of `krfb-virtualmonitor`, the helper Sunshine starts for the built-in virtual display.
+            Leave empty to search `$PATH` first and then the usual locations (`/usr/bin`, `/usr/local/bin`,
+            `/run/current-system/sw/bin`, the directory of the Sunshine executable).
+            @note{Applies to Linux only. The built-in virtual display requires `krfb`.}
+        </td>
+    </tr>
+    <tr>
+        <td>Default</td>
+        <td colspan="2">@code{}
+            (empty)
+            @endcode</td>
+    </tr>
+    <tr>
+        <td>Example</td>
+        <td colspan="2">@code{}
+            virtual_display_helper = /usr/bin/krfb-virtualmonitor
+            @endcode</td>
+    </tr>
+</table>
+
+### kscreen_helper
+
+<table>
+    <tr>
+        <td>Description</td>
+        <td colspan="2">
+            Absolute path of `kscreen-doctor`, the helper Sunshine uses to enable the virtual output and to apply
+            the display-combination modes (`dd_*`). Leave empty to search `$PATH` first and then the usual locations
+            (`/usr/bin`, `/usr/local/bin`, `/run/current-system/sw/bin`, the directory of the Sunshine executable).
+            @note{Applies to Linux only. The KDE helpers require `libkscreen` (package `kscreen` on most distributions).}
+        </td>
+    </tr>
+    <tr>
+        <td>Default</td>
+        <td colspan="2">@code{}
+            (empty)
+            @endcode</td>
+    </tr>
+    <tr>
+        <td>Example</td>
+        <td colspan="2">@code{}
+            kscreen_helper = /usr/bin/kscreen-doctor
+            @endcode</td>
+    </tr>
+</table>
+
 ## NVIDIA NVENC Encoder
 
 ### nvenc_preset

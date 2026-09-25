@@ -11,6 +11,7 @@
 
 #include <memory>
 #include <string>
+#include <vector>
 
 namespace platf {
   /// Client-visible id of the dynamic virtual monitor, captured through the KWin ScreenCast backend.
@@ -33,6 +34,80 @@ namespace platf {
 
   /// Value exported as SUNSHINE_CLIENT_VIRTUAL_DISPLAY for a virtual-KMS pick.
   inline constexpr auto VIRTUAL_DISPLAY_HOOK_KMS = "kms";
+
+  /// Executable that creates the virtual monitor on demand (KDE's krfb virtual-monitor helper).
+  inline constexpr auto VIRTUAL_DISPLAY_HELPER = "krfb-virtualmonitor";
+
+  /// Executable that makes a created output live and applies display combinations (KScreen).
+  inline constexpr auto KSCREEN_HELPER = "kscreen-doctor";
+
+  /**
+   * @brief Resolve one external helper executable without trusting the process' `PATH` alone.
+   *
+   * A service (systemd user unit, launchd, a bare container entry point) starts with a minimal
+   * `PATH`, while the helper may live in `/usr/bin`, only in the distribution's global profile, or
+   * next to a portable installation. Candidates are tried in this order:
+   *
+   *  1. @p configured — an absolute path from `sunshine.conf` (`virtual_display_helper`,
+   *     `kscreen_helper`), so a host can point at its own copy;
+   *  2. @p path_env — the caller's `$PATH`, which is how this always worked;
+   *  3. @ref helper_fallback_dirs — the locations a service' `PATH` usually misses.
+   *
+   * Never logs: the caller decides whether a missing helper is worth a message, because this runs
+   * on every client display-list request.
+   *
+   * @param tool Executable name to look for (`krfb-virtualmonitor`, `kscreen-doctor`, ...).
+   * @param configured Absolute path configured by the user; empty to search only.
+   * @param path_env Colon-separated directory list standing in for `$PATH`.
+   * @return Absolute path of the first usable candidate, empty when the helper is unavailable.
+   */
+  std::string find_helper(const std::string &tool, const std::string &configured, const std::string &path_env);
+
+  /**
+   * @brief Directories searched after the configured path and `$PATH`.
+   *
+   * @return Candidate directories in search order, including entries that do not exist.
+   */
+  std::vector<std::string> helper_fallback_dirs();
+
+  /**
+   * @brief One output as the KScreen-backed paths see it.
+   */
+  struct kscreen_output_t {
+    std::string name;  ///< Connector name, for example `DP-1`.
+    std::string uuid;  ///< KScreen uuid, the handle `kscreen-doctor` uses.
+    bool enabled {};  ///< Whether the output is currently on.
+    int priority {};  ///< Priority as reported, `0` when unset.
+    std::string geometry;  ///< Geometry, empty when the source does not report one.
+  };
+
+  /**
+   * @brief Parse the output list out of KWin's own output configuration.
+   *
+   * Split off from the file access so the document shape can be tested with samples: the flat
+   * assumption this started with produced zero outputs on the target host without any error, and a
+   * wrong shape is invisible until a session fails to apply the client's display combination.
+   *
+   * @param text Contents of `kwinoutputconfig.json`.
+   * @return Outputs in document order, empty when the text cannot be used.
+   */
+  std::vector<kscreen_output_t> kscreen_outputs_from_json_text(const std::string &text);
+
+  /**
+   * @brief Which outputs a settled topology pass has to switch back on.
+   *
+   * KWin runs its own output bookkeeping when a new output appears, and the pass Sunshine issues
+   * right after applying a mode can beat it by a frame; this decides what still needs an enable once
+   * the compositor has had a moment.
+   *
+   * @param snapshot Outputs as they were before the session started.
+   * @param current Outputs as the compositor reports them now.
+   * @param target_uuid The session's own output, never touched here.
+   * @return uuids to enable, in snapshot order.
+   */
+  std::vector<std::string> outputs_to_reenable(const std::vector<kscreen_output_t> &snapshot,
+                                              const std::vector<kscreen_output_t> &current,
+                                              const std::string &target_uuid);
 
   /**
    * @brief Owns the dynamically created virtual monitor for one stream session.

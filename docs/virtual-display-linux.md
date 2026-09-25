@@ -48,8 +48,34 @@ advertise = <能创建> && <会话是 Plasma/Wayland>
 4. **销毁**：杀掉子进程 → 输出随 krfb 一起消失 → 用 create 时保存的快照
    （`kscreen-doctor` 读到的布局）恢复其它输出。
 
-依赖声明：deb 的 `CPACK_DEBIAN_PACKAGE_DEPENDS` 增加 `krfb, kscreen`（Plasma 用户默认已有）。
-非 Plasma（GNOME 等）不满足 → 第 1 步就不 advertise。
+依赖声明：deb 用 **Recommends**（不是 Depends，缺了只是没有虚拟屏，不该拦安装）声明
+`krfb, libkf5screen-bin | libkscreen-bin`，见 `cmake/packaging/linux.cmake`。
+2026-09-25 对着 Ubuntu 24.04 的包实测过：`krfb` 提供 `krfb-virtualmonitor`；`kscreen-doctor` 在
+Plasma 5/KF5 的 **`libkf5screen-bin`** 里（`kscreen` 包只有 `kscreen-console`，别写错），Plasma 6/KF6
+是 `libkscreen-bin`，NixOS 是 `libkscreen`。非 Plasma（GNOME 等）不满足 → 第 1 步就不 advertise。
+
+#### helper 定位：不依赖服务的 `PATH`（2026-09-25 实测坑，已修）
+
+内置实现要起两个外部命令（`krfb-virtualmonitor`、`kscreen-doctor`），原先只做一次
+`boost::process::search_path`（即 `$PATH`）。systemd --user 服务的 `PATH` 极简，NixOS 上 `/usr/bin`
+根本不存在 → 两个 helper 都找不到，虚拟屏**静默消失**：客户端列表里没有虚拟 id，日志一行都没有
+（钩子时代脚本自己 `export PATH`，所以删掉钩子才第一次暴露）。
+
+现在的定位顺序（`platf::find_helper()`，实现见 `src/platform/linux/virtual_display.cpp`）：
+
+1. `sunshine.conf` 显式配置的绝对路径：`virtual_display_helper` / `kscreen_helper`；
+2. 进程 `$PATH`（老行为；NixOS 模块正是靠它注入 store 路径）；
+3. 标准位置兜底：`/usr/bin`、`/usr/local/bin`、`/run/current-system/sw/bin`，最后是
+   **可执行文件自身目录**与它旁边的 `bin/`（便携式打包自带 helper 的情况）。
+
+每一步都要求候选文件可执行（`access(X_OK)`）；配置了但不可执行时**降级继续搜**，只报一次警告。
+**unavailable 必须有 warning**：`virtual_display_t::start()`（真要建屏时）、
+`virtual_display_available()`（客户端列表探测，虚拟 id 消失的唯一可观测点）与拓扑用的
+`run_kscreen()` 都会报，且每个 helper 每进程只报一次（探测按客户端请求触发，否则刷屏）。
+消息里给出该装哪个包（`krfb` / `libkscreen`）与配置项示例。
+
+跨发行版的问题在**代码层**修；NixOS 模块里那行
+`PATH=…krfb/bin:…libkscreen/bin:$PATH` 仍可保留（顺序上最先命中），但已不是必需。
 
 ### 第 3 步：屏幕组合（`dd_*` 模式）也进 C++
 
@@ -61,6 +87,12 @@ ensure_only_display / verify_only / disabled` 映射到上面同一组 kscreen �
 ## 测试
 
 * 单元：id → 名字映射、`virtual_display_available()` 的探测逻辑（可注入 PATH 桩）。
+  已实现：`tests/unit/platform/linux/test_virtual_display.cpp`
+  （`VirtualDisplayHelperLookup.*` 7 条：配置优先 / `$PATH` / 跳过不可执行项 / 跳过空 PATH 项 /
+  兜底目录内容 / 找不到时返回空；`KwinOutputConfigParsing.*` 8 条：`connectorName` 与
+  `name` 兜底 / 空 uuid 与错类型跳过 / `outputIndex` 状态匹配 / 无状态时的保守默认 /
+  重复 uuid 保留 enabled 那份 / 真机那个"先列输出、再按 lid 变体给状态"的嵌套结构 / 坏 JSON）
+  与 `tests/unit/test_config.cpp` 里两个配置解析用例（`virtual_display_helper`、`kscreen_helper`）。
 * 手工矩阵（本机 Plasma Wayland + RTX 3070Ti）：
   1. 没装 krfb 时客户端**看不到**虚拟选项（第 1 步）；
   2. 装了 krfb：选虚拟-KWin → 输出出现、可采集、触控跟手、断开后布局复原；
@@ -74,4 +106,6 @@ ensure_only_display / verify_only / disabled` 映射到上面同一组 kscreen �
 * 子进程管理要防僵尸（`boost::process` 的 `child` 析构会 wait）与端口冲突（探测）。
 * `kscreen-doctor` 是外部命令而非库；好处是与现有实现一致、行为可预期，坏处是依赖发行版包。
   若将来要彻底内化，可换成 KScreen 的 DBus API（工作量大，暂不做）。
+* 定位顺序（配置 → `$PATH` → 标准目录）同时写在 `docs/configuration.md` 的两个配置项说明里，
+  改顺序要一起改，否则用户按文档排查会走偏。
 * 第 1 步先上，能把“菜单骗人 + 20 s 超时”这两件事一次性消灭，且不依赖第 2、3 步。

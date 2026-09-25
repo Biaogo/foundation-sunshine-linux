@@ -217,9 +217,17 @@ Warning: topology: output [Virtual-SunshineVirt] is not in kscreen; not applying
   所以最终改为：**读 KWin 的 `kwinoutputconfig.json`（详见本节开头）**，写操作继续用 `kscreen-doctor`
   子进程（**只起不读**，实测有效）。
 
-附带待办（本轮实测新发现）：
+本轮实测发现（**已在代码里处理，实测验收见下**）：
 - `ensure_primary` / `ensure_active` 下，**KWin 会在新虚拟输出出现时把 eDP-1 关掉**（实测两次）。
-  语义上这两个模式**只该改优先级/开关目标屏**，不该让邻屏消失 → 内置版已加"把快照里原本 enabled 的
-  输出重新 enable"的兜底；`ensure_only_display` 故意不做这一步（它就是要关邻屏）。
+  语义上这两个模式**只该改优先级/开关目标屏**，不该让邻屏消失 → 内置版现在做**两趟**兜底：
+  1. 应用完模式**立刻**把快照里原本 enabled 的输出再 enable 一次（幂等，KWin 没动它就是空转）；
+  2. **等 1s（`TOPOLOGY_SETTLE`）再查一遍**：用纯函数 `outputs_to_reenable()` 比对
+     "快照里本来开着的" vs "现在实际开着的"，只对**确实掉线**的那些补 enable，并打
+     `topology: re-enabling <uuid> after the compositor settled`。
+  加第 2 趟的原因就是**竞态**：第 1 趟可能比 KWin 自己的 bookkeeping 早一拍（实测差 1 帧），
+  早一拍的那次 enable 会被 KWin 随后的 disable 覆盖掉。两趟都留在**启动线程**上（分离线程里
+  不能起 `kscreen-doctor`，见 `kwin_call` 上方注释）。`ensure_only_display` 故意不做这一步（它就是要关邻屏）。
+  ⏳ 待你验收：连一次 + 会话中 `kscreen-doctor -o` 看 eDP-1 是否仍 enabled + 日志里看有没有那条
+  `re-enabling` + 断开后布局回基线。
 - `ensure_only_display` 的"关掉其它屏"**必须放在"目标是否已知"的分支之外**：目标若是 krfb 的临时虚拟
   输出，放进分支里会让该模式悄悄退化成 `ensure_primary`（实测踩过）。
