@@ -279,98 +279,6 @@ namespace platf {
     }
     impl_.reset();
   }
-  /**
-   * @brief Implementation state: the helper process and the output it produced.
-   */
-  struct virtual_display_t::impl_t {
-    boost::process::v1::child child;  ///< krfb-virtualmonitor, owned by this object.
-    std::string output_name;          ///< KWin output name (empty when not started).
-  };
-
-  virtual_display_t::~virtual_display_t() {
-    stop();
-  }
-
-  bool virtual_display_t::start(int width, int height, int fps) {
-    if (impl_ && impl_->child.valid()) {
-      return true;
-    }
-
-    const auto helper = tool_path("krfb-virtualmonitor");
-    if (helper.empty()) {
-      BOOST_LOG(warning) << "Virtual display requested but krfb-virtualmonitor is not installed"sv;
-      return false;
-    }
-    if (tool_path("kscreen-doctor").empty()) {
-      BOOST_LOG(warning) << "Virtual display requested but kscreen-doctor is not installed"sv;
-      return false;
-    }
-
-    if (width <= 0 || height <= 0) {
-      width = 1920;
-      height = 1080;
-    }
-    if (fps <= 0) {
-      fps = 60;
-    }
-
-    // The helper needs the session's compositor connection: inherit this process' environment,
-    // which for a user service already carries WAYLAND_DISPLAY and the session bus.
-    auto state = std::make_unique<impl_t>();
-    try {
-      state->child = boost::process::v1::child(
-        helper,
-        "--resolution", std::to_string(width) + "x" + std::to_string(height),
-        "--name", "SunshineVirt",
-        "--port", std::to_string(VNC_PORT),
-        "--password", random_password());
-    }
-    catch (const std::exception &e) {
-      BOOST_LOG(warning) << "Could not start krfb-virtualmonitor: "sv << e.what();
-      return false;
-    }
-
-    const std::string name {VIRTUAL_DISPLAY_OUTPUT_NAME};
-    if (!wait_for_output(name)) {
-      BOOST_LOG(warning) << "Virtual display did not appear as ["sv << name << "] within "sv
-                         << OUTPUT_WAIT.count() << "s"sv;
-      state->child.terminate();
-      return false;
-    }
-
-    if (!enable_output(output_uuid(kscreen_output(), name))) {
-      BOOST_LOG(warning) << "Virtual output ["sv << name << "] appeared but could not be enabled"sv;
-      state->child.terminate();
-      return false;
-    }
-
-    state->output_name = name;
-    impl_ = std::move(state);
-    BOOST_LOG(info) << "Virtual display ["sv << name << "] created at "sv << width << 'x' << height
-                    << '@' << fps;
-    return true;
-  }
-
-  bool virtual_display_t::active() const {
-    return impl_ && impl_->child.valid() && impl_->child.running();
-  }
-
-  const std::string &virtual_display_t::output_name() const {
-    static const std::string empty;
-    return impl_ ? impl_->output_name : empty;
-  }
-
-  void virtual_display_t::stop() {
-    if (!impl_) {
-      return;
-    }
-
-    if (impl_->child.valid() && impl_->child.running()) {
-      impl_->child.terminate();
-      BOOST_LOG(info) << "Virtual display helper stopped; output removed"sv;
-    }
-    impl_.reset();
-  }
 
   namespace {
     /// Property read from / written to KWin's input devices.
@@ -385,48 +293,84 @@ namespace platf {
      * @param property Property name.
      * @return Raw busctl output (empty on failure).
      */
-    std::string device_property(const std::string &path, const std::string &property) {
-      const auto busctl = tool_path("busctl");
-      if (busctl.empty()) {
-        return {};
+    constexpr auto KWIN_SERVICE = "org.kde.KWin";
+    constexpr auto PROPERTIES_IFACE = "org.freedesktop.DBus.Properties";
+
+    /**
+     * @brief Call a method on KWin's session-bus object, in-process.
+     *
+     * Spawning a helper (busctl) cannot work from inside a session: this process already owns
+     * children (the prep commands, the app) and a SIGCHLD handler reaps ours before we can collect
+     * it, so `system()` returns non-zero and a pipe of our own comes back empty — while the very
+     * same command in a shell, with this process' own environment, prints the whole device list.
+     * Talk to the bus ourselves: GIO is already a dependency of the Linux platform code.
+     */
+    GVariant *kwin_call(const std::string &path, const std::string &iface, const std::string &method,
+                        GVariant *params, const GVariantType *reply_type) {
+      GError *error = nullptr;
+      auto *bus = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, &error);
+      if (!bus) {
+        BOOST_LOG(warning) << "Touch binding: no session bus ("sv << (error ? error->message : "unknown") << ')';
+        g_clear_error(&error);
+        return nullptr;
       }
 
-      // Go through a shell redirection instead of a pipe of our own: while a session runs this
-      // process already owns children (prep commands, the app) and a detached poller reading its
-      // own pipe lost the output every single time — the same command from a shell, with this very
-      // process' environment, returned the full device list. A reaped child cannot truncate a file
-      // that the shell already redirected.
-      const std::string tmp {"/tmp/sunshine-touchbind.property"};
-      const std::string cmd = busctl + " --user get-property org.kde.KWin '" + path + "' " + INPUT_DEVICE_IFACE +
-                              " " + property + " > " + tmp + " 2>/dev/null";
-      if (std::system(cmd.c_str()) != 0) {
-        return {};
+      auto *reply = g_dbus_connection_call_sync(bus, KWIN_SERVICE, path.c_str(), iface.c_str(), method.c_str(),
+                                                params, reply_type, G_DBUS_CALL_FLAGS_NONE, 2000, nullptr, &error);
+      g_object_unref(bus);
+      if (!reply) {
+        BOOST_LOG(warning) << "Touch binding: D-Bus "sv << iface << '.' << method << " failed: "
+                           << (error ? error->message : "unknown");
+        g_clear_error(&error);
       }
-
-      std::ifstream in {tmp};
-      std::stringstream buffer;
-      buffer << in.rdbuf();
-      return buffer.str();
+      return reply;
     }
 
     /**
-     * @brief Strip busctl's type prefix and quotes from a value.
-     *
-     * @param raw Raw output line.
-     * @return Plain value.
+     * @brief Interface that owns a given KWin object path.
      */
-    std::string plain_value(std::string raw) {
-      while (!raw.empty() && (raw.back() == '\n' || raw.back() == '\r' || raw.back() == '"')) {
-        raw.pop_back();
+    std::string kwin_interface(const std::string &path) {
+      return path == INPUT_MANAGER_PATH ? std::string {INPUT_MANAGER_IFACE} : std::string {INPUT_DEVICE_IFACE};
+    }
+
+    /**
+     * @brief Read one property of a KWin input device (or of the device manager).
+     *
+     * @return Plain value: strings as-is, booleans as "true"/"false", string arrays space separated.
+     */
+    std::string device_property(const std::string &path, const std::string &property) {
+      auto *reply = kwin_call(path, PROPERTIES_IFACE, "Get",
+                              g_variant_new("(ss)", kwin_interface(path).c_str(), property.c_str()),
+                              G_VARIANT_TYPE("(v)"));
+      if (!reply) {
+        return {};
       }
-      const auto space = raw.find(' ');
-      if (space != std::string::npos) {
-        raw = raw.substr(space + 1);
+
+      GVariant *value = nullptr;
+      g_variant_get(reply, "(v)", &value);
+      std::string result;
+      if (value) {
+        if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING)) {
+          result = g_variant_get_string(value, nullptr);
+        }
+        else if (g_variant_is_of_type(value, G_VARIANT_TYPE_BOOLEAN)) {
+          result = g_variant_get_boolean(value) ? "true" : "false";
+        }
+        else if (g_variant_is_of_type(value, G_VARIANT_TYPE_STRING_ARRAY)) {
+          GVariantIter iter;
+          g_variant_iter_init(&iter, value);
+          while (auto *item = g_variant_iter_next_value(&iter)) {
+            if (!result.empty()) {
+              result += ' ';
+            }
+            result += g_variant_get_string(item, nullptr);
+            g_variant_unref(item);
+          }
+        }
+        g_variant_unref(value);
       }
-      while (!raw.empty() && raw.front() == '"') {
-        raw.erase(raw.begin());
-      }
-      return raw;
+      g_variant_unref(reply);
+      return result;
     }
 
     /**
@@ -437,37 +381,22 @@ namespace platf {
      * @return True when the property now holds the wanted value.
      */
     bool bind_device(const std::string &path, const std::string &output_name) {
-      const auto busctl = tool_path("busctl");
-      if (busctl.empty()) {
-        return false;
-      }
       if (device_property(path, "outputName") == output_name) {
         return true;
       }
-      // boost::process v1 takes the executable and its arguments as separate parameters; the
-      // brace-enclosed command vector with an error_code does not compile (and neither does it with
-      // the error_code omitted for this overload).
-      const std::string cmd = busctl + " --user set-property org.kde.KWin '" + path + "' " + INPUT_DEVICE_IFACE +
-                              " outputName s '" + output_name + "' >/dev/null 2>&1";
-      if (std::system(cmd.c_str()) != 0) {
-        BOOST_LOG(warning) << "busctl set-property failed for "sv << path;
-        return false;
+
+      if (auto *reply = kwin_call(path, PROPERTIES_IFACE, "Set",
+                                  g_variant_new("(ssv)", INPUT_DEVICE_IFACE, "outputName",
+                                                g_variant_new_string(output_name.c_str())),
+                                  nullptr)) {
+        g_variant_unref(reply);
       }
       return device_property(path, "outputName") == output_name;
     }
   }  // namespace
 
   bool session_bind_touch(const std::string &output_name) {
-    {
-      GError *error = nullptr;
-      auto *bus = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, &error);
-      BOOST_LOG(info) << "Touch binding requested for ["sv << output_name << "]; session bus="sv
-                      << (bus ? "ok"sv : "UNREACHABLE"sv);
-      if (bus) {
-        g_object_unref(bus);
-      }
-      g_clear_error(&error);
-    }
+    BOOST_LOG(info) << "Touch binding requested for ["sv << output_name << ']';
     if (output_name.empty()) {
       BOOST_LOG(warning) << "Touch binding skipped (no output name)"sv;
       return false;
