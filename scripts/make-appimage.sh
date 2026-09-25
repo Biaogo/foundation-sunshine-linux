@@ -1,0 +1,56 @@
+#!/bin/bash
+# Assemble the AppImage exactly as upstream's .github/workflows/ci-linux.yml does.
+# Runs INSIDE the ubuntu:22.04 container, after:
+#   ./scripts/linux_build.sh --appimage-build --skip-cuda --sudo-off --ubuntu-test-repo --step=cmake
+#   ./scripts/linux_build.sh --appimage-build --skip-cuda --sudo-off --step=build
+set -euo pipefail
+
+export https_proxy="${https_proxy:-http://127.0.0.1:7890}"
+export http_proxy="${http_proxy:-http://127.0.0.1:7890}"
+export APPIMAGE_EXTRACT_AND_RUN=1   # linuxdeploy's own AppImage, without FUSE
+export NO_STRIP=1                   # keep the build untouched
+
+cd /src/build
+APP_ID="dev.lizardbyte.app.Sunshine"
+
+# 1) install the build into the AppDir (ci-linux.yml step "Package Linux - AppImage")
+DESTDIR=AppDir ninja install
+test -f AppDir/usr/share/sunshine/udev/rules.d/60-sunshine.rules && echo "udev rules: present"
+
+# 2) custom AppRun + desktop file
+cp -f ../packaging/linux/AppImage/AppRun ./AppDir/
+chmod +x ./AppDir/AppRun
+if [ -f "./AppDir/usr/share/applications/${APP_ID}.desktop" ]; then
+  cp -f "./AppDir/usr/share/applications/${APP_ID}.desktop" ./AppDir/
+elif [ -f "../packaging/linux/AppImage/${APP_ID}.desktop" ]; then
+  cp -f "../packaging/linux/AppImage/${APP_ID}.desktop" ./AppDir/
+fi
+ls ./AppDir/*.desktop >/dev/null 2>&1 || { echo "no desktop file for the AppImage"; exit 1; }
+
+# 3) icon + linuxdeploy
+ICON="$(find /src -maxdepth 2 -name 'sunshine.png' | head -1)"
+[ -n "$ICON" ] || { echo "sunshine.png not found"; exit 1; }
+
+for tool in linuxdeploy linuxdeploy-plugin-qt; do
+  f="${tool}-x86_64.AppImage"
+  if [ ! -x "$f" ]; then
+    echo "== downloading $f"
+    wget --max-redirect=1 -q "https://github.com/linuxdeploy/${tool}/releases/download/continuous/${f}"
+    chmod +x "$f"
+  fi
+done
+
+export QMAKE="${QMAKE:-/usr/lib/qt6/bin/qmake}"
+export EXTRA_QT_MODULES="svg;"
+[ -x "$QMAKE" ] && "$QMAKE" -query QT_INSTALL_PLUGINS || echo "note: $QMAKE missing (qt plugin step may fail)"
+
+./linuxdeploy-x86_64.AppImage \
+  --appdir ./AppDir \
+  --plugin qt \
+  --executable ./sunshine \
+  --icon-file "$ICON" \
+  --desktop-file "$(ls ./AppDir/*.desktop | head -1)" \
+  --output appimage
+
+ls -l Sunshine*.AppImage
+echo "APPIMAGE_OK"
