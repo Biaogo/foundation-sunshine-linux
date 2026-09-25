@@ -1525,12 +1525,29 @@ namespace video {
     }
 
     const auto deadline = std::chrono::steady_clock::now() + timeout;
+    std::vector<std::string> logged_names;
     do {
       const auto names = platf::display_names(dev_type);
       if (std::find(names.begin(), names.end(), name) != names.end()) {
         BOOST_LOG(info) << "Requested display ["sv << name << "] is available"sv;
         return true;
       }
+
+      // Say what IS there, not just what is missing: a client-visible failure
+      // ("no video from host") otherwise leaves nothing in the log to explain
+      // which outputs the compositor was actually offering.
+      if (names != logged_names) {
+        std::string joined;
+        for (const auto &entry : names) {
+          if (!joined.empty()) {
+            joined += ", "sv;
+          }
+          joined += entry.empty() ? "<unnamed>"sv : entry;
+        }
+        BOOST_LOG(info) << "Waiting for display ["sv << name << "]; enumerated so far: ["sv << joined << "]"sv;
+        logged_names = names;
+      }
+
       std::this_thread::sleep_for(200ms);
     } while (std::chrono::steady_clock::now() < deadline);
 
