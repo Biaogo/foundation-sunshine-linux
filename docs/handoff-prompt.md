@@ -10,7 +10,7 @@
 - 我这条链有"治标 vs 治本"的讲究：NixOS 侧改一行能修我自己，但**跨发行版的问题必须在代码/打包层修**。
 
 ## 现在的事实状态（2026-09-25 深夜）
-- fork tag `v2026.10.01-linux` = `14a46eb4` ✓（已推、CI 已 pin：`d8f1770 pin(sunshine): v2026.10.01`）。其后还有 4 个提交未打 tag：AppImage 脚本两个修复、`-Werror=unused-result` 修复、文档。
+- fork tag `v2026.10.01-linux` = `14a46eb4` ✓（已推、CI 已 pin：`d8f1770 pin(sunshine): v2026.10.01`）。其后还有若干未打 tag 的修复提交（构建脚本、`-Werror=unused-result`、文档）。
 - **主力服务已在跑 `…-foundation-sunshine-upstream-2026.10.01`** ✓，内置路径**生产实测通过** ✓（绑触控 ✓ 组合模式 ✓ kwingrab 采集 ✓ hevc_nvenc ✓ Opus ✓ 客户端 CLIENT CONNECTED ✓）。
 - **一/二期已全部落地并实测**：内置虚拟屏（建/绑触控/收）、物理+虚拟会话的触控绑定、5 个 `dd_configuration_option` 模式、会话前清残留。**NixOS 侧 427 行钩子脚本已退休**（`sunshine-vdisplay.nix` + `sunshine-topology.sh` 已删；`global_prep_cmd` 已去；用户 `~/.config/sunshine/sunshine.conf` 里的钩子条目也清了）。
 - **nixos 仓有未提交改动**，等我 `nh os switch .`：`flake.lock`（`nix flake update foundation-sunshine-linux` 的结果）、`modules/home/optional/sunshine.nix`（删 import + **加 PATH 行**）、`modules/nixos/optional/sunshine.nix`（删死配置 + 注释）。
@@ -44,9 +44,9 @@
 ## 待办（按优先级）
 1. **★ 代码层：helper 不该依赖 PATH**（今晚的关键教训）
    - 加配置项（如 `virtual_display_helper` / `kscreen_helper`，可在 `sunshine.conf` 指定绝对路径）
-   - 找不到时按标准位置兜底：`/usr/bin`、`/usr/local/bin`、`/run/current-system/sw/bin`、应用自身目录旁（AppImage 可自带）
+   - 找不到时按标准位置兜底：`/usr/bin`、`/usr/local/bin`、`/run/current-system/sw/bin`、应用自身目录旁（各类打包可自带）
    - **不可用时必须 `warning`**（现在完全静默 ✗）
-   - 改完用 `scripts/appimage-container-build.sh`（或容器里的 `linux_build.sh`）编一次验证（铁律 4）
+   - 改完用官方 `scripts/linux_build.sh`（在 Ubuntu 容器里跑）编一次验证（铁律 4）
 2. **★ 单元测试：目前为 0** —— 项目 `AGENTS.md` 硬要求（新增/修改代码要补测试）。新增约 300 行 C++（`src/platform/linux/virtual_display.{h,cpp}`、`src/nvhttp.cpp`、`src/stream.cpp`）；`kscreen_outputs_from_kwin_config` 是纯函数，喂样例 JSON 就能测（注意结构见铁律 11）。
 3. **打包层**：deb 加 `Recommends: krfb, libkscreen`；fork README 补一节"虚拟屏依赖 krfb + libkscreen（KDE/KWin）"，并说明 helper 路径怎么配。
 4. **KWin 抢跑竞态**：`ensure_active`/`ensure_primary` 之后加"启动线程上有界等 ~1s 再 enable 一次快照里原本 enabled 的屏"。
