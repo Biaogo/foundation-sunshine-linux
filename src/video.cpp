@@ -1654,7 +1654,11 @@ namespace video {
     int display_p = -1;
     // A hook-created output (virtual display) may still be coming up when the capture thread starts:
     // wait for the session's pick before falling back to whatever enumerates first.
-    wait_for_display(encoder.platform_formats->dev_type, capture_ctxs.front().config.display_name, 20s);
+    // The do-hook runs before the stream starts, so the output it creates is normally enumerated
+    // here within a second. Give up well before the client does (~10 s): reporting a missing display
+    // while the client is still waiting turns into a usable error message instead of both sides
+    // timing out.
+    wait_for_display(encoder.platform_formats->dev_type, capture_ctxs.front().config.display_name, 8s);
     refresh_displays(encoder.platform_formats->dev_type, display_names, display_p, capture_ctxs.front().config.display_name);
     auto disp = platf::display(encoder.platform_formats->dev_type, display_names[display_p], capture_ctxs.front().config);
     if (!disp) {

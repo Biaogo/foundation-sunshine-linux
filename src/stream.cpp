@@ -37,6 +37,9 @@ extern "C" {
 #include "system_tray.h"
 #include "thread_safe.h"
 #include "utility.h"
+#if defined(__linux__)
+  #include "platform/linux/virtual_display.h"
+#endif
 
 constexpr int IDX_START_A = 0;  ///< Control-stream message index for the first stream-start packet.
 constexpr int IDX_START_B = 1;  ///< Control-stream message index for the second stream-start packet.
@@ -2246,6 +2249,11 @@ namespace stream {
       // Reset input on session stop to avoid stuck repeated keys
       BOOST_LOG(debug) << "Resetting Input..."sv;
       input::reset(session.input);
+
+#if defined(__linux__)
+      // Release the built-in virtual monitor (a hook-created one is removed by its undo command).
+      platf::session_virtual_display_stop();
+#endif
 
       // If this is the last session, invoke the platform callbacks
       if (--running_sessions == 0) {

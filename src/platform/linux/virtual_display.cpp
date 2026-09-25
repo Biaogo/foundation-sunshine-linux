@@ -279,4 +279,20 @@ namespace platf {
   bool virtual_display_available() {
     return !tool_path("krfb-virtualmonitor").empty() && !tool_path("kscreen-doctor").empty();
   }
+
+  namespace {
+    /// Owns the built-in virtual monitor for the lifetime of one stream session.
+    std::unique_ptr<virtual_display_t> session_display;
+  }  // namespace
+
+  bool session_virtual_display_start(int width, int height, int fps) {
+    if (!session_display) {
+      session_display = std::make_unique<virtual_display_t>();
+    }
+    return session_display->start(width, height, fps);
+  }
+
+  void session_virtual_display_stop() {
+    session_display.reset();
+  }
 }  // namespace platf

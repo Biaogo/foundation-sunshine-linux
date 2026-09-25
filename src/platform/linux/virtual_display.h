@@ -82,6 +82,25 @@ namespace platf {
   bool virtual_display_available();
 
   /**
+   * @brief Create the session's virtual monitor through the built-in path.
+   *
+   * Used for a session whose client picked a virtual display while the host has no
+   * `global_prep_cmd` do-hook: the hook stays the preferred path for hosts that already carry one,
+   * so this is a pure addition for installs that never configure it (AppImage, .deb).
+   *
+   * @param width Requested width in pixels.
+   * @param height Requested height in pixels.
+   * @param fps Requested refresh rate.
+   * @return True when the monitor was created and is enumerated by the compositor.
+   */
+  bool session_virtual_display_start(int width, int height, int fps);
+
+  /**
+   * @brief Remove the session's virtual monitor (no-op when nothing was created).
+   */
+  void session_virtual_display_stop();
+
+  /**
    * @brief Whether the display list served to clients may advertise the virtual ids.
    *
    * Flipped on 2026-09-25 after the launch path was verified end-to-end on the target host: the

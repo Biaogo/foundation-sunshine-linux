@@ -42,6 +42,9 @@
 #include "utility.h"
 #include "uuid.h"
 #include "video.h"
+#if defined(__linux__)
+  #include "platform/linux/virtual_display.h"
+#endif
 
 using namespace std::literals;
 
@@ -1504,6 +1507,17 @@ namespace nvhttp {
       // the encoder probe below runs before the app/prep execution further down. Run the global
       // prep commands first for those sessions; proc::execute() skips them afterwards.
       if (!launch_session->virtual_display.empty() && launch_session->appid > 0) {
+#if defined(__linux__)
+        // Hosts without a global_prep_cmd do-hook cannot create the monitor the client asked for:
+        // this build does it itself (docs/virtual-display-linux.md, step 2). Hosts that do carry a
+        // hook keep using it, so nothing changes for existing setups. Calling this twice for one
+        // session is harmless — start() returns early while the helper is already running.
+        if (config::sunshine.prep_cmds.empty()) {
+          if (!platf::session_virtual_display_start(launch_session->width, launch_session->height, launch_session->fps)) {
+            BOOST_LOG(warning) << "Could not create the virtual display for this session"sv;
+          }
+        }
+#endif
         if (const auto err = proc::proc.run_global_prep_cmds(launch_session)) {
           BOOST_LOG(error) << "Failed to run the global prep commands for the virtual display"sv;
           tree.put("root.<xmlattr>.status_code", err);
@@ -1630,6 +1644,17 @@ namespace nvhttp {
       // the encoder probe below runs before the app/prep execution further down. Run the global
       // prep commands first for those sessions; proc::execute() skips them afterwards.
       if (!launch_session->virtual_display.empty() && launch_session->appid > 0) {
+#if defined(__linux__)
+        // Hosts without a global_prep_cmd do-hook cannot create the monitor the client asked for:
+        // this build does it itself (docs/virtual-display-linux.md, step 2). Hosts that do carry a
+        // hook keep using it, so nothing changes for existing setups. Calling this twice for one
+        // session is harmless — start() returns early while the helper is already running.
+        if (config::sunshine.prep_cmds.empty()) {
+          if (!platf::session_virtual_display_start(launch_session->width, launch_session->height, launch_session->fps)) {
+            BOOST_LOG(warning) << "Could not create the virtual display for this session"sv;
+          }
+        }
+#endif
         if (const auto err = proc::proc.run_global_prep_cmds(launch_session)) {
           BOOST_LOG(error) << "Failed to run the global prep commands for the virtual display"sv;
           tree.put("root.<xmlattr>.status_code", err);

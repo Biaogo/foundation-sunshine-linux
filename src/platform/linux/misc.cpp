@@ -1308,6 +1308,29 @@ namespace platf {
     return {};
   }
 
+  /**
+   * @brief Report whether this host can actually provide the dynamic virtual monitor.
+   *
+   * The two virtual ids are only usable when the host supplies the creation path: this backend does
+   * not create the output itself (see docs/virtual-display-linux.md), the configured
+   * `global_prep_cmd` do-hook does. Offering ids that can never resolve makes the client connect to
+   * a display that never appears — Sunshine then waits for it while the client gives up first
+   * (observed 2026-09-25 on a fresh install: `Requested display [Virtual-SunshineVirt] did not
+   * appear within 20000 ms`, client aborted after ~10 s).
+   *
+   * @return True when a do-hook that could create the output is configured.
+   */
+  static bool virtual_display_supported() {
+    if (!OFFER_VIRTUAL_DISPLAY_IDS) {
+      return false;
+    }
+
+    return std::any_of(config::sunshine.prep_cmds.begin(), config::sunshine.prep_cmds.end(),
+      [](const config::prep_cmd_t &cmd) {
+        return !cmd.do_cmd.empty();
+      });
+  }
+
   std::vector<std::string> client_display_names(mem_type_e hwdevice_type) {
     reverify_sources_for_session();
     // The list a client may pick from has to match what `display()` will resolve the pick against:
@@ -1323,7 +1346,7 @@ namespace platf {
       // caps): treat it as "KWin is not ready yet" and fall through to the backend list.
       const bool probing_placeholder = names.size() == 1 && names[0].empty();
       if (!probing_placeholder && !names.empty()) {
-        if (OFFER_VIRTUAL_DISPLAY_IDS) {
+        if (virtual_display_supported()) {
           names.emplace_back(VDISPLAY_KWIN_ID);
           names.emplace_back(VDISPLAY_KMS_ID);
         }
