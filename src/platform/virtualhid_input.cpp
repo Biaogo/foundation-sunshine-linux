@@ -296,6 +296,9 @@ namespace platf::virtualhid {
     }
 
     lvh::PointerViewport pointer_viewport(const touch_port_t &touch_port) {
+      // Touch coordinates are already mapped into the video rectangle by the caller (see the touch
+      // packet handler in src/input.cpp), because the letterbox bars only exist on the derived
+      // `input::touch_port_t` and this layer sees the platform base type.
       return {
         .offset_x = touch_port.offset_x,
         .offset_y = touch_port.offset_y,

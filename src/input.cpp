@@ -1415,12 +1415,32 @@ namespace input {
       return;
     }
 
+    // The client reports touch coordinates relative to its whole surface, while the stream may be
+    // letter- or pillarboxed inside it when the aspects differ (the client fits the video and still
+    // calls the rest of its surface the viewport). Map them into the video rectangle so a touch
+    // lands where the user sees the picture: the error otherwise grows with the distance from the
+    // bar and only on the axis that has bars — a 16:10 capture in a 2.2:1 client viewport was ~37%
+    // off at the right edge while the vertical axis (no bars) stayed correct.
+    float touch_x = pointer_data->coords.first;
+    float touch_y = pointer_data->coords.second;
+    {
+      const auto &port = input->touch_port;
+      const float bars_x = port.client_offsetX;
+      const float bars_y = port.client_offsetY;
+      if ((bars_x > 0.0f || bars_y > 0.0f) && port.width > 0.0f && port.height > 0.0f) {
+        const float video_w = port.width - 2.0f * bars_x;
+        const float video_h = port.height - 2.0f * bars_y;
+        touch_x = (bars_x + std::clamp(touch_x, 0.0f, 1.0f) * video_w) / port.width;
+        touch_y = (bars_y + std::clamp(touch_y, 0.0f, 1.0f) * video_h) / port.height;
+      }
+    }
+
     platf::touch_input_t touch {
       packet->eventType,
       pointer_data->rotation,
       util::endian::little(packet->pointerId),
-      pointer_data->coords.first,
-      pointer_data->coords.second,
+      touch_x,
+      touch_y,
       from_clamped_netfloat(packet->pressureOrDistance, 0.0f, 1.0f),
       pointer_data->contact_area.first,
       pointer_data->contact_area.second,
