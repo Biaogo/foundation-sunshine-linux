@@ -42,9 +42,6 @@
 #include "utility.h"
 #include "uuid.h"
 #include "video.h"
-#if defined(__linux__)
-  #include "platform/linux/virtual_display.h"
-#endif
 
 using namespace std::literals;
 
@@ -517,28 +514,25 @@ namespace nvhttp {
     // Per-session display pick from the client's display selector (Moonlight sends it as the
     // `display_name` launch argument). A virtual id is translated here so that both the capture
     // path and the prep hooks receive a concrete target, plus the hook switch that tells the
-    // do-hook which backend the client asked for.
+    // do-hook which backend the client asked for. The translation lives in the Linux platform code
+    // so it can be unit-tested (see `src/platform/linux/virtual_display.h`).
     const auto requested_display = get_arg(args, "display_name", "");
+#if defined(__linux__)
+    const auto display_pick = platf::resolve_display_pick(requested_display, config::video.output_name);
+    if (!display_pick.name.empty()) {
+      launch_session->display_name = display_pick.name;
+    }
+    if (!display_pick.virtual_display.empty()) {
+      launch_session->virtual_display = display_pick.virtual_display;
+    }
+#else
     if (!requested_display.empty()) {
       launch_session->display_name = requested_display;
-#if defined(__linux__)
-      if (requested_display == platf::VDISPLAY_KWIN_ID || requested_display == platf::VDISPLAY_KMS_ID) {
-        launch_session->virtual_display = requested_display == platf::VDISPLAY_KWIN_ID ?
-                                            platf::VIRTUAL_DISPLAY_HOOK_KWIN :
-                                            platf::VIRTUAL_DISPLAY_HOOK_KMS;
-        launch_session->display_name = platf::VIRTUAL_DISPLAY_OUTPUT_NAME;
-      }
+    }
 #endif
+    if (!requested_display.empty()) {
       BOOST_LOG(info) << "Launch session will use display ["sv << requested_display << ']';
     }
-#if defined(__linux__)
-    else if (config::video.output_name == platf::VIRTUAL_DISPLAY_OUTPUT_NAME) {
-      // Host-config pick: the client's "默认" entry mirrors `output_name`. When that names the
-      // hook-managed virtual monitor the do-hook still has to run, so inject the switch for this
-      // path too (otherwise the hook no-ops and the capture waits for a monitor nobody creates).
-      launch_session->virtual_display = platf::VIRTUAL_DISPLAY_HOOK_KWIN;
-    }
-#endif
 
     // Encrypted RTSP is enabled with client reported corever >= 1
     auto corever = util::from_view(get_arg(args, "corever", "0"));

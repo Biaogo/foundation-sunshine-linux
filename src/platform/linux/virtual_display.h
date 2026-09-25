@@ -35,6 +35,30 @@ namespace platf {
   /// Value exported as SUNSHINE_CLIENT_VIRTUAL_DISPLAY for a virtual-KMS pick.
   inline constexpr auto VIRTUAL_DISPLAY_HOOK_KMS = "kms";
 
+  /**
+   * @brief What a client's display pick resolves to.
+   */
+  struct display_pick_t {
+    std::string name;             ///< Output the capture path resolves, empty when the client picked nothing.
+    std::string virtual_display;  ///< Hook switch (`kwin`/`kms`), empty for a physical pick.
+  };
+
+  /**
+   * @brief Translate the client's display pick into the capture target and the hook switch.
+   *
+   * Moonlight sends the picked display in the `display_name` launch argument. A virtual id has to
+   * become a concrete output name (the one krfb creates) plus the switch that tells a host hook which
+   * backend the client asked for; anything else is a physical connector name and is used as-is. The
+   * host-config entry is the client's "默认" pick, which mirrors `output_name` — when that names the
+   * virtual monitor the switch has to be injected as well, otherwise the hook no-ops and the capture
+   * waits for a monitor nobody creates (measured 2026-09-25).
+   *
+   * @param requested Display the client picked; empty when it did not pick one.
+   * @param configured_output_name Sunshine's own `output_name` value.
+   * @return Capture target and hook switch.
+   */
+  display_pick_t resolve_display_pick(const std::string &requested, const std::string &configured_output_name);
+
   /// Executable that creates the virtual monitor on demand (KDE's krfb virtual-monitor helper).
   inline constexpr auto VIRTUAL_DISPLAY_HELPER = "krfb-virtualmonitor";
 

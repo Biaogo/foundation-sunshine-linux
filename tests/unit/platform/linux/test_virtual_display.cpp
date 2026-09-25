@@ -380,4 +380,55 @@ TEST(TopologyReenable, KeepsTheSnapshotOrderAndSkipsTheOnesAlreadyBack) {
             (std::vector<std::string> {"uuid-first", "uuid-third"}));
 }
 
+TEST(DisplayPickResolution, PassesAPhysicalConnectorNameThrough) {
+  const auto pick = platf::resolve_display_pick("DP-1", "");
+
+  EXPECT_EQ(pick.name, "DP-1");
+  EXPECT_TRUE(pick.virtual_display.empty());
+}
+
+TEST(DisplayPickResolution, MapsTheVirtualKWinIdToTheCreatedOutput) {
+  const auto pick = platf::resolve_display_pick(platf::VDISPLAY_KWIN_ID, "");
+
+  EXPECT_EQ(pick.name, platf::VIRTUAL_DISPLAY_OUTPUT_NAME);
+  EXPECT_EQ(pick.virtual_display, platf::VIRTUAL_DISPLAY_HOOK_KWIN);
+}
+
+TEST(DisplayPickResolution, MapsTheVirtualKmsIdToTheCreatedOutput) {
+  const auto pick = platf::resolve_display_pick(platf::VDISPLAY_KMS_ID, "");
+
+  EXPECT_EQ(pick.name, platf::VIRTUAL_DISPLAY_OUTPUT_NAME);
+  EXPECT_EQ(pick.virtual_display, platf::VIRTUAL_DISPLAY_HOOK_KMS);
+}
+
+TEST(DisplayPickResolution, LeavesAnUnknownNameAlone) {
+  const auto pick = platf::resolve_display_pick("虚拟-Other", "");
+
+  EXPECT_EQ(pick.name, "虚拟-Other");
+  EXPECT_TRUE(pick.virtual_display.empty());
+}
+
+TEST(DisplayPickResolution, AddsTheSwitchForTheHostConfigPickWhenItNamesTheVirtualOutput) {
+  // The client's "默认" entry mirrors `output_name`; without the switch the do-hook no-ops and the
+  // capture waits for a monitor nobody creates.
+  const auto pick = platf::resolve_display_pick("", platf::VIRTUAL_DISPLAY_OUTPUT_NAME);
+
+  EXPECT_TRUE(pick.name.empty());
+  EXPECT_EQ(pick.virtual_display, platf::VIRTUAL_DISPLAY_HOOK_KWIN);
+}
+
+TEST(DisplayPickResolution, AddsNothingForAHostConfigPickOnAPhysicalOutput) {
+  const auto pick = platf::resolve_display_pick("", "DP-1");
+
+  EXPECT_TRUE(pick.name.empty());
+  EXPECT_TRUE(pick.virtual_display.empty());
+}
+
+TEST(DisplayPickResolution, AddsNothingWhenTheClientPickedNothingAndNoOutputIsConfigured) {
+  const auto pick = platf::resolve_display_pick("", "");
+
+  EXPECT_TRUE(pick.name.empty());
+  EXPECT_TRUE(pick.virtual_display.empty());
+}
+
 #endif  // __linux__

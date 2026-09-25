@@ -371,6 +371,28 @@ namespace platf {
     return {};
   }
 
+  display_pick_t resolve_display_pick(const std::string &requested, const std::string &configured_output_name) {
+    display_pick_t pick;
+
+    if (!requested.empty()) {
+      pick.name = requested;
+      if (requested == VDISPLAY_KWIN_ID) {
+        pick.name = VIRTUAL_DISPLAY_OUTPUT_NAME;
+        pick.virtual_display = VIRTUAL_DISPLAY_HOOK_KWIN;
+      }
+      else if (requested == VDISPLAY_KMS_ID) {
+        pick.name = VIRTUAL_DISPLAY_OUTPUT_NAME;
+        pick.virtual_display = VIRTUAL_DISPLAY_HOOK_KMS;
+      }
+      return pick;
+    }
+
+    if (configured_output_name == VIRTUAL_DISPLAY_OUTPUT_NAME) {
+      pick.virtual_display = VIRTUAL_DISPLAY_HOOK_KWIN;
+    }
+    return pick;
+  }
+
   /**
    * @brief Implementation state: the helper process and the output it produced.
    */

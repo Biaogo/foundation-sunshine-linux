@@ -24,7 +24,7 @@
 | 项 | 状态 | 证据 |
 |---|---|---|
 | **1 helper 不依赖 PATH + 不可用 warning** | ✅ 已实现 | `virtual_display_helper`/`kscreen_helper` 配置项 + 兜底目录；三处 warning（display-list 探测 / 会话启动 / 拓扑）；7 条单测 |
-| **2 单元测试** | ⚠️ 部分 | 已补 15 条（helper 定位 7 + KWin 解析 8）+ 配置解析 2 条 + 拓扑复查 6 条；**`src/nvhttp.cpp` / `src/stream.cpp` 的改动仍未补测** |
+| **2 单元测试** | ⚠️ 部分 | 已补 22 条：helper 定位 7 + KWin 解析 8 + 拓扑复查 6 + 显示选择翻译 7 + 配置解析 2（最后这批随 `test(linux): cover the client display pick` 提交）；**`stream.cpp` 的收尾调用以及 `session_virtual_display_start()` 的调用分支仍未补测**（集成路径，靠会话实测） |
 | **3 打包层** | ✅ 已做 | `cmake/packaging/linux.cmake` 加 `Recommends: krfb, libkf5screen-bin \| libkscreen-bin`；README 加一节；真 cpack+dpkg 验到 control 字段 |
 | **4 KWin 抢跑竞态** | ⚠️ **实现完成，待你实测** | 立即 pass + `TOPOLOGY_SETTLE`(1s) 后复查（`outputs_to_reenable()` 纯函数，6 条单测）；判据见下 |
 | **6 清临时 debug 日志** | ✅ | 删 `Touch mapping:`、删每轮 `Touch binding poll`、顺手清掉 GDBus 重构遗留的孤儿 doxygen |
@@ -36,9 +36,9 @@
    1. 会话**进行中** `kscreen-doctor -o`：`eDP-1`（及其它原本 enabled 的屏）仍是 `enabled`；
    2. 日志出现 `topology: re-enabling <uuid> after the compositor settled`（KWin 没抢跑时也可能不出现——那时第一趟就够了）；
    3. 断开后布局回基线（`topology: revert: pre-session topology restored`）。
-2. **单元测试补齐**：`nvhttp.cpp` / `stream.cpp` 里那批 Linux 启动路径的改动（虚拟屏 id → 名字映射、`session_virtual_display_start` 的调用分支）。
+2. **单元测试补齐（部分已完成）**：`nvhttp.cpp` 里"客户端/主机配置的显示选择 → 输出名 + hook 开关"已抽成纯函数 `resolve_display_pick()`（`virtual_display.h`）并补 7 条测试；**剩下的**是 `session_virtual_display_start()` 的调用分支与 `stream.cpp` 收尾调用（属集成路径，靠会话实测覆盖）。
 3. **`src/rtsp.cpp:72` 的 GCC 15 告警**（**不是本次改动引入**，属 mic lane）：`-Werror=stringop-overflow`，GCC 15 在多层 inline 后的**误报**（守卫已挡 `channel_count > sizeof(mapping)`）。两条路：循环上界补一条本地可证的 `&& i < static_cast<int>(sizeof(result.mapping))`，或构建里加 `-Wno-error=stringop-overflow`。**Ubuntu 的 GCC 13/14 CI 不受影响**，只在"NixOS/GCC 15 + BUILD_WERROR=ON"时才炸。
-4. **3 个新提交要不要 push / 打新 tag**：`v*` tag 必须 `vYYYY.MM.DD-linux` 且**不能移动同名 tag**（CI 按名字判新旧）；要发版就得新日期。
+4. **新提交与发版**：第二批的 4 个提交连同本轮的 `test(linux): cover the client display pick` **已 push 到 `origin/refork/linux`**（未打 tag）。要发版时注意：`v*` tag 必须 `vYYYY.MM.DD-linux`、**不能移动同名 tag**（CI 按名字判新旧）。
 5. 真 HDR（虚拟输出宣告 BT.2020/PQ，独立工程）。
 6. portal 采集默认值：Linux 优先 KWin。
 7. 上游 LizardByte 同步（人工分批；队列 `docs/upstream-linux-sync.md`）。
