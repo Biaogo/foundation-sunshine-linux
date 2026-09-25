@@ -1415,24 +1415,34 @@ namespace input {
       return;
     }
 
-    // The client reports touch coordinates relative to its whole surface, while the stream may be
-    // letter- or pillarboxed inside it when the aspects differ (the client fits the video and still
-    // calls the rest of its surface the viewport). Map them into the video rectangle so a touch
-    // lands where the user sees the picture: the error otherwise grows with the distance from the
-    // bar and only on the axis that has bars — a 16:10 capture in a 2.2:1 client viewport was ~37%
-    // off at the right edge while the vertical axis (no bars) stayed correct.
+    // The client reports touch coordinates as `pixel / its own surface size`, not `pixel / video
+    // size`: the fraction therefore starts at 0 on the video's left/top edge but never reaches 1 —
+    // measured on this host, the right edge of the picture reports x = 0.727 while
+    // 2304 / 3168 = 0.7273 (video width / surface width). Scaling by surface/video turns that back
+    // into a 0..1 fraction of the video, which is what the viewport below expects; subtracting the
+    // bars as well (an earlier attempt) landed the right edge at ~90% instead of 100%.
+    auto port = input->touch_port;
     float touch_x = pointer_data->coords.first;
     float touch_y = pointer_data->coords.second;
-    {
-      const auto &port = input->touch_port;
-      const float bars_x = port.client_offsetX;
-      const float bars_y = port.client_offsetY;
-      if ((bars_x > 0.0f || bars_y > 0.0f) && port.width > 0.0f && port.height > 0.0f) {
-        const float video_w = port.width - 2.0f * bars_x;
-        const float video_h = port.height - 2.0f * bars_y;
-        touch_x = (bars_x + std::clamp(touch_x, 0.0f, 1.0f) * video_w) / port.width;
-        touch_y = (bars_y + std::clamp(touch_y, 0.0f, 1.0f) * video_h) / port.height;
+    const float bars_x = port.client_offsetX;
+    const float bars_y = port.client_offsetY;
+    if ((bars_x > 0.0f || bars_y > 0.0f) && port.width > 0.0f && port.height > 0.0f) {
+      const float video_w = port.width - 2.0f * bars_x;
+      const float video_h = port.height - 2.0f * bars_y;
+      if (video_w > 0.0f && video_h > 0.0f) {
+        touch_x = std::clamp(touch_x * port.width / video_w, 0.0f, 1.0f);
+        touch_y = std::clamp(touch_y * port.height / video_h, 0.0f, 1.0f);
+        port.offset_x += bars_x;
+        port.offset_y += bars_y;
+        port.width = video_w;
+        port.height = video_h;
       }
+      // Kept in place while this mapping is being validated: if a touch still lands off, these four
+      // numbers say which step is wrong (min_log_level = debug on the host that reproduces it).
+      BOOST_LOG(debug) << "Touch mapping: port "sv << port.width << 'x' << port.height
+                       << " bars "sv << bars_x << ',' << bars_y
+                       << " raw "sv << pointer_data->coords.first << ',' << pointer_data->coords.second
+                       << " mapped "sv << touch_x << ',' << touch_y;
     }
 
     platf::touch_input_t touch {
@@ -1446,7 +1456,7 @@ namespace input {
       pointer_data->contact_area.second,
     };
 
-    platf::touch_update(input->client_context.get(), pointer_data->touch_port, touch);
+    platf::touch_update(input->client_context.get(), port, touch);
   }
 
   /**
