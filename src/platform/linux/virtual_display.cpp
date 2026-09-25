@@ -30,6 +30,7 @@
 #include <vector>
 
 #include <gio/gio.h>
+#include <nlohmann/json.hpp>
 
 #include "src/boost_process_compat.h"
 #include "src/logging.h"
@@ -427,8 +428,8 @@ namespace platf {
       return start == std::string::npos ? std::string {} : value.substr(start);
     }
 
-    /// @brief Parse the output list of `kscreen-doctor -o`.
-    std::vector<kscreen_output_t> kscreen_outputs() {
+    /// @brief Parse the output list of `kscreen-doctor -o` (fallback only).
+    std::vector<kscreen_output_t> kscreen_outputs_from_child() {
       std::vector<kscreen_output_t> outputs;
       std::istringstream stream {kscreen_output()};
       std::string line;
@@ -471,6 +472,68 @@ namespace platf {
         outputs.push_back(current);
       }
       return outputs;
+    }
+
+    /// @brief Where KWin keeps its output configuration (updated live while it runs).
+    std::string kwin_output_config_path() {
+      if (const auto *xdg = std::getenv("XDG_CONFIG_HOME"); xdg && *xdg) {
+        return std::string {xdg} + "/kwinoutputconfig.json";
+      }
+      if (const auto *home = std::getenv("HOME"); home && *home) {
+        return std::string {home} + "/.config/kwinoutputconfig.json";
+      }
+      return {};
+    }
+
+    /**
+     * @brief Read the output list out of KWin's own configuration file.
+     *
+     * Reading a child process' output does not work from inside this process (three independent
+     * attempts came back empty — see the note above kwin_call), and KWin exposes no outputs over
+     * D-Bus (its object tree was checked), but it does keep this file current while it runs.
+     */
+    std::vector<kscreen_output_t> kscreen_outputs_from_kwin_config() {
+      std::vector<kscreen_output_t> outputs;
+      const auto path = kwin_output_config_path();
+      if (path.empty()) {
+        return outputs;
+      }
+
+      std::ifstream file {path};
+      if (!file) {
+        return outputs;
+      }
+
+      try {
+        const auto data = nlohmann::json::parse(file);
+        const auto &list = data.is_array() ? data : (data.contains("outputs") ? data["outputs"] : nlohmann::json::array());
+        for (const auto &entry : list) {
+          if (!entry.is_object()) {
+            continue;
+          }
+
+          kscreen_output_t output;
+          output.name = entry.contains("name") && entry["name"].is_string() ? entry["name"].get<std::string>() : std::string {};
+          output.uuid = entry.contains("uuid") && entry["uuid"].is_string() ? entry["uuid"].get<std::string>() : std::string {};
+          output.enabled = entry.contains("enabled") && entry["enabled"].is_boolean() && entry["enabled"].get<bool>();
+          output.priority = entry.contains("priority") && entry["priority"].is_number_integer() ? entry["priority"].get<int>() : 0;
+          if (!output.uuid.empty()) {
+            outputs.push_back(output);
+          }
+        }
+      }
+      catch (const std::exception &e) {
+        BOOST_LOG(warning) << "topology: could not parse "sv << path << ": "sv << e.what();
+      }
+      return outputs;
+    }
+
+    /// @brief Output list: KWin's config file first, the old child parser only as a fallback.
+    std::vector<kscreen_output_t> kscreen_outputs() {
+      if (auto outputs = kscreen_outputs_from_kwin_config(); !outputs.empty()) {
+        return outputs;
+      }
+      return kscreen_outputs_from_child();
     }
 
     /// @brief Run one kscreen-doctor operation and wait for it.
@@ -557,6 +620,21 @@ namespace platf {
         for (const auto &output : kscreen_outputs()) {
           if (output.uuid != uuid && output.enabled) {
             run_kscreen("output." + output.uuid + ".disable");
+          }
+        }
+      }
+      else {
+        // KWin re-ranks on its own when a new output shows up (it has been measured disabling the
+        // other screens at that moment), while these two modes only ever change the target. Put the
+        // outputs the snapshot had on back on — idempotent, so harmless when KWin left them alone.
+        std::vector<topology_state_t> snapshot;
+        {
+          std::scoped_lock lock {g_topology_mutex};
+          snapshot = g_topology_snapshot;
+        }
+        for (const auto &state : snapshot) {
+          if (state.enabled && state.uuid != uuid) {
+            run_kscreen("output." + state.uuid + ".enable");
           }
         }
       }
