@@ -28,6 +28,8 @@
 #include <thread>
 #include <vector>
 
+#include <gio/gio.h>
+
 #include "src/boost_process_compat.h"
 #include "src/logging.h"
 #include "src/platform/common.h"
@@ -277,10 +279,103 @@ namespace platf {
     }
     impl_.reset();
   }
+  /**
+   * @brief Implementation state: the helper process and the output it produced.
+   */
+  struct virtual_display_t::impl_t {
+    boost::process::v1::child child;  ///< krfb-virtualmonitor, owned by this object.
+    std::string output_name;          ///< KWin output name (empty when not started).
+  };
+
+  virtual_display_t::~virtual_display_t() {
+    stop();
+  }
+
+  bool virtual_display_t::start(int width, int height, int fps) {
+    if (impl_ && impl_->child.valid()) {
+      return true;
+    }
+
+    const auto helper = tool_path("krfb-virtualmonitor");
+    if (helper.empty()) {
+      BOOST_LOG(warning) << "Virtual display requested but krfb-virtualmonitor is not installed"sv;
+      return false;
+    }
+    if (tool_path("kscreen-doctor").empty()) {
+      BOOST_LOG(warning) << "Virtual display requested but kscreen-doctor is not installed"sv;
+      return false;
+    }
+
+    if (width <= 0 || height <= 0) {
+      width = 1920;
+      height = 1080;
+    }
+    if (fps <= 0) {
+      fps = 60;
+    }
+
+    // The helper needs the session's compositor connection: inherit this process' environment,
+    // which for a user service already carries WAYLAND_DISPLAY and the session bus.
+    auto state = std::make_unique<impl_t>();
+    try {
+      state->child = boost::process::v1::child(
+        helper,
+        "--resolution", std::to_string(width) + "x" + std::to_string(height),
+        "--name", "SunshineVirt",
+        "--port", std::to_string(VNC_PORT),
+        "--password", random_password());
+    }
+    catch (const std::exception &e) {
+      BOOST_LOG(warning) << "Could not start krfb-virtualmonitor: "sv << e.what();
+      return false;
+    }
+
+    const std::string name {VIRTUAL_DISPLAY_OUTPUT_NAME};
+    if (!wait_for_output(name)) {
+      BOOST_LOG(warning) << "Virtual display did not appear as ["sv << name << "] within "sv
+                         << OUTPUT_WAIT.count() << "s"sv;
+      state->child.terminate();
+      return false;
+    }
+
+    if (!enable_output(output_uuid(kscreen_output(), name))) {
+      BOOST_LOG(warning) << "Virtual output ["sv << name << "] appeared but could not be enabled"sv;
+      state->child.terminate();
+      return false;
+    }
+
+    state->output_name = name;
+    impl_ = std::move(state);
+    BOOST_LOG(info) << "Virtual display ["sv << name << "] created at "sv << width << 'x' << height
+                    << '@' << fps;
+    return true;
+  }
+
+  bool virtual_display_t::active() const {
+    return impl_ && impl_->child.valid() && impl_->child.running();
+  }
+
+  const std::string &virtual_display_t::output_name() const {
+    static const std::string empty;
+    return impl_ ? impl_->output_name : empty;
+  }
+
+  void virtual_display_t::stop() {
+    if (!impl_) {
+      return;
+    }
+
+    if (impl_->child.valid() && impl_->child.running()) {
+      impl_->child.terminate();
+      BOOST_LOG(info) << "Virtual display helper stopped; output removed"sv;
+    }
+    impl_.reset();
+  }
 
   namespace {
     /// Property read from / written to KWin's input devices.
     constexpr auto INPUT_DEVICE_IFACE = "org.kde.KWin.InputDevice";
+    constexpr auto INPUT_MANAGER_IFACE = "org.kde.KWin.InputDeviceManager";
     constexpr auto INPUT_MANAGER_PATH = "/org/kde/KWin/InputDevice";
 
     /**
@@ -346,7 +441,7 @@ namespace platf {
       if (busctl.empty()) {
         return false;
       }
-      if (plain_value(device_property(path, "outputName")) == output_name) {
+      if (device_property(path, "outputName") == output_name) {
         return true;
       }
       // boost::process v1 takes the executable and its arguments as separate parameters; the
@@ -358,16 +453,23 @@ namespace platf {
         BOOST_LOG(warning) << "busctl set-property failed for "sv << path;
         return false;
       }
-      return plain_value(device_property(path, "outputName")) == output_name;
+      return device_property(path, "outputName") == output_name;
     }
   }  // namespace
 
   bool session_bind_touch(const std::string &output_name) {
-    const auto busctl = tool_path("busctl");
-    BOOST_LOG(info) << "Touch binding requested for ["sv << output_name << "]; busctl="sv
-                    << (busctl.empty() ? "<not found>"sv : std::string_view {busctl});
-    if (output_name.empty() || busctl.empty()) {
-      BOOST_LOG(warning) << "Touch binding skipped (no output name or no busctl)"sv;
+    {
+      GError *error = nullptr;
+      auto *bus = g_bus_get_sync(G_BUS_TYPE_SESSION, nullptr, &error);
+      BOOST_LOG(info) << "Touch binding requested for ["sv << output_name << "]; session bus="sv
+                      << (bus ? "ok"sv : "UNREACHABLE"sv);
+      if (bus) {
+        g_object_unref(bus);
+      }
+      g_clear_error(&error);
+    }
+    if (output_name.empty()) {
+      BOOST_LOG(warning) << "Touch binding skipped (no output name)"sv;
       return false;
     }
 
@@ -376,7 +478,7 @@ namespace platf {
       // minute in case a slow client is late, then give up quietly.
       bool touch_bound = false;
       for (int i = 0; i < 120 && !touch_bound; ++i) {
-        const auto sysnames = plain_value(device_property(INPUT_MANAGER_PATH, "devicesSysNames"));
+        const auto sysnames = device_property(INPUT_MANAGER_PATH, "devicesSysNames");
         if (i % 10 == 0) {
           BOOST_LOG(info) << "Touch binding poll "sv << i << ": device list=["sv << sysnames << ']';
         }
@@ -385,12 +487,12 @@ namespace platf {
         while (names >> sysname) {
           sysname.erase(std::remove(sysname.begin(), sysname.end(), '"'), sysname.end());
           const std::string path = std::string {INPUT_MANAGER_PATH} + "/" + sysname;
-          const auto name = plain_value(device_property(path, "name"));
+          const auto name = device_property(path, "name");
           if (name.find("libvirtualhid") == std::string::npos) {
             continue;
           }
-          const bool is_touch = plain_value(device_property(path, "touch")) == "true";
-          const bool is_pen = plain_value(device_property(path, "supportsCalibrationMatrix")) == "true";
+          const bool is_touch = device_property(path, "touch") == "true";
+          const bool is_pen = device_property(path, "supportsCalibrationMatrix") == "true";
           if (!is_touch && !is_pen) {
             continue;
           }
@@ -398,7 +500,7 @@ namespace platf {
           // Build the status as a std::string first: a `sv` literal cannot be concatenated with a
           // std::string, and the ternary would otherwise have to mix both types.
           const std::string status = ok ? std::string {"ok"} :
-                                            ("FAILED (was '" + plain_value(device_property(path, "outputName")) + "')");
+                                            ("FAILED (was '" + device_property(path, "outputName") + "')");
           BOOST_LOG(info) << "Touch binding: "sv << sysname << " ("sv << name << ") -> ["sv << output_name
                           << "] "sv << status;
           if (ok) {
