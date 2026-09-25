@@ -475,14 +475,25 @@ namespace platf {
     }
 
     /// @brief Where KWin keeps its output configuration (updated live while it runs).
+    ///
+    /// KWin writes it in the user's real home, which is not necessarily where this process looks:
+    /// a test instance may run with a different XDG_CONFIG_HOME (that is how the revert snapshot
+    /// once came out empty), so try the environment first and fall back to ~/.config.
     std::string kwin_output_config_path() {
+      std::vector<std::string> candidates;
       if (const auto *xdg = std::getenv("XDG_CONFIG_HOME"); xdg && *xdg) {
-        return std::string {xdg} + "/kwinoutputconfig.json";
+        candidates.push_back(std::string {xdg} + "/kwinoutputconfig.json");
       }
       if (const auto *home = std::getenv("HOME"); home && *home) {
-        return std::string {home} + "/.config/kwinoutputconfig.json";
+        candidates.push_back(std::string {home} + "/.config/kwinoutputconfig.json");
       }
-      return {};
+
+      for (const auto &candidate : candidates) {
+        if (std::ifstream {candidate}) {
+          return candidate;
+        }
+      }
+      return candidates.empty() ? std::string {} : candidates.front();
     }
 
     /**
