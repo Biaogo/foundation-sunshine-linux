@@ -19,6 +19,8 @@
 
 #include <chrono>
 #include <cstdint>
+#include <cstdlib>
+#include <fstream>
 #include <random>
 #include <sstream>
 #include <stdexcept>
@@ -293,7 +295,23 @@ namespace platf {
       if (busctl.empty()) {
         return {};
       }
-      return capture_stdout({busctl, "--user", "get-property", "org.kde.KWin", path, INPUT_DEVICE_IFACE, property});
+
+      // Go through a shell redirection instead of a pipe of our own: while a session runs this
+      // process already owns children (prep commands, the app) and a detached poller reading its
+      // own pipe lost the output every single time — the same command from a shell, with this very
+      // process' environment, returned the full device list. A reaped child cannot truncate a file
+      // that the shell already redirected.
+      const std::string tmp {"/tmp/sunshine-touchbind.property"};
+      const std::string cmd = busctl + " --user get-property org.kde.KWin '" + path + "' " + INPUT_DEVICE_IFACE +
+                              " " + property + " > " + tmp + " 2>/dev/null";
+      if (std::system(cmd.c_str()) != 0) {
+        return {};
+      }
+
+      std::ifstream in {tmp};
+      std::stringstream buffer;
+      buffer << in.rdbuf();
+      return buffer.str();
     }
 
     /**
@@ -334,13 +352,10 @@ namespace platf {
       // boost::process v1 takes the executable and its arguments as separate parameters; the
       // brace-enclosed command vector with an error_code does not compile (and neither does it with
       // the error_code omitted for this overload).
-      try {
-        boost::process::v1::child child(busctl, "--user", "set-property", "org.kde.KWin", path, INPUT_DEVICE_IFACE,
-                                       "outputName", "s", output_name);
-        child.wait();
-      }
-      catch (const std::exception &e) {
-        BOOST_LOG(warning) << "Could not set outputName on "sv << path << ": "sv << e.what();
+      const std::string cmd = busctl + " --user set-property org.kde.KWin '" + path + "' " + INPUT_DEVICE_IFACE +
+                              " outputName s '" + output_name + "' >/dev/null 2>&1";
+      if (std::system(cmd.c_str()) != 0) {
+        BOOST_LOG(warning) << "busctl set-property failed for "sv << path;
         return false;
       }
       return plain_value(device_property(path, "outputName")) == output_name;
