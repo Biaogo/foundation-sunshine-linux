@@ -58,8 +58,10 @@ podman rm -f "$NAME" >/dev/null 2>&1 || true
 # /src only appears with the `podman cp` further down, and podman validates --workdir at run
 # time, so the container has to start somewhere that already exists; the execs below still
 # pass -w /src, which by then does exist.
+# /src is filled in by the `podman cp` below, but podman/crun reject both a --workdir that does
+# not exist and an exec into one before it does — create it up front so any call order is fine.
 podman run -d --name "$NAME" --network host -v "$REPO:/repo:ro" \
-  -w / "$IMAGE" sleep infinity >/dev/null
+  -w / "$IMAGE" sh -c 'mkdir -p /src; exec sleep infinity' >/dev/null
 echo "== container up"
 
 run_in() {
