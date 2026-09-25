@@ -35,7 +35,6 @@
 #include "src/logging.h"
 #include "src/config.h"
 #include "src/platform/common.h"
-#include "src/video.h"
 
 namespace platf {
   namespace {
@@ -498,8 +497,8 @@ namespace platf {
     }
 
     /// @brief `config_option_e` -> the string kscreen/the hook use.
-    std::string topology_mode_name(video_t::dd_t::config_option_e mode) {
-      using e = video_t::dd_t::config_option_e;
+    std::string topology_mode_name(config::video_t::dd_t::config_option_e mode) {
+      using e = config::video_t::dd_t::config_option_e;
       if (mode == e::verify_only) {
         return "verify_only";
       }
