@@ -161,6 +161,17 @@ namespace video {
   }
 
   /**
+   * @brief Whether a display id selects the KMS/DRM capture path.
+   *
+   * Mirrors the routing rule used by platform/linux's display(): ids that are
+   * empty or purely numeric belong to KMS, anything else (connector names,
+   * Virtual-…) belongs to the compositor.
+   */
+  bool is_kms_display_id(const std::string &display_name) {
+    return display_name.empty() || display_name.find_first_not_of("0123456789") == std::string::npos;
+  }
+
+  /**
    * @brief Resolve a client-requested dynamic range against probed encoder capabilities.
    *
    * @param encoder Selected encoder and its probed codec capabilities.
@@ -3006,6 +3017,23 @@ namespace video {
     void *channel_data
   ) {
     config = resolve_dynamic_range(*chosen_encoder, config);
+
+    // HDR can only be served by a KMS/DRM capture whose output advertises HDR
+    // metadata. A compositor capture (KWin/PipeWire) has no HDR pipeline at all,
+    // and a client HDR request there produced a still-SDR-coded 10-bit stream
+    // ("Color coding: SDR (Rec. 709)" + "Color depth: 10-bit") that clients
+    // render washed out. Degrade the whole pipeline — bit depth, encoder
+    // profile and VUI — to consistent SDR for that combination instead of
+    // signalling one thing and sending another.
+    // An empty display_name means the host's configured output (see config_t's
+    // contract), which is what a 默认 pick streams — resolve it the same way the
+    // capture path does, or the check silently skips the common case.
+    const auto &hdr_target = config.display_name.empty() ? config::video.output_name : config.display_name;
+    if (config.dynamicRange && !is_kms_display_id(hdr_target)) {
+      BOOST_LOG(warning) << "HDR requested but " << logging::bracket(hdr_target)
+                         << " is a compositor output without an HDR pipeline, falling back to SDR";
+      config.dynamicRange = 0;
+    }
 
     auto idr_events = mail->event<bool>(mail::idr);
 
