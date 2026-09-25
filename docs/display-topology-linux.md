@@ -167,3 +167,41 @@ their events dropped, which shows up as "touch does nothing / sticks to a corner
 - **eDP-1 的 `disabled` 是用户基线**（该机笔记本面板物理损坏、常驻关闭）：还原必须回到该基线，
   任何模式下都不得"顺手启用"它。
 - 不做 `SUNSHINE_CLIENT_*` 环境依赖（那是钩子的接口）——C++ 侧直接读 `config::video.dd`。
+
+
+### 二期实测结论（2026-09-25 晚，补记）：必须改用 libkscreen，不要读子进程输出
+
+二期第一版（进程内 `kscreen-doctor` + 解析 stdout）在**无钩子**实例上实测失败，日志：
+
+```
+Virtual display [Virtual-SunshineVirt] created at 3168x1440@90
+Warning: topology: output [Virtual-SunshineVirt] is not in kscreen; not applying ensure_primary   <- 等了 3.4s 仍空
+```
+
+同一个进程里，"自己起子进程并**读它的输出**"这条路**三次全败**：
+
+| # | 做法 | 结果 |
+|---|---|---|
+| 1 | detached 线程里轮询 `busctl`（boost 管道） | 每次空 |
+| 2 | 启动路径 `std::system()` + 重定向到文件 | 0 字节（连文件都空，不只是退出码问题） |
+| 3 | 启动路径 `capture_stdout(kscreen-doctor -o)` | 空 → UUID 拿不到 → 模式没应用 |
+
+对照组：**同一命令在我 shell 里、以及用该进程自身环境跑，均正常**（26 个设备 / 完整输出）；
+而同进程里的 **GDBus 调用（`kwin_call`）完全正常** —— 触控绑定就是它，四个设备全部绑上。
+
+⇒ 结论：**根因在"读子进程输出"这件事本身**（本进程的 SIGCHLD/回收行为），与命令、环境、权限无关。
+**不要再试图读任何子进程的 stdout/stderr**（钩子能工作是因为它只起不读）。
+
+**输出枚举的正确做法：链 libkscreen（KF6 KScreen），用它的 API 在同一进程内完成**：
+
+- KWin 自己的 D-Bus **不暴露输出**（已实测：`busctl --user tree org.kde.KWin` 里没有任何输出对象）。
+- KScreen 的 `/backend` 由一个**瞬时启动器**（`kscreen_backend_launcher`）持有，
+  只在应用配置期间存在于总线上（实测：应用完就消失）→ 不适合按名字长期调用。
+- 而 `kscreen-doctor` 本身就是 libkscreen 的前端（本机路径 `/nix/store/jfzxihw…-libkscreen-6.6.6/bin/`）→
+  **直接链接 libkscreen**，用 `KScreen::Config` 做：读输出列表 / `setOutputEnabled` / 优先级 / `apply`，
+  同时把现有 `run_kscreen()` 的子进程调用一并删掉（写操作也走同一 API）。
+
+附带待办（本轮实测新发现）：
+- `ensure_primary` / `ensure_active` 下，**KWin 会在新虚拟输出出现时把 eDP-1 关掉**（实测两次）。
+  语义上这两个模式**只该改优先级/开关目标屏**，不该让邻屏消失 → libkscreen 版要显式保持其它屏的
+  enabled 状态，快照还原也必须把 eDP-1 的 `disabled` 基线还原回去。
