@@ -67,6 +67,7 @@
 #include "src/logging.h"
 #include "src/platform/common.h"
 #include "src/platform/linux/virtual_display.h"
+#include "src/platform/linux/virtual_display.h"
 #include "vaapi.h"
 
 #ifdef __GNUC__
@@ -1325,10 +1326,15 @@ namespace platf {
       return false;
     }
 
-    return std::any_of(config::sunshine.prep_cmds.begin(), config::sunshine.prep_cmds.end(),
+    // Either the host brings its own hook (the long-standing path) or this build can create the
+    // monitor itself (docs/virtual-display-linux.md, step 2) — without one of them the ids must not
+    // be offered, because a client that picks one then waits for a display nobody creates.
+    const bool hook_configured = std::any_of(config::sunshine.prep_cmds.begin(), config::sunshine.prep_cmds.end(),
       [](const config::prep_cmd_t &cmd) {
         return !cmd.do_cmd.empty();
       });
+
+    return hook_configured || virtual_display_available();
   }
 
   std::vector<std::string> client_display_names(mem_type_e hwdevice_type) {
