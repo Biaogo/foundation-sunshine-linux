@@ -1,60 +1,63 @@
-# 交接提示词 · 第二批（复制整段发给新对话）
+# 交接提示词 · 第三批（复制整段发给新对话）
 
-继续 Sunshine（Moonlight 服务端）Linux 分支的收尾。以下是完整上下文，先读完再动手。
+继续 Sunshine（Moonlight 服务端）Linux 分支的收尾。上一批（第二批）的待办 1/2(测试部分)/3/6 已在
+`refork/linux` 上落地并验证，待办 4 已写实现但**还差一次真实会话验收**。以下是完整上下文，先读完再动手。
 
 ## 我是谁 / 你怎么配合我
 - NixOS 用户，shell 是 **fish**（heredoc 会失败，给 bash -c 或 fish 语法）。**绝不给我 sudo 密码** —— 需要就给我命令我自己跑。
-- 主战场 **fork：`~/Downloads/fsl-refork`**（分支 `refork/linux`）；NixOS 配置仓 **`~/Downloads/nixos`**（flake，host 名 **`linux`**）；打包仓 **`~/Downloads/foundation-sunshine-linux.nix`**（CI 自动 pin）。
+- 主战场 **fork：`~/Downloads/fsl-refork`**（分支 `refork/linux`，是个 **linked worktree**，真 git 目录在 `~/Downloads/foundation-sunshine-linux/.git/worktrees/fsl-refork`）；NixOS 配置仓 **`~/Downloads/nixos`**（flake，host 名 **`linux`**）；打包仓 **`~/Downloads/foundation-sunshine-linux.nix`**（CI 自动 pin）。
 - **不要动我主力服务**（`systemctl --user` 的 `sunshine.service`，端口 47989/47984/47990/48010）；测试用独立实例（见下）。
 - 工作方式：**先给证据再下结论**；报"在做"就必须真的已经在跑；**能你自己验证的别让我连一次**；要我做会话实测时先说清判据。
 - 我这条链有"治标 vs 治本"的讲究：NixOS 侧改一行能修我自己，但**跨发行版的问题必须在代码/打包层修**。
 
-## 现在的事实状态（2026-09-25 深夜）
-- fork tag `v2026.10.01-linux` = `14a46eb4` ✓（已推、CI 已 pin：`d8f1770 pin(sunshine): v2026.10.01`）。其后还有若干未打 tag 的修复提交（构建脚本、`-Werror=unused-result`、文档）。
-- **主力服务已在跑 `…-foundation-sunshine-upstream-2026.10.01`** ✓，内置路径**生产实测通过** ✓（绑触控 ✓ 组合模式 ✓ kwingrab 采集 ✓ hevc_nvenc ✓ Opus ✓ 客户端 CLIENT CONNECTED ✓）。
-- **一/二期已全部落地并实测**：内置虚拟屏（建/绑触控/收）、物理+虚拟会话的触控绑定、5 个 `dd_configuration_option` 模式、会话前清残留。**NixOS 侧 427 行钩子脚本已退休**（`sunshine-vdisplay.nix` + `sunshine-topology.sh` 已删；`global_prep_cmd` 已去；用户 `~/.config/sunshine/sunshine.conf` 里的钩子条目也清了）。
-- **nixos 仓有未提交改动**，等我 `nh os switch .`：`flake.lock`（`nix flake update foundation-sunshine-linux` 的结果）、`modules/home/optional/sunshine.nix`（删 import + **加 PATH 行**）、`modules/nixos/optional/sunshine.nix`（删死配置 + 注释）。
-- **刚发现并已修的坑（最重要，见铁律 5）**：内置虚拟屏靠 PATH 找 `krfb-virtualmonitor` / `kscreen-doctor`，而服务 PATH 极简 → 虚拟屏**静默消失**。已在 HM 模块加：
-  `"PATH=${pkgs.kdePackages.krfb}/bin:${pkgs.kdePackages.libkscreen}/bin:$PATH"`（已验证两个包含相应可执行文件）。**但这是治标**，代码层还没修。
+## 现在的事实状态（2026-09-25 深夜 · 第二批之后）
+- fork tag `v2026.10.01-linux` = `14a46eb4` ✓（已推、CI 已 pin）。**其后有 3 个新提交，只在本地、未 push**：
+  - `8876ee6d feat(linux): make the built-in virtual display self-contained`（helper 不依赖 PATH + KWin 解析纯函数化 + 拓扑稳定后复查）
+  - `785f204b chore(linux): drop the temporary touch diagnostics`
+  - `ea54d3f6 build(packaging): recommend the KDE virtual-display helpers`
+- **NixOS 侧已切换完成**：`/run/current-system` → `system-216-link`（`…-nixos-system-linux-26.05.20260924.c508844`，9/25 21:28 生成），nixos 仓**已提交且干净**（HEAD `9fddd3c refactor(sunshine): use the fork's built-in virtual display`）。HM 模块里那行
+  `PATH=${pkgs.kdePackages.krfb}/bin:${pkgs.kdePackages.libkscreen}/bin:$PATH` **保留**（现在只是"最先命中"，不再是必需）。
+- **虚拟屏在生产里确实回来了**：日志实测 `Virtual-SunshineVirt` → `Touch input bound` → `Streaming bitrate` → `Opus initialized`，且**有一条 22:13 起的真会话**（`CLIENT CONNECTED`）。
+- 一/二期全部落地并实测；NixOS 侧 427 行钩子脚本已退休（`~/.config/sunshine/sunshine.conf.bak-hook-era-20260925` 是回滚保险）。
 
-## 原始三期计划 · 对账表（我最早定的 A/B/C/D + 真 HDR）
-| 原计划项 | 状态 |
-|---|---|
-| **触控映射**（eDP-1 上位置不对） | ✅ 已修并实测（纯缩放映射 ✓；黑边是死区、夹到边缘 ✓） |
-| **虚拟屏搬进 C++**（B：内置建/绑/收，免钩子） | ✅ 已完成并**生产实测** ✓ |
-| **屏幕组合**（C：`dd_configuration_option` 五模式） | ✅ 钩子版 5/5 + **进程内版全部实测** ✓ |
-| **真 HDR**（虚拟输出宣告 BT.2020/PQ；现在虚拟屏强制 SDR 8bit 不泛白） | ❌ **未做**（独立工程，见待办） |
-| 麦克风（mic 不通 → 防火墙 base+12） | ✅ 已修（UDP 48001） |
-| deb 分发 | ✅ 已产出并逐项验证（CPU 版即含 NVENC） |
-| AppImage 分发 | ❌ 按用户要求**从本提示词移除**，不再跟踪 |
-| 上游 LizardByte 同步 | ⏳ 人工分批（队列见 `docs/upstream-linux-sync.md`） |
+## 第二批交付 · 对账表
+| 项 | 状态 | 证据 |
+|---|---|---|
+| **1 helper 不依赖 PATH + 不可用 warning** | ✅ 已实现 | `virtual_display_helper`/`kscreen_helper` 配置项 + 兜底目录；三处 warning（display-list 探测 / 会话启动 / 拓扑）；7 条单测 |
+| **2 单元测试** | ⚠️ 部分 | 已补 15 条（helper 定位 7 + KWin 解析 8）+ 配置解析 2 条 + 拓扑复查 6 条；**`src/nvhttp.cpp` / `src/stream.cpp` 的改动仍未补测** |
+| **3 打包层** | ✅ 已做 | `cmake/packaging/linux.cmake` 加 `Recommends: krfb, libkf5screen-bin \| libkscreen-bin`；README 加一节；真 cpack+dpkg 验到 control 字段 |
+| **4 KWin 抢跑竞态** | ⚠️ **实现完成，待你实测** | 立即 pass + `TOPOLOGY_SETTLE`(1s) 后复查（`outputs_to_reenable()` 纯函数，6 条单测）；判据见下 |
+| **6 清临时 debug 日志** | ✅ | 删 `Touch mapping:`、删每轮 `Touch binding poll`、顺手清掉 GDBus 重构遗留的孤儿 doxygen |
+| 7 真 HDR / 8 portal 默认 KWin / 9 上游同步 | ❌ 未动 | — |
+
+## 待办（按优先级）
+1. **★ 待办 4 的实测验收（唯一需要我连一次的事）**：`dd_configuration_option = ensure_active` 或
+   `ensure_primary` 连一次，判据：
+   1. 会话**进行中** `kscreen-doctor -o`：`eDP-1`（及其它原本 enabled 的屏）仍是 `enabled`；
+   2. 日志出现 `topology: re-enabling <uuid> after the compositor settled`（KWin 没抢跑时也可能不出现——那时第一趟就够了）；
+   3. 断开后布局回基线（`topology: revert: pre-session topology restored`）。
+2. **单元测试补齐**：`nvhttp.cpp` / `stream.cpp` 里那批 Linux 启动路径的改动（虚拟屏 id → 名字映射、`session_virtual_display_start` 的调用分支）。
+3. **`src/rtsp.cpp:72` 的 GCC 15 告警**（**不是本次改动引入**，属 mic lane）：`-Werror=stringop-overflow`，GCC 15 在多层 inline 后的**误报**（守卫已挡 `channel_count > sizeof(mapping)`）。两条路：循环上界补一条本地可证的 `&& i < static_cast<int>(sizeof(result.mapping))`，或构建里加 `-Wno-error=stringop-overflow`。**Ubuntu 的 GCC 13/14 CI 不受影响**，只在"NixOS/GCC 15 + BUILD_WERROR=ON"时才炸。
+4. **3 个新提交要不要 push / 打新 tag**：`v*` tag 必须 `vYYYY.MM.DD-linux` 且**不能移动同名 tag**（CI 按名字判新旧）；要发版就得新日期。
+5. 真 HDR（虚拟输出宣告 BT.2020/PQ，独立工程）。
+6. portal 采集默认值：Linux 优先 KWin。
+7. 上游 LizardByte 同步（人工分批；队列 `docs/upstream-linux-sync.md`）。
+8. **harness 的 `--argstr testFilter` 实际不生效**（drv 的 `checkPhase` 里带了 `--gtest_filter=…`，但跑的还是全量套件）——gate 参数现在是摆设，值得单独查。
 
 ## 铁律 / 已知坑（最容易浪费时间的地方）
 1. **在 Sunshine 进程内，绝不要读子进程的 stdout/stderr** —— 三连败（detached 线程 boost 管道、`system()`+重定向到文件、`capture_stdout(kscreen-doctor -o)`），全是空；同一命令在 shell 里正常（进程自身 SIGCHLD/回收）。**写（只起不读）完全正常**。要读就用 GDBus 或读文件。
 2. **改解析逻辑前，先用 Python 镜像同一套逻辑跑真实数据再编译**（编译分钟级、实测要用户连一次，代价高）。KWin 配置那轮就是靠镜像当场发现结构猜错，省了一整轮。
 3. **先验证"需求是否已被满足"再写代码**：KWin 对新建输出自己就会 `enabled` + `priority 1`，虚拟屏目标的 `ensure_active`/`ensure_primary` 本来不需要动作。
-4. **harness 编过 ≠ 官方脚本编过** ✗：官方构建（fork 的 `scripts/linux_build.sh`，可在 Ubuntu 容器里跑；CI 同理）开 `-Werror=unused-result` 等更严的开关，任何忽略返回值都会**在容器里才炸**（今天 `std::system()` 就是这么挂的）。改完关键代码要用官方脚本编一次。
-5. **内置实现依赖外部 helper 在 PATH 上（krfb-virtualmonitor + kscreen-doctor）且失败无日志** ✗ —— 这是我今天踩的最大坑：删钩子后虚拟屏静默消失（钩子当年自己 `export PATH`）。**代码层还没修**（见待办 1）。
+4. **harness 编过 ≠ 官方严格度编过**：官方构建开 `BUILD_WERROR=ON`。**容器路线在本机网络里走不通**（`linux_build.sh` 的 deps 步骤必须 `git clone github.com/nvm-sh/nvm`，容器内不行；宿主上没问题）。替代做法（已用、可复用）：`/tmp/fsl-harness/strict-build.nix` 与 `strict-build-relaxed.nix`（我加的变体，**没改你的 `upstream-sunshine.nix`**）——`-DBUILD_WERROR:BOOL=TRUE -DCMAKE_BUILD_TYPE=Release`，后者额外 `-Wno-error=stringop-overflow` 绕开 rtsp 那条 GCC 15 误报。旧的单 TU 复核法：从 `compile_commands.json` 取命令行，把 `/build/fsl-refork-src` 换成 `/tmp/fsl-refork-src`、加 `-Werror`、补 `/tmp/dep_includes.txt` 里的 `-isystem`。
+5. **内置实现依赖外部 helper（`krfb-virtualmonitor` + `kscreen-doctor`）** ✗→✅：第二批已在代码层修好（配置项 + 兜底目录 + 不可用 warning）。**但**：NixOS 上 `krfb-virtualmonitor` 不在系统 profile 里，`kscreen-doctor` 在（`/run/current-system/sw/bin`）——所以 HM 那行 PATH 仍建议保留。
 6. `environment.etc."sunshine-vdisplay.conf"` 曾被当成配置，其实**从未被读取** ✗（服务 `ExecStart` 不带配置参数 → 真正生效的是 `~/.config/sunshine/sunshine.conf`）。已删并加注释。
 7. **客户端 `-1` 常见真因**：`sunshine.conf` 里残留 `global_prep_cmd` 指向**已被删的钩子脚本** → 启动失败（日志 `Couldn't run [.../sunshine-vdisplay-do.sh]`）。切换实现时必须同时清掉用户侧那份配置。
 8. `v*` tag：**CI 按 tag 名判断新旧**，且 `update-pin.py` 正则强制 `vYYYY.MM.DD-linux`（`.1` 后缀会被拒）→ **移动同名 tag 它看不见**，发新版必须用新名且格式合规。
 9. 我的笔记本面板 **eDP-1 物理损坏、常驻关闭是基线** —— 看到 `disabled` 属正常，别当 bug、别顺手启用。
-10. 新虚拟输出出现时 **KWin 会顺手关掉其它屏**（实测）；`ensure_active`/`ensure_primary` 需要"把快照里原本 enabled 的屏重新 enable"的兜底，但**存在 1 拍的竞态**（我的 enable 比 KWin 早）→ 待办里有"延迟复查"。
-
-## 待办（按优先级）
-1. **★ 代码层：helper 不该依赖 PATH**（今晚的关键教训）
-   - 加配置项（如 `virtual_display_helper` / `kscreen_helper`，可在 `sunshine.conf` 指定绝对路径）
-   - 找不到时按标准位置兜底：`/usr/bin`、`/usr/local/bin`、`/run/current-system/sw/bin`、应用自身目录旁（各类打包可自带）
-   - **不可用时必须 `warning`**（现在完全静默 ✗）
-   - 改完用官方 `scripts/linux_build.sh`（在 Ubuntu 容器里跑）编一次验证（铁律 4）
-2. **★ 单元测试：目前为 0** —— 项目 `AGENTS.md` 硬要求（新增/修改代码要补测试）。新增约 300 行 C++（`src/platform/linux/virtual_display.{h,cpp}`、`src/nvhttp.cpp`、`src/stream.cpp`）；`kscreen_outputs_from_kwin_config` 是纯函数，喂样例 JSON 就能测（注意结构见铁律 11）。
-3. **打包层**：deb 加 `Recommends: krfb, libkscreen`；fork README 补一节"虚拟屏依赖 krfb + libkscreen（KDE/KWin）"，并说明 helper 路径怎么配。
-4. **KWin 抢跑竞态**：`ensure_active`/`ensure_primary` 之后加"启动线程上有界等 ~1s 再 enable 一次快照里原本 enabled 的屏"。
-6. 清理临时 debug 日志（`Touch mapping:`、每轮 `Touch binding poll`）。
-7. 真 HDR（独立工程：虚拟输出宣告 BT.2020/PQ）。
-8. portal 采集默认值：Linux 优先 KWin。
-9. 上游 LizardByte 同步（人工分批；队列 `docs/upstream-linux-sync.md`）。
-10. 两套实现收敛：钩子版已从 nixos 删除 ✓（但**保留一版做回滚保险**——用户自己留了 `~/.config/sunshine/sunshine.conf.bak-hook-era-20260925`）。
+10. 新虚拟输出出现时 **KWin 会顺手关掉其它屏**（实测）；`ensure_active`/`ensure_primary` 需要"把快照里原本 enabled 的屏重新 enable"的兜底，且**存在 1 拍竞态**（我的 enable 可能比 KWin 早）→ 第二批已加"稳定 1s 后复查"（待办 1 的实测就是验它）。
+11. **判回归别用 `--keep-failed` 留下的构建目录**：那里面 `configure_file` 复制的那批 fixture（`src/config.cpp`、`docs/configuration.md`、`Config.vue`…）**全都不在**，而测试二进制读的是编译期常量 `SUNSHINE_TEST_BIN_DIR`（指向已删除的沙箱路径）→ 大量失败甚至**假通过**（空对空断言）。要真机跑就：
+    `cd <kept dir>/build && HOME=/home/biaogo ./tests/test_sunshine --gtest_filter='<你的 suite>.*'`，并且**只用自足用例**判。
+12. 沙箱内跑全量套件时，**固定 15 条环境类失败**是预期的（`HOME=/homeless-shelter` 不可写、无网络、需可写 cwd），别当回归。
 
 ## 测试环境（已备好，端口 49500）
 - 无钩子实例配置：`/tmp/fst-nohook/sunshine/sunshine.conf`；带钩子实例：`/tmp/fst-gate/sunshine/sunshine.conf`（两者共用 49500，一次只起一个）。
@@ -65,22 +68,32 @@
          DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus WAYLAND_DISPLAY=wayland-0
   exec /nix/store/<build>/bin/sunshine /tmp/fst-nohook/sunshine/sunshine.conf > /tmp/fst-nohook/sunshine.log 2>&1
   ```
-- 编译（harness，快）：
+- 编译 + 跑测试（harness）：
   ```bash
   cd ~/Downloads/fsl-refork && rsync -a --delete --exclude='.git' --exclude='third-party/build-deps' \
-    --exclude='build' ./ /tmp/fsl-refork-src/ && cd /tmp/fsl-harness && \
-    nix-build upstream-sunshine.nix -o result-x > /tmp/build.log 2>&1; grep -aE 'error: ' /tmp/build.log | head
+    --exclude='build' --exclude='artifacts' ./ /tmp/fsl-refork-src/ && cd /tmp/fsl-harness && \
+    nix-build upstream-sunshine.nix --arg buildTests true --keep-failed -o /tmp/result-x > /tmp/build.log 2>&1
+  grep -aE 'PASSED  \]|FAILED  \] [0-9]+ tests' /tmp/build.log | tail -2
   ```
   ⚠️ **`/tmp/fsl-refork-src`（约 1.8G）千万别删** —— 里面是构建所需的 `third-party/build-deps`，删了要重头准备。
 - 会话中读布局：`kscreen-doctor -o | sed 's/\x1b\[[0-9;]*m//g'`；读触控绑定：`busctl --user get-property org.kde.KWin /org/kde/KWin/InputDevice/<eventNN> org.kde.KWin.InputDevice outputName`。
 - 收尾必查：`topology: revert: pre-session topology restored`、`Virtual display helper stopped`、布局回到基线、无 `krfb-virtualmonitor` 残留。
-- 我的自建工具：`/tmp/nixos-sunshine-builtin-migration.sh`（NixOS 侧钩子迁移脚本，已用过 ✓）。
+
+## 第二批的验证证据（已跑过，别重复烧时间）
+- 沙箱全量套件：**619 passed / 15 failed**（15 条全是环境类，见铁律 12）。
+- 真机过滤跑（`HOME` 可写）：`VirtualDisplayHelperLookup` + `KwinOutputConfigParsing` + `TopologyReenable` + `LinuxHelperPathConfigTest` + `LocaleConsistencyTest` = **33/33 PASS**。
+- 官方严格度：`strict-build-relaxed.nix` **EXIT=0**（全项目 `-Werror` + Release，仅降级 rtsp 那条）；`strict-build.nix`（不降级）在 `src/rtsp.cpp:72` 停住，**那就是待办 3 的来源**。
+- 打包：真 cpack 出 `.deb`，`dpkg-deb -I` 里 `Recommends: krfb, libkf5screen-bin | libkscreen-bin`。
+- 改动过的每个 TU 都单独用官方 flag + `-Werror` 编过：CLEAN。
 
 ## 关键事实速查
-- **KWin 配置** `~/.config/kwinoutputconfig.json`：顶层是**方案列表**；描述符里名字在 **`connectorName`**（不是 `name`）、uuid 在 `uuid`；开关/优先级在另一处 `outputs[]`，靠 `outputIndex` 对应回下标；同一 uuid 出现在多方案时保留 `enabled` 那份；**含 krfb 虚拟输出**；路径要兼顾 `$XDG_CONFIG_HOME` 与 `~/.config`。
+- **helper 定位顺序**（`platf::find_helper()`，`src/platform/linux/virtual_display.cpp`）：配置项绝对路径 → `$PATH` → `/usr/bin` → `/usr/local/bin` → `/run/current-system/sw/bin` → 可执行文件自身目录及其旁 `bin/`。每一步都要求可执行（`access(X_OK)`）；失败**每 helper 每进程只报一次**。
+- **可测的纯函数**（都在 `virtual_display.h` 里声明）：`kscreen_outputs_from_json_text()`（KWin 配置 → 输出列表）、`find_helper()`、`helper_fallback_dirs()`、`outputs_to_reenable()`（稳定后复查该 enable 谁）。
+- **KWin 配置** `~/.config/kwinoutputconfig.json`：顶层是**方案列表**；描述符里名字在 **`connectorName`**（不是 `name`）、uuid 在 `uuid`；开关/优先级在另一处 `outputs[]`，靠 `outputIndex` 对应回下标；同一 uuid 出现在多方案时保留 `enabled` 那份；路径要兼顾 `$XDG_CONFIG_HOME` 与 `~/.config`。
+- **helper 的发行版包名**（Ubuntu 24.04 实包核过）：`krfb` → `krfb-virtualmonitor`；`kscreen-doctor` 在 **`libkf5screen-bin`**（Plasma 5/KF5；`kscreen` 包只有 `kscreen-console`）或 `libkscreen-bin`（Plasma 6/KF6）；NixOS 是 `libkscreen`。
 - KWin 的 D-Bus **不暴露输出**；KScreen 的 `/backend` 是**瞬时启动器**；触控绑定用 **GDBus**（`org.kde.KWin` 的 `/org/kde/KWin/InputDevice`）✓ 已验证。
 - 我惯用的重建方式：`nh os switch .`（flake 路径必须显式给，`--flake .#linux` 亦可）；`nixos-rebuild` 不带 `--flake` 会因 `nixos-config` 缺失而失败 ✗。
-- 相关文档：fork 的 `docs/display-topology-linux.md`（二期实测结论与最终实现）、`docs/virtual-display-linux.md`、`docs/handoff-prompt.md`（上一批交接）；技能 `sunshine-linux-hosting`（含 `references/virtual-display-cpp-notes.md`）。
+- 相关文档：`docs/display-topology-linux.md`（二期实测 + 新的稳定后复查）、`docs/virtual-display-linux.md`（helper 定位与依赖声明）、技能 `sunshine-linux-hosting`（含 `references/virtual-display-cpp-notes.md`）。
 
 ## 请求
-先确认你理解铁律（尤其 1、2、4、5），然后从**待办 1（代码层：helper 不依赖 PATH + 明确的不可用 warning）**开始。若我这边还有未完成的 `switch`/验证（虚拟屏是否回来），先跟我确认状态再动手。
+先确认你理解铁律（尤其 **1、2、4、5**，外加 11/12 这两条"别误判回归"的），然后从**待办 1（待办 4 的真实会话验收）**开始：先把判据跟我说清楚，我连一次给你结果；在你我都不确定要不要动 `src/rtsp.cpp` 之前，**别改它**（那是 mic lane 的生产代码）。
