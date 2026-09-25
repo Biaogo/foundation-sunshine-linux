@@ -524,7 +524,15 @@ namespace platf {
         return;
       }
 
-      const auto uuid = kscreen_uuid_of(target_name);
+      // KWin registers a freshly created output in kscreen a moment later, so a query right after
+      // the virtual display appears comes back empty (measured: 34 ms after creation). Wait for it
+      // briefly — bounded, and on the launch thread on purpose: kscreen-doctor must not be spawned
+      // from a detached thread, where the process' own SIGCHLD handling reaps our child first.
+      auto uuid = kscreen_uuid_of(target_name);
+      for (int attempt = 0; uuid.empty() && attempt < 12; ++attempt) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        uuid = kscreen_uuid_of(target_name);
+      }
       if (uuid.empty()) {
         BOOST_LOG(warning) << "topology: output ["sv << target_name << "] is not in kscreen; not applying "sv << mode;
         return;
