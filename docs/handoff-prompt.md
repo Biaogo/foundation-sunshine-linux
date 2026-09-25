@@ -17,11 +17,23 @@
 - **刚发现并已修的坑（最重要，见铁律 5）**：内置虚拟屏靠 PATH 找 `krfb-virtualmonitor` / `kscreen-doctor`，而服务 PATH 极简 → 虚拟屏**静默消失**。已在 HM 模块加：
   `"PATH=${pkgs.kdePackages.krfb}/bin:${pkgs.kdePackages.libkscreen}/bin:$PATH"`（已验证两个包含相应可执行文件）。**但这是治标**，代码层还没修。
 
+## 原始三期计划 · 对账表（我最早定的 A/B/C/D + 真 HDR）
+| 原计划项 | 状态 |
+|---|---|
+| **触控映射**（eDP-1 上位置不对） | ✅ 已修并实测（纯缩放映射 ✓；黑边是死区、夹到边缘 ✓） |
+| **虚拟屏搬进 C++**（B：内置建/绑/收，免钩子） | ✅ 已完成并**生产实测** ✓ |
+| **屏幕组合**（C：`dd_configuration_option` 五模式） | ✅ 钩子版 5/5 + **进程内版全部实测** ✓ |
+| **真 HDR**（虚拟输出宣告 BT.2020/PQ；现在虚拟屏强制 SDR 8bit 不泛白） | ❌ **未做**（独立工程，见待办） |
+| 麦克风（mic 不通 → 防火墙 base+12） | ✅ 已修（UDP 48001） |
+| deb 分发 | ✅ 已产出并逐项验证（CPU 版即含 NVENC） |
+| AppImage 分发 | ❌ 按用户要求**从本提示词移除**，不再跟踪 |
+| 上游 LizardByte 同步 | ⏳ 人工分批（队列见 `docs/upstream-linux-sync.md`） |
+
 ## 铁律 / 已知坑（最容易浪费时间的地方）
 1. **在 Sunshine 进程内，绝不要读子进程的 stdout/stderr** —— 三连败（detached 线程 boost 管道、`system()`+重定向到文件、`capture_stdout(kscreen-doctor -o)`），全是空；同一命令在 shell 里正常（进程自身 SIGCHLD/回收）。**写（只起不读）完全正常**。要读就用 GDBus 或读文件。
 2. **改解析逻辑前，先用 Python 镜像同一套逻辑跑真实数据再编译**（编译分钟级、实测要用户连一次，代价高）。KWin 配置那轮就是靠镜像当场发现结构猜错，省了一整轮。
 3. **先验证"需求是否已被满足"再写代码**：KWin 对新建输出自己就会 `enabled` + `priority 1`，虚拟屏目标的 `ensure_active`/`ensure_primary` 本来不需要动作。
-4. **harness 编过 ≠ 官方脚本编过** ✗：官方构建（`linux_build.sh` / CI）开 `-Werror=unused-result` 等更严的开关，任何忽略返回值都会**在容器里才炸**。改完关键代码一定要用 `scripts/appimage-container-build.sh` 或容器里的 `linux_build.sh` 编一次。
+4. **harness 编过 ≠ 官方脚本编过** ✗：官方构建（fork 的 `scripts/linux_build.sh`，可在 Ubuntu 容器里跑；CI 同理）开 `-Werror=unused-result` 等更严的开关，任何忽略返回值都会**在容器里才炸**（今天 `std::system()` 就是这么挂的）。改完关键代码要用官方脚本编一次。
 5. **内置实现依赖外部 helper 在 PATH 上（krfb-virtualmonitor + kscreen-doctor）且失败无日志** ✗ —— 这是我今天踩的最大坑：删钩子后虚拟屏静默消失（钩子当年自己 `export PATH`）。**代码层还没修**（见待办 1）。
 6. `environment.etc."sunshine-vdisplay.conf"` 曾被当成配置，其实**从未被读取** ✗（服务 `ExecStart` 不带配置参数 → 真正生效的是 `~/.config/sunshine/sunshine.conf`）。已删并加注释。
 7. **客户端 `-1` 常见真因**：`sunshine.conf` 里残留 `global_prep_cmd` 指向**已被删的钩子脚本** → 启动失败（日志 `Couldn't run [.../sunshine-vdisplay-do.sh]`）。切换实现时必须同时清掉用户侧那份配置。
@@ -36,10 +48,8 @@
    - **不可用时必须 `warning`**（现在完全静默 ✗）
    - 改完用 `scripts/appimage-container-build.sh`（或容器里的 `linux_build.sh`）编一次验证（铁律 4）
 2. **★ 单元测试：目前为 0** —— 项目 `AGENTS.md` 硬要求（新增/修改代码要补测试）。新增约 300 行 C++（`src/platform/linux/virtual_display.{h,cpp}`、`src/nvhttp.cpp`、`src/stream.cpp`）；`kscreen_outputs_from_kwin_config` 是纯函数，喂样例 JSON 就能测（注意结构见铁律 11）。
-3. **打包层**：deb 加 `Recommends: krfb, libkscreen`；AppImage 的 README/启动提示写清"虚拟屏需要 krfb + KDE/KWin"；fork README 补"虚拟屏依赖"一节。
-4. **AppImage 构建**：还**没有**可用产物 ✗。前三次分别挂在：容器 `-w /src` ✗ → `exec` 早于 `cp` ✗（两个都已修并推 ✓）→ **容器内 apt 之后的网络步骤**（`exit=4`，无错误行）。下一步用
-   `bash scripts/appimage-container-build.sh --keep --src ~/Downloads/fsl-refork` → 失败后 `podman exec -it fsl-appimage bash` 手工看是哪一步（大概率是 curl linuxdeploy 的间歇 TLS / 代理 502，重试即可）。**拿到 AppImage 后必须自己解包核标记**（`--appimage-extract` 然后 grep 真字符串：`kwinoutputconfig` / `compositor set it up` / `Touch binding: ` / `topology: disabling` / `Virtual display [`）—— 脚本会打出**编译失败后的废包**，我不止一次上当。
-5. **KWin 抢跑竞态**：`ensure_active`/`ensure_primary` 之后加"启动线程上有界等 ~1s 再 enable 一次快照里原本 enabled 的屏"。
+3. **打包层**：deb 加 `Recommends: krfb, libkscreen`；fork README 补一节"虚拟屏依赖 krfb + libkscreen（KDE/KWin）"，并说明 helper 路径怎么配。
+4. **KWin 抢跑竞态**：`ensure_active`/`ensure_primary` 之后加"启动线程上有界等 ~1s 再 enable 一次快照里原本 enabled 的屏"。
 6. 清理临时 debug 日志（`Touch mapping:`、每轮 `Touch binding poll`）。
 7. 真 HDR（独立工程：虚拟输出宣告 BT.2020/PQ）。
 8. portal 采集默认值：Linux 优先 KWin。
