@@ -49,6 +49,7 @@ namespace mic_stream {
     constexpr std::size_t max_packet_size = 1400;  ///< Largest microphone datagram accepted.
     constexpr std::uint8_t opus_packet_type = 0x61;  ///< Packet type marking an Opus microphone frame.
     constexpr auto playout_interval = 20ms;  ///< Mixing and playout period.
+    constexpr std::uint64_t ticks_per_stats = 500;  ///< Playout ticks between progress logs (10 s).
 
     /**
      * @brief One registered client and the state the receive path keeps for it.
@@ -293,6 +294,12 @@ namespace mic_stream {
           sync_sources();
           write_frame();
 
+          if (++playout_ticks_ % ticks_per_stats == 0 && (packets_ != logged_packets_ || accepted_ != logged_accepted_)) {
+            BOOST_LOG(info) << "Microphone stream "sv << stats();
+            logged_packets_ = packets_;
+            logged_accepted_ = accepted_;
+          }
+
           next_playout_ += playout_interval;
           schedule_playout();
         });
@@ -360,6 +367,9 @@ namespace mic_stream {
       std::uint64_t undecodable_ {};  ///< Datagrams that were not a valid Opus frame.
       std::uint64_t unrouted_ {};  ///< Datagrams from addresses without a registered session.
       std::uint64_t ambiguous_ {};  ///< Datagrams matching more than one session.
+      std::uint64_t playout_ticks_ {};  ///< Playout ticks since the lane started.
+      std::uint64_t logged_packets_ {};  ///< Packet count at the last progress log.
+      std::uint64_t logged_accepted_ {};  ///< Mixed frame count at the last progress log.
     };
 
     std::unique_ptr<asio::io_context> g_io;  ///< Context of the worker thread.

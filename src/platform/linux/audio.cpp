@@ -407,6 +407,49 @@ namespace platf {
       }
 
       /**
+       * @brief Find an already-loaded module by name and argument.
+       *
+       * @param module Module name, for example "module-null-sink".
+       * @param argument Token the module's arguments must contain, for example "sink_name=sunshine-mic".
+       * @return Module index, or PA_INVALID_INDEX when no such module is loaded.
+       */
+      std::uint32_t find_module(const char *module, const std::string_view &argument) {
+        auto alarm = safe::make_alarm<int>();
+
+        std::uint32_t found = PA_INVALID_INDEX;
+        cb_t<pa_module_info *> f = [&](ctx_t::pointer ctx, const pa_module_info *info, int eol) {
+          if (!info) {
+            if (!eol) {
+              BOOST_LOG(error) << "Couldn't get pulseaudio module info: "sv << pa_strerror(pa_context_errno(ctx));
+
+              alarm->ring(-1);
+            }
+
+            alarm->ring(0);
+            return;
+          }
+
+          if (found != PA_INVALID_INDEX || !info->name || !info->argument) {
+            return;
+          }
+
+          if (!std::strcmp(info->name, module) && std::string_view {info->argument}.find(argument) != std::string_view::npos) {
+            found = info->index;
+          }
+        };
+
+        op_t op {pa_context_get_module_info_list(ctx.get(), cb<pa_module_info *>, &f)};
+
+        if (!op) {
+          BOOST_LOG(error) << "Couldn't create module info operation: "sv << pa_strerror(pa_context_errno(ctx.get()));
+          return PA_INVALID_INDEX;
+        }
+
+        alarm->wait();
+        return *alarm->status() == 0 ? found : PA_INVALID_INDEX;
+      }
+
+      /**
        * @brief Load any PulseAudio module and wait for the result.
        *
        * @param module Module name, for example "module-null-sink".
@@ -594,19 +637,30 @@ namespace platf {
           return mic.stream ? 0 : -1;
         }
 
-        mic.null_sink = load_module(
-          "module-null-sink",
-          "sink_name="s + mic_sink + " sink_properties=device.description="s + mic_source
-        );
+        // The audio context can be torn down and rebuilt while a microphone session is still open
+        // (the same process serves the speaker capture), so adopt modules that are already loaded
+        // instead of stacking a second null sink behind the same name.
+        mic.null_sink = find_module("module-null-sink", "sink_name="s + mic_sink);
+        if (mic.null_sink == PA_INVALID_INDEX) {
+          mic.null_sink = load_module(
+            "module-null-sink",
+            "sink_name="s + mic_sink + " sink_properties=device.description="s + mic_source
+          );
+        }
+
         if (mic.null_sink == PA_INVALID_INDEX) {
           BOOST_LOG(error) << "Couldn't create the microphone null sink: "sv << pa_strerror(pa_context_errno(ctx.get()));
           return -1;
         }
 
-        mic.remap_source = load_module(
-          "module-remap-source",
-          "master="s + mic_sink + ".monitor source_name="s + mic_source + " source_properties=device.description="s + mic_source
-        );
+        mic.remap_source = find_module("module-remap-source", "source_name="s + mic_source);
+        if (mic.remap_source == PA_INVALID_INDEX) {
+          mic.remap_source = load_module(
+            "module-remap-source",
+            "master="s + mic_sink + ".monitor source_name="s + mic_source + " source_properties=device.description="s + mic_source
+          );
+        }
+
         if (mic.remap_source == PA_INVALID_INDEX) {
           BOOST_LOG(error) << "Couldn't create the virtual microphone source: "sv << pa_strerror(pa_context_errno(ctx.get()));
           unload_null(mic.null_sink);
