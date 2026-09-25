@@ -169,7 +169,22 @@ their events dropped, which shows up as "touch does nothing / sticks to a corner
 - 不做 `SUNSHINE_CLIENT_*` 环境依赖（那是钩子的接口）——C++ 侧直接读 `config::video.dd`。
 
 
-### 二期实测结论（2026-09-25 晚，补记）：必须改用 libkscreen，不要读子进程输出
+### 二期实测结论与最终实现（2026-09-25 晚）：不要读子进程输出
+
+> **最终实现（同日深夜，已端到端验收）**：**没有**采用 libkscreen（它不在本工程的构建输入里，
+> 链它要同时改 harness/打包脚本/CI/包定义）。零依赖方案已跑通：
+> 1. 输出列表从 KWin 自己的 `~/.config/kwinoutputconfig.json` 读（nlohmann 解析，**无子进程**；
+>    注意同时兜底 `$XDG_CONFIG_HOME` 之外的 `~/.config`，测试实例可能改了 XDG）；
+> 2. 目标屏是 krfb 的**临时虚拟输出**时**不需要任何动作** —— KWin 自己就会把新输出设为
+>    `enabled` + `priority 1`，正好是 `ensure_active`/`ensure_primary` 要的结果；
+> 3. 真正必须保留的是"**保护邻屏**"：把快照里原本 enabled 的真实输出重新 `enable`
+>    （实测 KWin 会在新输出出现时顺手关掉 eDP-1），`ensure_only_display` 除外；
+> 4. 快照必须在**任何模式动作之前**采集，revert 才能还原到用户原始状态。
+>
+> 验收证据（构建 `whz4p5sr`，无钩子实例）：`Virtual display [Virtual-SunshineVirt] created at 3168x1440@90`
+> → `topology: target […] is not in KWin's output configuration; the compositor set it up (virtual output)`
+> → `topology: mode=ensure_primary applied to Virtual-SunshineVirt ()` → 布局 `虚拟屏 enabled/priority 1`
+> + **eDP-1 保持 enabled** → 断开后 `Virtual display helper stopped; output removed` 且布局回到只有 eDP-1。
 
 二期第一版（进程内 `kscreen-doctor` + 解析 stdout）在**无钩子**实例上实测失败，日志：
 
