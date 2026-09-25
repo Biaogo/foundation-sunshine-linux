@@ -380,8 +380,12 @@ namespace platf {
             continue;
           }
           const bool ok = bind_device(path, output_name);
+          // Build the status as a std::string first: a `sv` literal cannot be concatenated with a
+          // std::string, and the ternary would otherwise have to mix both types.
+          const std::string status = ok ? std::string {"ok"} :
+                                            ("FAILED (was '" + plain_value(device_property(path, "outputName")) + "')");
           BOOST_LOG(info) << "Touch binding: "sv << sysname << " ("sv << name << ") -> ["sv << output_name
-                          << "] "sv << (ok ? "ok"sv : "FAILED (was '"sv + plain_value(device_property(path, "outputName")) + "')"sv);
+                          << "] "sv << status;
           if (ok) {
             touch_bound = touch_bound || is_touch;
           }
