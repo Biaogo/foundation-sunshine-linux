@@ -49,16 +49,29 @@ output appears is enough, see §4).
 
 **Phase 1 — hook-driven (smallest, covers the user-visible feature).**
 Extend the existing do/undo hooks:
-- the do-hook reads the `dd_configuration_option` value (exported to the hook environment like the
-  other `SUNSHINE_*` variables) and applies the matching kscreen actions after enabling the virtual
-  output;
+- the do-hook reads the display-preparation options from its environment and applies the matching
+  kscreen actions after enabling the virtual output;
 - the undo-hook restores the saved snapshot (`kscreen-doctor -j` taken at the start), honouring
   `dd_config_revert_delay` / `dd_config_revert_on_disconnect`.
-- `SUNSHINE_CLIENT_*` env plumbing already exists (`process.cpp` exports the session env), so this
-  needs one more variable plus hook logic.
 
-Pros: no C++ surface, easy to iterate, matches the deployed architecture. Cons: topology logic lives
-in a shell script, and it only applies to sessions that run the hook.
+**Done (2026-09-25, fork `refork/linux`):** the env plumbing. `proc_t::update_session_env()` now
+exports, per session, alongside the existing display switch:
+
+| variable | values |
+|---|---|
+| `SUNSHINE_CLIENT_DD_CONFIG` | `disabled` \| `verify_only` \| `ensure_active` \| `ensure_primary` \| `ensure_only_display` |
+| `SUNSHINE_CLIENT_DD_RESOLUTION` | `disabled` \| `automatic` \| `manual` |
+| `SUNSHINE_CLIENT_DD_REFRESH_RATE` | `disabled` \| `automatic` \| `manual` |
+| `SUNSHINE_CLIENT_DD_HDR` | `disabled` \| `automatic` |
+
+They are erased before being re-set (same anti-leak discipline as `SUNSHINE_CLIENT_DISPLAY_NAME`),
+and the C++ enum → string mapping is one switch per enum in `process.cpp`. Remaining work: the hook
+actions themselves. Note the UI's six wordings collapse onto five enum values plus the host's
+`output_name` default, and that 副屏串流 has no upstream enum of its own — it is `ensure_active` with
+a position/priority adjustment, so the hook must distinguish it from the wording, not the enum.
+
+Pros: no C++ surface beyond the export, easy to iterate, matches the deployed architecture. Cons:
+topology logic lives in a shell script, and it only applies to sessions that run the hook.
 
 **Phase 2 — C++ `display_device` for Linux.** Implement `display_device::configure_display()` (Linux
 branch) to perform the same actions through the kscreen DBus interface, with the snapshot/revert
@@ -88,12 +101,30 @@ Phase 1 is what I would ship first; Phase 2 only if the script becomes the bottl
 6. **`dd_config_revert_delay`** semantics: upstream waits before reverting so the client can
    reconnect into the same layout; the hook must honour it (a `sleep` in the undo path is fine).
 
-## 5. Open questions for the operator
+## 5. Decisions (operator, 2026-09-25) — the questions this design asked
 
-1. For 副屏串流模式, which physical output is the "primary" side — eDP-1 (the dead panel with the
-   fake EDID) or nothing at all (i.e. the mode is only meaningful with a real monitor attached)?
-2. For 主屏串流模式, should the virtual output also be *positioned* at the origin (it currently is),
-   or does "primary" only mean priority?
-3. Should the modes apply to physical picks too (e.g. selecting eDP-1 with `ensure_only_display`), or
-   only to the hook-managed virtual output?
-4. Is a hook-only (Phase 1) implementation acceptable, or is the C++ path required for 正式使用?
+1. 副屏串流模式's "primary" side: **eDP-1 as the physical primary** (it is the host's only other
+   output; it is an invisible forced-on head, so the mode is "virtual output extends to the right"),
+   with the caveat that with no real monitor attached the mode is mostly a topology rehearsal.
+2. 主屏串流模式: **priority only** — the virtual output already sits at the origin, no repositioning.
+3. The modes **apply to the hook-managed virtual output only**; a physical pick never has its
+   topology rewritten by this layer.
+4. **Phase 1 (hook) first**; Phase 2 (C++) only if the script becomes the bottleneck.
+
+These were answered as "默认" (accept the proposed defaults), so implementation may proceed on them —
+re-confirm only if a mode's behaviour disagrees with what the operator actually wants.
+
+## 6. Interaction with the absolute-input (touch/pen) binding
+
+Every topology change re-creates or re-parents KWin's input devices, and KWin leaves `outputName`
+**empty** on libvirtualhid's absolute-input devices (see `sunshine-touchbind.sh`): unbound devices get
+their events dropped, which shows up as "touch does nothing / sticks to a corner". Therefore:
+
+- the topology layer must **re-run the touch binding after it changes the layout** (same
+  `busctl --user set-property … outputName s <output>` call, re-checking that the devices are still
+  bound), and
+- `ensure_only_display`/`ensure_primary` — the modes that change which output is active — are exactly
+  the cases where KWin may drop the binding, so the binding must be re-verified *after* them, not
+  before. Binding once at session start (today's hook) is sufficient only while the topology stays
+  untouched.
+

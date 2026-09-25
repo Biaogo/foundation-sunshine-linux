@@ -169,6 +169,67 @@ namespace proc {
   
 
   /**
+   * @brief Names of the display-device preparation options, for the prep hooks.
+   *
+   * On Linux the display_device backend is not implemented, so the do/undo hooks
+   * own display preparation (topology, mode, HDR state). They can only act on
+   * what they can see, hence these names are exported per session.
+   */
+  std::string_view dd_config_option_name(config::video_t::dd_t::config_option_e option) {
+    using e = config::video_t::dd_t::config_option_e;
+    switch (option) {
+      case e::verify_only:
+        return "verify_only";
+      case e::ensure_active:
+        return "ensure_active";
+      case e::ensure_primary:
+        return "ensure_primary";
+      case e::ensure_only_display:
+        return "ensure_only_display";
+      case e::disabled:
+      default:
+        return "disabled";
+    }
+  }
+
+  std::string_view dd_resolution_option_name(config::video_t::dd_t::resolution_option_e option) {
+    using e = config::video_t::dd_t::resolution_option_e;
+    switch (option) {
+      case e::automatic:
+        return "automatic";
+      case e::manual:
+        return "manual";
+      case e::disabled:
+      default:
+        return "disabled";
+    }
+  }
+
+  std::string_view dd_refresh_rate_option_name(config::video_t::dd_t::refresh_rate_option_e option) {
+    using e = config::video_t::dd_t::refresh_rate_option_e;
+    switch (option) {
+      case e::automatic:
+        return "automatic";
+      case e::manual:
+        return "manual";
+      case e::disabled:
+      default:
+        return "disabled";
+    }
+  }
+
+  std::string_view dd_hdr_option_name(config::video_t::dd_t::hdr_option_e option) {
+    using e = config::video_t::dd_t::hdr_option_e;
+    switch (option) {
+      case e::automatic:
+        return "automatic";
+      case e::disabled:
+      default:
+        return "disabled";
+    }
+  }
+
+  /**
    * @brief Refresh the per-session environment used for prep commands and the launched app.
    *
    * `_env` is a member that outlives a single session, so per-session keys are erased first;
@@ -180,6 +241,10 @@ namespace proc {
   void proc_t::update_session_env(const std::shared_ptr<rtsp_stream::launch_session_t> &launch_session) {
     _env.erase("SUNSHINE_CLIENT_DISPLAY_NAME");
     _env.erase("SUNSHINE_CLIENT_VIRTUAL_DISPLAY");
+    _env.erase("SUNSHINE_CLIENT_DD_CONFIG");
+    _env.erase("SUNSHINE_CLIENT_DD_RESOLUTION");
+    _env.erase("SUNSHINE_CLIENT_DD_REFRESH_RATE");
+    _env.erase("SUNSHINE_CLIENT_DD_HDR");
     // Add Stream-specific environment variables
     _env["SUNSHINE_APP_ID"] = std::to_string(_app_id);
     _env["SUNSHINE_APP_NAME"] = _app.name;
@@ -199,6 +264,12 @@ namespace proc {
     if (!launch_session->virtual_display.empty()) {
       _env["SUNSHINE_CLIENT_VIRTUAL_DISPLAY"] = launch_session->virtual_display;
     }
+    // Display-preparation options: the hooks are the Linux implementation of what
+    // display_device does on Windows, so they get to see the requested mode.
+    _env["SUNSHINE_CLIENT_DD_CONFIG"] = std::string {dd_config_option_name(config::video.dd.configuration_option)};
+    _env["SUNSHINE_CLIENT_DD_RESOLUTION"] = std::string {dd_resolution_option_name(config::video.dd.resolution_option)};
+    _env["SUNSHINE_CLIENT_DD_REFRESH_RATE"] = std::string {dd_refresh_rate_option_name(config::video.dd.refresh_rate_option)};
+    _env["SUNSHINE_CLIENT_DD_HDR"] = std::string {dd_hdr_option_name(config::video.dd.hdr_option)};
     int channelCount = launch_session->surround_info & 65535;
     switch (channelCount) {
       case 2:
