@@ -613,6 +613,9 @@ namespace platf {
             g_topology_snapshot.push_back({output.uuid, output.enabled, output.priority, output.geometry});
           }
           g_topology_applied = true;
+          // Tells us whether KWin's output configuration was actually found (an empty snapshot was
+          // what exposed the XDG_CONFIG_HOME pitfall during testing).
+          BOOST_LOG(info) << "topology: snapshot taken: "sv << g_topology_snapshot.size() << " output(s)"sv;
         }
       }
 
@@ -635,11 +638,18 @@ namespace platf {
         if (mode == "ensure_primary"sv) {
           run_kscreen("output." + uuid + ".priority.1");
         }
-        if (mode == "ensure_only_display"sv) {
-          for (const auto &output : kscreen_outputs()) {
-            if (output.uuid != uuid && output.enabled) {
-              run_kscreen("output." + output.uuid + ".disable");
-            }
+      }
+
+      if (mode == "ensure_only_display"sv) {
+        // Runs even for a transient virtual target: "only" is the whole point of this mode, and it
+        // acts on the outputs KWin knows about (the virtual one is the only enabled one from the
+        // compositor's side already). Verified case that made this necessary: with the target
+        // skipped, the mode silently degraded to ensure_primary and left eDP-1 on.
+        for (const auto &output : kscreen_outputs()) {
+          if (output.enabled && output.uuid != uuid) {
+            BOOST_LOG(info) << "topology: disabling "sv << output.uuid << " ("sv << output.name
+                            << ") for ensure_only_display"sv;
+            run_kscreen("output." + output.uuid + ".disable");
           }
         }
       }
