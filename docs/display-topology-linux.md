@@ -207,16 +207,19 @@ Warning: topology: output [Virtual-SunshineVirt] is not in kscreen; not applying
 ⇒ 结论：**根因在"读子进程输出"这件事本身**（本进程的 SIGCHLD/回收行为），与命令、环境、权限无关。
 **不要再试图读任何子进程的 stdout/stderr**（钩子能工作是因为它只起不读）。
 
-**输出枚举的正确做法：链 libkscreen（KF6 KScreen），用它的 API 在同一进程内完成**：
+**当时的候选方案：链 libkscreen（KF6 KScreen）—— 最终没有采用**（见本节开头的最终实现）：
 
 - KWin 自己的 D-Bus **不暴露输出**（已实测：`busctl --user tree org.kde.KWin` 里没有任何输出对象）。
 - KScreen 的 `/backend` 由一个**瞬时启动器**（`kscreen_backend_launcher`）持有，
   只在应用配置期间存在于总线上（实测：应用完就消失）→ 不适合按名字长期调用。
-- 而 `kscreen-doctor` 本身就是 libkscreen 的前端（本机路径 `/nix/store/jfzxihw…-libkscreen-6.6.6/bin/`）→
-  **直接链接 libkscreen**，用 `KScreen::Config` 做：读输出列表 / `setOutputEnabled` / 优先级 / `apply`，
-  同时把现有 `run_kscreen()` 的子进程调用一并删掉（写操作也走同一 API）。
+- 而 `kscreen-doctor` 本身就是 libkscreen 的前端（本机路径 `/nix/store/jfzxihw…-libkscreen-6.6.6/bin/`）——
+  但 libkscreen **不在本工程的构建输入里**，链它要同时改 harness / 打包脚本 / CI / 包定义，
+  所以最终改为：**读 KWin 的 `kwinoutputconfig.json`（详见本节开头）**，写操作继续用 `kscreen-doctor`
+  子进程（**只起不读**，实测有效）。
 
 附带待办（本轮实测新发现）：
 - `ensure_primary` / `ensure_active` 下，**KWin 会在新虚拟输出出现时把 eDP-1 关掉**（实测两次）。
-  语义上这两个模式**只该改优先级/开关目标屏**，不该让邻屏消失 → libkscreen 版要显式保持其它屏的
-  enabled 状态，快照还原也必须把 eDP-1 的 `disabled` 基线还原回去。
+  语义上这两个模式**只该改优先级/开关目标屏**，不该让邻屏消失 → 内置版已加"把快照里原本 enabled 的
+  输出重新 enable"的兜底；`ensure_only_display` 故意不做这一步（它就是要关邻屏）。
+- `ensure_only_display` 的"关掉其它屏"**必须放在"目标是否已知"的分支之外**：目标若是 krfb 的临时虚拟
+  输出，放进分支里会让该模式悄悄退化成 `ensure_primary`（实测踩过）。
