@@ -114,6 +114,22 @@ namespace platf {
   bool session_bind_touch(const std::string &output_name);
 
   /**
+   * @brief Apply the client's display-combination mode (`dd_configuration_option`), in-process.
+   *
+   * Phase 2 of the Linux topology work: the same five modes the host hook implements with kscreen,
+   * but done from the process, so hook-less installs (deb/AppImage) get them too. Callers must skip
+   * this when a global do-hook is configured — the hook owns the topology on those hosts.
+   *
+   * @param target_name Output the session was launched against.
+   */
+  void session_apply_topology(const std::string &target_name);
+
+  /**
+   * @brief Restore the topology captured before the first apply, once the last session ends.
+   */
+  void session_revert_topology();
+
+  /**
    * @brief Whether the display list served to clients may advertise the virtual ids.
    *
    * Flipped on 2026-09-25 after the launch path was verified end-to-end on the target host: the

@@ -2252,7 +2252,8 @@ namespace stream {
 
 #if defined(__linux__)
       // Release the built-in virtual monitor (a hook-created one is removed by its undo command).
-      platf::session_virtual_display_stop();
+      session_virtual_display_stop();
+      session_revert_topology();
 #endif
 
       // If this is the last session, invoke the platform callbacks

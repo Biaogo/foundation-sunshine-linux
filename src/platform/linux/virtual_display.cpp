@@ -21,6 +21,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
+#include <mutex>
 #include <random>
 #include <sstream>
 #include <stdexcept>
@@ -32,7 +33,9 @@
 
 #include "src/boost_process_compat.h"
 #include "src/logging.h"
+#include "src/config.h"
 #include "src/platform/common.h"
+#include "src/video.h"
 
 namespace platf {
   namespace {
@@ -394,6 +397,206 @@ namespace platf {
       return device_property(path, "outputName") == output_name;
     }
   }  // namespace
+
+  // ------------------------------------------------ display combination (phase 2 of the topology work)
+
+  namespace {
+    /// One output as `kscreen-doctor -o` reports it.
+    struct kscreen_output_t {
+      std::string name;
+      std::string uuid;
+      bool enabled {};
+      int priority {};
+      std::string geometry;
+    };
+
+    /// Entry of the pre-session snapshot used to restore the topology.
+    struct topology_state_t {
+      std::string uuid;
+      bool enabled {};
+      int priority {};
+      std::string geometry;
+    };
+
+    std::mutex g_topology_mutex;
+    std::vector<topology_state_t> g_topology_snapshot;
+    bool g_topology_applied {};
+
+    /// @brief Drop leading blanks from a kscreen-doctor line.
+    std::string trimmed(std::string value) {
+      const auto start = value.find_first_not_of(" \t");
+      return start == std::string::npos ? std::string {} : value.substr(start);
+    }
+
+    /// @brief Parse the output list of `kscreen-doctor -o`.
+    std::vector<kscreen_output_t> kscreen_outputs() {
+      std::vector<kscreen_output_t> outputs;
+      std::istringstream stream {kscreen_output()};
+      std::string line;
+      kscreen_output_t current;
+      bool open = false;
+
+      while (std::getline(stream, line)) {
+        if (line.rfind("Output:", 0) == 0) {
+          if (open && !current.uuid.empty()) {
+            outputs.push_back(current);
+          }
+          current = {};
+          std::istringstream fields {line};
+          std::string tag;
+          std::string index;
+          fields >> tag >> index >> current.name >> current.uuid;
+          open = true;
+          continue;
+        }
+        if (!open) {
+          continue;
+        }
+
+        const auto value = trimmed(line);
+        if (value == "enabled") {
+          current.enabled = true;
+        }
+        else if (value == "disabled") {
+          current.enabled = false;
+        }
+        else if (value.rfind("priority ", 0) == 0) {
+          current.priority = std::atoi(value.c_str() + 9);
+        }
+        else if (value.rfind("Geometry:", 0) == 0) {
+          current.geometry = trimmed(value.substr(9));
+        }
+      }
+
+      if (open && !current.uuid.empty()) {
+        outputs.push_back(current);
+      }
+      return outputs;
+    }
+
+    /// @brief Run one kscreen-doctor operation and wait for it.
+    void run_kscreen(const std::string &argument) {
+      const auto exe = tool_path("kscreen-doctor");
+      if (exe.empty()) {
+        BOOST_LOG(warning) << "topology: kscreen-doctor not found in PATH"sv;
+        return;
+      }
+
+      // Only ever called from the launch path, where spawning a helper is known to work. Do not
+      // move this into a detached thread: there the process' own SIGCHLD handling reaps our child
+      // first, so the wait fails and the output comes back empty (see the note above kwin_call).
+      capture_stdout({exe, argument});
+    }
+
+    std::string kscreen_uuid_of(const std::string &name) {
+      for (const auto &output : kscreen_outputs()) {
+        if (output.name == name) {
+          return output.uuid;
+        }
+      }
+      return {};
+    }
+
+    /// @brief `config_option_e` -> the string kscreen/the hook use.
+    std::string topology_mode_name(video_t::dd_t::config_option_e mode) {
+      using e = video_t::dd_t::config_option_e;
+      if (mode == e::verify_only) {
+        return "verify_only";
+      }
+      if (mode == e::ensure_active) {
+        return "ensure_active";
+      }
+      if (mode == e::ensure_primary) {
+        return "ensure_primary";
+      }
+      if (mode == e::ensure_only_display) {
+        return "ensure_only_display";
+      }
+      return "disabled";
+    }
+
+    /// @brief Shared body of @ref session_apply_topology.
+    void apply_topology_mode(const std::string &target_name, const std::string &mode) {
+      if (target_name.empty()) {
+        return;
+      }
+      if (mode == "disabled"sv || mode == "verify_only"sv) {
+        BOOST_LOG(info) << "topology: mode="sv << mode << " — leaving the topology untouched"sv;
+        return;
+      }
+
+      const auto uuid = kscreen_uuid_of(target_name);
+      if (uuid.empty()) {
+        BOOST_LOG(warning) << "topology: output ["sv << target_name << "] is not in kscreen; not applying "sv << mode;
+        return;
+      }
+
+      {
+        std::scoped_lock lock {g_topology_mutex};
+        if (!g_topology_applied) {
+          g_topology_snapshot.clear();
+          for (const auto &output : kscreen_outputs()) {
+            g_topology_snapshot.push_back({output.uuid, output.enabled, output.priority, output.geometry});
+          }
+          g_topology_applied = true;
+        }
+      }
+
+      run_kscreen("output." + uuid + ".enable");
+      if (mode == "ensure_primary"sv) {
+        run_kscreen("output." + uuid + ".priority.1");
+      }
+      if (mode == "ensure_only_display"sv) {
+        for (const auto &output : kscreen_outputs()) {
+          if (output.uuid != uuid && output.enabled) {
+            run_kscreen("output." + output.uuid + ".disable");
+          }
+        }
+      }
+
+      BOOST_LOG(info) << "topology: mode="sv << mode << " applied to "sv << target_name << " ("sv << uuid << ')';
+    }
+  }  // namespace
+
+  void session_apply_topology(const std::string &target_name) {
+    apply_topology_mode(target_name, topology_mode_name(config::video.dd.configuration_option));
+  }
+
+  void session_revert_topology() {
+    std::vector<topology_state_t> snapshot;
+    {
+      std::scoped_lock lock {g_topology_mutex};
+      if (!g_topology_applied) {
+        return;
+      }
+      snapshot = g_topology_snapshot;
+      g_topology_snapshot.clear();
+      g_topology_applied = false;
+    }
+
+    if (snapshot.empty()) {
+      BOOST_LOG(info) << "topology: revert: no snapshot — nothing to restore"sv;
+      return;
+    }
+
+    for (const auto &state : snapshot) {
+      if (!state.enabled) {
+        run_kscreen("output." + state.uuid + ".disable");
+        continue;
+      }
+
+      run_kscreen("output." + state.uuid + ".enable");
+      if (state.priority > 0) {
+        run_kscreen("output." + state.uuid + ".priority." + std::to_string(state.priority));
+      }
+      const auto space = state.geometry.find(' ');
+      if (space != std::string::npos) {
+        run_kscreen("output." + state.uuid + ".position." + state.geometry.substr(0, space));
+      }
+    }
+
+    BOOST_LOG(info) << "topology: revert: pre-session topology restored"sv;
+  }
 
   bool session_bind_touch(const std::string &output_name) {
     BOOST_LOG(info) << "Touch binding requested for ["sv << output_name << ']';

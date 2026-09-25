@@ -1519,6 +1519,9 @@ namespace nvhttp {
           // ...and point the touch devices at it: an unbound device makes KWin drop every touch
           // event (they land in the corner), which is what the hook does on hook-based hosts.
           platf::session_bind_touch(launch_session->display_name);
+          // Phase 2 of the topology work: the five dd_configuration_option modes, in-process, so
+          // hook-less installs get them too. Guarded by the same condition as the calls above.
+          platf::session_apply_topology(launch_session->display_name);
         }
 #endif
         if (const auto err = proc::proc.run_global_prep_cmds(launch_session)) {
@@ -1659,6 +1662,9 @@ namespace nvhttp {
           // ...and point the touch devices at it: an unbound device makes KWin drop every touch
           // event (they land in the corner), which is what the hook does on hook-based hosts.
           platf::session_bind_touch(launch_session->display_name);
+          // Phase 2 of the topology work: the five dd_configuration_option modes, in-process, so
+          // hook-less installs get them too. Guarded by the same condition as the calls above.
+          platf::session_apply_topology(launch_session->display_name);
         }
 #endif
         if (const auto err = proc::proc.run_global_prep_cmds(launch_session)) {
