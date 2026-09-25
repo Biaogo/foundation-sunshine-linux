@@ -340,7 +340,7 @@ namespace platf {
         child.wait();
       }
       catch (const std::exception &e) {
-        BOOST_LOG(debug) << "Could not set outputName on "sv << path << ": "sv << e.what();
+        BOOST_LOG(warning) << "Could not set outputName on "sv << path << ": "sv << e.what();
         return false;
       }
       return plain_value(device_property(path, "outputName")) == output_name;
@@ -348,7 +348,11 @@ namespace platf {
   }  // namespace
 
   bool session_bind_touch(const std::string &output_name) {
-    if (output_name.empty() || tool_path("busctl").empty()) {
+    const auto busctl = tool_path("busctl");
+    BOOST_LOG(info) << "Touch binding requested for ["sv << output_name << "]; busctl="sv
+                    << (busctl.empty() ? "<not found>"sv : std::string_view {busctl});
+    if (output_name.empty() || busctl.empty()) {
+      BOOST_LOG(warning) << "Touch binding skipped (no output name or no busctl)"sv;
       return false;
     }
 
@@ -358,6 +362,9 @@ namespace platf {
       bool touch_bound = false;
       for (int i = 0; i < 120 && !touch_bound; ++i) {
         const auto sysnames = plain_value(device_property(INPUT_MANAGER_PATH, "devicesSysNames"));
+        if (i % 10 == 0) {
+          BOOST_LOG(info) << "Touch binding poll "sv << i << ": device list=["sv << sysnames << ']';
+        }
         std::istringstream names {sysnames};
         std::string sysname;
         while (names >> sysname) {
@@ -372,8 +379,10 @@ namespace platf {
           if (!is_touch && !is_pen) {
             continue;
           }
-          if (bind_device(path, output_name)) {
-            BOOST_LOG(debug) << "Bound input device "sv << sysname << " to ["sv << output_name << ']';
+          const bool ok = bind_device(path, output_name);
+          BOOST_LOG(info) << "Touch binding: "sv << sysname << " ("sv << name << ") -> ["sv << output_name
+                          << "] "sv << (ok ? "ok"sv : "FAILED (was '"sv + plain_value(device_property(path, "outputName")) + "')"sv);
+          if (ok) {
             touch_bound = touch_bound || is_touch;
           }
         }
