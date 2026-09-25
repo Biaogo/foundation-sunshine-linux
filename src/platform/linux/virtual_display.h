@@ -9,6 +9,9 @@
  */
 #pragma once
 
+#include <memory>
+#include <string>
+
 namespace platf {
   /// Client-visible id of the dynamic virtual monitor, captured through the KWin ScreenCast backend.
   inline constexpr auto VDISPLAY_KWIN_ID = "虚拟-KWin";
@@ -30,6 +33,53 @@ namespace platf {
 
   /// Value exported as SUNSHINE_CLIENT_VIRTUAL_DISPLAY for a virtual-KMS pick.
   inline constexpr auto VIRTUAL_DISPLAY_HOOK_KMS = "kms";
+
+  /**
+   * @brief Owns the dynamically created virtual monitor for one stream session.
+   *
+   * Step 2 of docs/virtual-display-linux.md: instead of relying on the user's `global_prep_cmd`
+   * hook, Sunshine itself starts `krfb-virtualmonitor`, waits for the compositor to enumerate the
+   * output, makes it live with `kscreen-doctor` and kills the helper again when the session ends
+   * (the output disappears with it). Nothing is created before a client actually asks for it.
+   */
+  class virtual_display_t {
+  public:
+    virtual_display_t() = default;
+    ~virtual_display_t();
+
+    virtual_display_t(const virtual_display_t &) = delete;
+    virtual_display_t &operator=(const virtual_display_t &) = delete;
+
+    /**
+     * @brief Start the helper and make the output usable for capture.
+     *
+     * @param width Requested width in pixels.
+     * @param height Requested height in pixels.
+     * @param fps Requested refresh rate.
+     * @return True when the compositor enumerates the created output.
+     */
+    bool start(int width, int height, int fps);
+
+    /// Whether this object currently owns a running helper process.
+    bool active() const;
+
+    /// KWin output name of the created monitor (empty when inactive).
+    const std::string &output_name() const;
+
+    /// Kill the helper process; the output disappears with it.
+    void stop();
+
+  private:
+    struct impl_t;
+    std::unique_ptr<impl_t> impl_;  ///< Opaque state, keeps this header free of process types.
+  };
+
+  /**
+   * @brief Report whether the built-in virtual monitor can be created on this host.
+   *
+   * @return True when `krfb-virtualmonitor` and `kscreen-doctor` are both reachable.
+   */
+  bool virtual_display_available();
 
   /**
    * @brief Whether the display list served to clients may advertise the virtual ids.

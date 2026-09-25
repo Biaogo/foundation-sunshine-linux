@@ -281,6 +281,7 @@ if(PIPEWIRE_FOUND AND WAYLAND_FOUND AND ${SUNSHINE_ENABLE_KWIN})
     GEN_WAYLAND("${CMAKE_SOURCE_DIR}/third-party/plasma-wayland-protocols/src/protocols" "" kde-output-order-v1)
     GEN_WAYLAND("${CMAKE_SOURCE_DIR}/third-party/plasma-wayland-protocols/src/protocols" "" zkde-screencast-unstable-v1)
     list(APPEND PLATFORM_TARGET_FILES
+            "${CMAKE_SOURCE_DIR}/src/platform/linux/virtual_display.cpp"
             "${CMAKE_SOURCE_DIR}/src/platform/linux/kwingrab.cpp")
 elseif(${SUNSHINE_ENABLE_KWIN} AND NOT WAYLAND_FOUND)
     message(FATAL_ERROR "SUNSHINE_ENABLE_KWIN requires SUNSHINE_ENABLE_WAYLAND — KWin capture disabled")
