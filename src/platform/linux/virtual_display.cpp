@@ -591,16 +591,9 @@ namespace platf {
       // the virtual display appears comes back empty (measured: 34 ms after creation). Wait for it
       // briefly — bounded, and on the launch thread on purpose: kscreen-doctor must not be spawned
       // from a detached thread, where the process' own SIGCHLD handling reaps our child first.
-      auto uuid = kscreen_uuid_of(target_name);
-      for (int attempt = 0; uuid.empty() && attempt < 12; ++attempt) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(250));
-        uuid = kscreen_uuid_of(target_name);
-      }
-      if (uuid.empty()) {
-        BOOST_LOG(warning) << "topology: output ["sv << target_name << "] is not in kscreen; not applying "sv << mode;
-        return;
-      }
-
+      // Snapshot the pre-session topology before touching anything, so revert restores what the
+      // user had (and never the state this mode produced). Taken from KWin's own config file, which
+      // lists every real output.
       {
         std::scoped_lock lock {g_topology_mutex};
         if (!g_topology_applied) {
@@ -612,18 +605,35 @@ namespace platf {
         }
       }
 
-      run_kscreen("output." + uuid + ".enable");
-      if (mode == "ensure_primary"sv) {
-        run_kscreen("output." + uuid + ".priority.1");
+      auto uuid = kscreen_uuid_of(target_name);
+      for (int attempt = 0; uuid.empty() && attempt < 12; ++attempt) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(250));
+        uuid = kscreen_uuid_of(target_name);
       }
-      if (mode == "ensure_only_display"sv) {
-        for (const auto &output : kscreen_outputs()) {
-          if (output.uuid != uuid && output.enabled) {
-            run_kscreen("output." + output.uuid + ".disable");
+      if (uuid.empty()) {
+        // A freshly created virtual output is not in KWin's output configuration (krfb's virtual
+        // monitor is transient and never persisted), and it does not need to be: KWin enables and
+        // gives priority 1 to a new output on its own, which is exactly what ensure_active and
+        // ensure_primary ask for. Carry on to the guard below, which still protects the outputs
+        // KWin does know about.
+        BOOST_LOG(info) << "topology: target ["sv << target_name
+                        << "] is not in KWin's output configuration; the compositor set it up (virtual output)"sv;
+      }
+      else {
+        run_kscreen("output." + uuid + ".enable");
+        if (mode == "ensure_primary"sv) {
+          run_kscreen("output." + uuid + ".priority.1");
+        }
+        if (mode == "ensure_only_display"sv) {
+          for (const auto &output : kscreen_outputs()) {
+            if (output.uuid != uuid && output.enabled) {
+              run_kscreen("output." + output.uuid + ".disable");
+            }
           }
         }
       }
-      else {
+
+      if (mode != "ensure_only_display"sv) {
         // KWin re-ranks on its own when a new output shows up (it has been measured disabling the
         // other screens at that moment), while these two modes only ever change the target. Put the
         // outputs the snapshot had on back on — idempotent, so harmless when KWin left them alone.
