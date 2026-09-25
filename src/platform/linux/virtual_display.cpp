@@ -637,7 +637,12 @@ namespace platf {
       if (tool_path("pkill").empty()) {
         return;
       }
-      std::system("pkill -f '[k]rfb-virtualmonitor' >/dev/null 2>&1");
+      // The upstream build compiles with -Werror=unused-result, so the return value has to be
+      // consumed even though a failure here is uninteresting: a non-zero exit just means there was
+      // nothing stale to kill (or the child was reaped before we could read it).
+      if (std::system("pkill -f '[k]rfb-virtualmonitor' >/dev/null 2>&1") != 0) {
+        BOOST_LOG(debug) << "topology: no stale virtual-monitor helper to clean up"sv;
+      }
     }
 
     /// @brief Run one kscreen-doctor operation and wait for it.
