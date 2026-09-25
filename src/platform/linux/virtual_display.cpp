@@ -479,14 +479,9 @@ namespace platf {
     constexpr auto INPUT_MANAGER_IFACE = "org.kde.KWin.InputDeviceManager";
     constexpr auto INPUT_MANAGER_PATH = "/org/kde/KWin/InputDevice";
 
-    /**
-     * @brief Read one property of a KWin input device.
-     *
-     * @param path Device object path.
-     * @param property Property name.
-     * @return Raw busctl output (empty on failure).
-     */
+    /// Session bus name of the KWin service.
     constexpr auto KWIN_SERVICE = "org.kde.KWin";
+    /// Standard D-Bus property interface, used to read and write KWin's properties.
     constexpr auto PROPERTIES_IFACE = "org.freedesktop.DBus.Properties";
 
     /**
@@ -1066,9 +1061,6 @@ namespace platf {
       bool touch_bound = false;
       for (int i = 0; i < 120 && !touch_bound; ++i) {
         const auto sysnames = device_property(INPUT_MANAGER_PATH, "devicesSysNames");
-        if (i % 10 == 0) {
-          BOOST_LOG(info) << "Touch binding poll "sv << i << ": device list=["sv << sysnames << ']';
-        }
         std::istringstream names {sysnames};
         std::string sysname;
         while (names >> sysname) {

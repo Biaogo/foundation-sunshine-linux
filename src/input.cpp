@@ -1437,12 +1437,6 @@ namespace input {
         port.width = video_w;
         port.height = video_h;
       }
-      // Kept in place while this mapping is being validated: if a touch still lands off, these four
-      // numbers say which step is wrong (min_log_level = debug on the host that reproduces it).
-      BOOST_LOG(debug) << "Touch mapping: port "sv << port.width << 'x' << port.height
-                       << " bars "sv << bars_x << ',' << bars_y
-                       << " raw "sv << pointer_data->coords.first << ',' << pointer_data->coords.second
-                       << " mapped "sv << touch_x << ',' << touch_y;
     }
 
     platf::touch_input_t touch {
