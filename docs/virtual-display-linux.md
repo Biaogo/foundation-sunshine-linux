@@ -99,11 +99,42 @@ Plasma 5/KF5 的 **`libkf5screen-bin`** 里（`kscreen` 包只有 `kscreen-conso
 - 两个覆盖都是**进程级**（启动 Sunshine 时导出即可，不需要改配置），与旧 hook 脚本的约定一致。
 
 ```bash
-# 第二个实例：复制配置目录 + 移位端口 + 自己的虚拟输出
 export SUNSHINE_VDISPLAY_NAME=ProbeVirt SUNSHINE_VDISPLAY_PORT=5920
 ```
 
 注意：`output_name` 写死 `Virtual-SunshineVirt` 的配置在覆盖生效后不再命中"默认"pick（默认 pick 比对的是**当时的输出名**），要么把 `output_name` 一起改成 `Virtual-ProbeVirt`，要么只对**显式选虚拟 id**的客户端用覆盖。
+
+**完整可跑流程（2026-09-26 实测到"实例起来 + 配置被读到 + 四个端口 bind"这一步）**：
+
+```bash
+B=/tmp/fst-probe; D="$B/sunshine"; mkdir -p "$D"
+cp ~/.config/sunshine/sunshine.conf ~/.config/sunshine/apps.json \
+   ~/.config/sunshine/sunshine_state.json "$D"/
+cp -r ~/.config/sunshine/credentials "$D"/
+
+printf 'port = 49000\n' >> "$D/sunshine.conf"                 # 任意空闲 base
+sed -i 's|^output_name = .*|output_name = Virtual-ProbeVirt|' "$D/sunshine.conf"
+# 若 helper 不在调用者的 PATH 里（普通登录 shell 通常不在），直接把绝对路径写进副本：
+printf 'virtual_display_helper = /path/to/krfb-virtualmonitor\n' >> "$D/sunshine.conf"
+printf 'kscreen_helper = /path/to/kscreen-doctor\n' >> "$D/sunshine.conf"
+
+# 防火墙放行移位端口（TCP: base, base-5, base+1, base+21；UDP: base+9/10/11，麦克风再加 base+12）
+sudo nixos-firewall-tool open tcp 49000 48995 49001 49021
+sudo nixos-firewall-tool open udp 49009 49010 49011
+
+env XDG_CONFIG_HOME="$B" SUNSHINE_VDISPLAY_NAME=ProbeVirt SUNSHINE_VDISPLAY_PORT=5920 \
+  <store>/bin/sunshine &                                     # 记下 PID
+
+ss -ltn | grep -E '4900[01]|48995|49021'                     # 4 个端口都要在
+grep -aE "config: '(port|output_name)'" "$D/sunshine.log"    # 确认读的是副本
+grep -aiE 'fatal|already in use' "$D/sunshine.log"           # 必须为空
+```
+
+- **`$XDG_CONFIG_HOME/sunshine/` 这一层是必须的**：Sunshine 在该子目录里找配置，少一层就等于全新安装 —— 表现为索要新账号密码、`port` 被忽略、随后 `Fatal: Couldn't bind RTSP server to port [48010], Address already in use` 撞上正在跑的服务（伴随 `File <cfg>/sunshine/sunshine_state.json doesn't exist`，即没配对）。
+- 会话开始后日志应出现 `Virtual display overrides in use: output [Virtual-ProbeVirt], port 5920`（这行只在会话启动时打）。
+- harness 构建**不带 cap**（没走 setcap wrapper）⇒ 会话内 kwin/portal 可用（虚拟屏正是 kwin），**KMS/SDDM 不在这个形态的范围**。
+- 第二实例不注册 mDNS（`avahi::entry_group_new() failed: Not permitted`），客户端要手动加 `IP:49000`，且需要能自定义端口的客户端（Artemis / moonlight-vplus，原版 Moonlight 不行）。
+- 收尾：`kill <PID>`（按号，别按模式）、`sudo nixos-firewall-tool reset`、`rm -rf $B`。
 
 ### 第 3 步：屏幕组合（`dd_*` 模式）也进 C++
 
