@@ -172,6 +172,22 @@ namespace video {
     return display_name.empty() || display_name.find_first_not_of("0123456789") == std::string::npos;
   }
 
+  /// @copydoc video::display_id_uses_kms(const std::string &, const std::string &)
+  bool display_id_uses_kms(const std::string &display_name, const std::string &capture) {
+    const bool kms_candidate = capture.empty() || capture == "auto" || capture == "kms";
+    if (!kms_candidate) {
+      // An explicit compositor-style backend (kwin, wayland, x11, portal, nvfbc) never uses KMS.
+      return false;
+    }
+
+    const bool compositor_candidate = capture.empty() || capture == "auto" || capture == "kwin";
+    const bool named_id = !display_name.empty() &&
+                          display_name.find_first_not_of("0123456789") != std::string::npos;
+
+    // The compositor takes named ids whenever it may run, and it has no HDR pipeline.
+    return !(compositor_candidate && named_id);
+  }
+
   /**
    * @brief Resolve a client-requested dynamic range against probed encoder capabilities.
    *
@@ -3130,10 +3146,15 @@ namespace video {
     // An empty display_name means the host's configured output (see config_t's
     // contract), which is what a 默认 pick streams — resolve it the same way the
     // capture path does, or the check silently skips the common case.
+    // A compositor capture has no HDR pipeline, so HDR is only honoured when this id is headed for
+    // KMS. Whether it is depends on the configured backend, not on the shape of the id: with
+    // capture = kms a connector name is KMS-capturable too, while with the default `auto` a name
+    // still belongs to the compositor.
     const auto &hdr_target = config.display_name.empty() ? config::video.output_name : config.display_name;
-    if (config.dynamicRange && !is_kms_display_id(hdr_target)) {
+    if (config.dynamicRange && !display_id_uses_kms(hdr_target, config::video.capture)) {
       BOOST_LOG(warning) << "HDR requested but " << logging::bracket(hdr_target)
-                         << " is a compositor output without an HDR pipeline, falling back to SDR";
+                         << " is captured by the compositor (capture=" << logging::bracket(config::video.capture)
+                         << ") without an HDR pipeline, falling back to SDR";
       config.dynamicRange = 0;
     }
 

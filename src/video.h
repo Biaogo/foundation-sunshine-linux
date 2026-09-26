@@ -704,6 +704,20 @@ namespace video {
    * @param config Client-requested stream configuration.
    * @return Effective stream configuration, downgraded to SDR when HDR is unsupported.
    */
+  /**
+   * @brief Whether a requested display id will actually be captured through the KMS/DRM backend.
+   *
+   * HDR is only available on a KMS capture: the compositor path is fed by the ScreenCast protocol
+   * and has no HDR pipeline. The answer follows the routing in platform/linux rather than the shape
+   * of the id, because an explicitly configured KMS backend resolves connector names itself.
+   *
+   * @param display_name Display id requested by the client, or the configured output.
+   * @param capture Configured capture backend (`auto`, `kms`, `kwin`, …).
+   * @return `true` when the id will be captured through KMS.
+   * @see display_id_uses_kms() in src/video.cpp for the full routing rationale.
+   */
+  bool display_id_uses_kms(const std::string &display_name, const std::string &capture);
+
   config_t resolve_dynamic_range(const encoder_t &encoder, config_t config);
 
   /**

@@ -177,6 +177,37 @@ INSTANTIATE_TEST_SUITE_P(
   )
 );
 
+/**
+ * @brief The HDR gate has to follow the capture routing, not the shape of the display id.
+ *
+ * On KDE the client-visible list carries compositor names (`eDP-1`, the virtual ids), and with the
+ * default `auto` those names really do go to the compositor - which has no HDR pipeline. With
+ * `capture = kms` configured the compositor source is not even a candidate and kmsgrab resolves the
+ * connector name itself, so the same name must be allowed to stream HDR.
+ */
+TEST(DisplayIdUsesKms, MirrorsTheCaptureRouting) {
+  // auto/empty: numeric and empty ids are KMS, named ids belong to the compositor.
+  EXPECT_TRUE(video::display_id_uses_kms("", "auto"));
+  EXPECT_TRUE(video::display_id_uses_kms("0", "auto"));
+  EXPECT_TRUE(video::display_id_uses_kms("3", ""));
+  EXPECT_FALSE(video::display_id_uses_kms("eDP-1", "auto"));
+  EXPECT_FALSE(video::display_id_uses_kms("HDMI-A-1", ""));
+  EXPECT_FALSE(video::display_id_uses_kms("\u865a\u62df-KWin", "kwin"));
+
+  // An explicit KMS backend takes the id whatever its shape - this is what lets a named physical
+  // output stream HDR.
+  EXPECT_TRUE(video::display_id_uses_kms("eDP-1", "kms"));
+  EXPECT_TRUE(video::display_id_uses_kms("HDMI-A-1", "kms"));
+  EXPECT_TRUE(video::display_id_uses_kms("0", "kms"));
+  EXPECT_TRUE(video::display_id_uses_kms("", "kms"));
+
+  // Any other explicit backend never uses KMS, so no HDR pipeline.
+  EXPECT_FALSE(video::display_id_uses_kms("eDP-1", "wayland"));
+  EXPECT_FALSE(video::display_id_uses_kms("0", "wayland"));
+  EXPECT_FALSE(video::display_id_uses_kms("0", "nvfbc"));
+  EXPECT_FALSE(video::display_id_uses_kms("0", "portal"));
+}
+
 #ifdef _WIN32
 TEST(AmfH264OptionsTest, CoderUsesConfiguredValue) {
   const auto coder_option = std::ranges::find(video::amdvce.h264.common_options, "coder"sv, &video::encoder_t::option_t::name);
