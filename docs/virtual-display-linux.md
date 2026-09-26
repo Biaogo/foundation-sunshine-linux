@@ -446,6 +446,14 @@ eDP-1 有 `HDR_OUTPUT_METADATA` ✔ 与 `Colorspace {Default, BT2020_RGB, BT2020
 ⇒ 所以 eDP-1 上的 HDR **要等 NVIDIA 修**；本仓这边的准备工作（HDR 门按采集路由判定 + 引擎侧 HDR 支持）
 一旦输出侧能开就会立刻生效。
 
+**EDID 覆盖是承载性的，不能删（2026-09-26 实测）**：在 nixos 侧把
+`hardware.display.edid.packages` 与 `hardware.display.outputs.eDP-1` 一并注释掉并 switch 后，
+eDP-1 不再是可用的 DRM 输出 ⇒ 本树采集初始化失败（`Unable to initialize capture method` /
+空 display 列表）⇒ **Sunshine 完全连不上**（用户只能靠 NixOS 世代回滚恢复）。所以那两个参数
+（`video=eDP-1:e` + `drm.edid_firmware`）不是"为了 HDR 才加的可选项"，而是**串流能工作的前提**。
+⇒ 想单独验证"是否 EDID 覆盖导致 HDR 被拒"，必须**只去掉 `drm.edid_firmware`、保留 `video=eDP-1:e`**
+（最省事的做法是在引导菜单里临时删掉那一个参数，重启即恢复），否则会同时把采集能力打掉。
+
 **证据冲突，待定（2026-09-26 同日两次观察）**：用户先报告"断开串流后点应用 ⇒ HDR 成功开启、截图确认、
 无报错"，随后复核为"**并没有生效**"——`kscreen-doctor -o` 里 eDP-1 始终只显示 `enabled`（无 HDR 行），
 断开状态下重按 HDR + 应用**仍报同一个"驱动程序拒绝了输出配置"**。因此当前证据**更支持**
