@@ -56,6 +56,25 @@ krfb 的虚拟输出，所以平时看不出问题；但它自己会失败（没
 4. **销毁**：杀掉子进程 → 输出随 krfb 一起消失 → 用 create 时保存的快照
    （`kscreen-doctor` 读到的布局）恢复其它输出。
 
+#### 起 helper 要重试（2026-09-26 实测）
+
+单次 spawn 不够：本机会在**几秒到几分钟的窗口**里对 helper 的 store 路径返回 `execve … ENOENT`，
+而文件本身完好 —— `nix-store --verify-path` 通过、`test -x` 为真、**同一份字节拷到 `/tmp` 能跑**、
+用 `ld.so` 显式加载也能跑、同目录的 `krfb` 也能跑，且 `systemd-run --user`（不受调用方沙箱影响）
+同样复现。触发条件未知（1.2 万次高频采样 0 复现，当天集中在 store 被清理/重写前后），但**被删掉的
+主机钩子当年正是靠"3 次尝试 + 每次重启 helper"扛过去的**，所以实现保留同一语义：
+
+- `helper_start_poll_budgets()` 给出三次尝试的轮询预算（7/8/9 个 `OUTPUT_POLL`，约 2.1/2.4/2.7 s，
+  合计与原单次 8 s 相同：**不能更短**（会把"慢但正常"的 helper 判死），**也不能更长**
+  （客户端耐心约 10 s，spawn 返回时它的等待已经在走）；
+- 每次尝试前先 `terminate()` 上一次的 helper —— 第二个 krfb 会抢同一端口/输出；
+- 每次尝试**先等输出出现**（`wait_for_output(name, polls)`），于是"spawn 成功但输出没出现"
+  这类失败也会被下一次尝试覆盖；
+- spawn 抛异常时**不早退**：输出可能已存在（上次会话遗留、或操作员手工起的），由等待来判定。
+
+对应的主机侧配套（`sunshine.nix`，同日提交）：profile 里装一个"先探针再 exec"的
+`krfb-virtualmonitor` 包装器（外加无合成器时静默跳过、清同端口遗留），两层合起来覆盖约 8~9 s。
+
 依赖声明：deb 用 **Recommends**（不是 Depends，缺了只是没有虚拟屏，不该拦安装）声明
 `krfb, libkf5screen-bin | libkscreen-bin`，见 `cmake/packaging/linux.cmake`。
 2026-09-25 对着 Ubuntu 24.04 的包实测过：`krfb` 提供 `krfb-virtualmonitor`；`kscreen-doctor` 在

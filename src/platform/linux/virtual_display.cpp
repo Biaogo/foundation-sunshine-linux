@@ -19,6 +19,7 @@
 
 #include <algorithm>
 #include <array>
+#include <array>
 #include <chrono>
 #include <cstdint>
 #include <cstdlib>
@@ -45,11 +46,11 @@
 
 namespace platf {
   namespace {
-    /// How long to wait for the compositor to enumerate the new output.
-    constexpr auto OUTPUT_WAIT = std::chrono::seconds {8};
-
     /// Poll interval while waiting for the output.
     constexpr auto OUTPUT_POLL = std::chrono::milliseconds {300};
+
+    /// Attempts allowed when making a created output live (the listing can lag behind by a moment).
+    constexpr int OUTPUT_ENABLE_POLLS = 10;
 
     /**
      * @brief Value of an environment override (empty when unset).
@@ -382,25 +383,94 @@ namespace platf {
     }
 
     /**
+     * @brief Make a created output live, tolerating a listing that lags behind.
+     *
+     * The compositor enumerates a helper's output immediately, but `kscreen-doctor -o` can still be
+     * missing it a moment later: measured on this host, an enable issued 24 ms after the output
+     * first showed up found no uuid, the creation was declared failed, the helper was torn down, the
+     * output vanished with it and the session fell back to a physical display (3 of 21 creations in
+     * one day). The enable can also be accepted without taking effect, so the listing is checked
+     * instead of assumed.
+     *
+     * @param name Output name to make live.
+     * @return True once the output reads as enabled.
+     */
+    bool enable_output_by_name(const std::string &name) {
+      for (int attempt = 0; attempt < OUTPUT_ENABLE_POLLS; ++attempt) {
+        const auto uuid = output_uuid(kscreen_output(), name);
+        if (!uuid.empty()) {
+          enable_output(uuid);
+          if (kscreen_output_is_enabled(kscreen_output(), name)) {
+            return true;
+          }
+        }
+        std::this_thread::sleep_for(OUTPUT_POLL);
+      }
+
+      return false;
+    }
+
+
+    /**
      * @brief Poll the compositor's output list for a name.
      *
      * @param name Output name to wait for.
+     * @param polls Maximum number of polls before giving up.
      * @return True when the compositor enumerates it.
      */
-    bool wait_for_output(const std::string &name) {
-      const auto deadline = std::chrono::steady_clock::now() + OUTPUT_WAIT;
-      do {
+    bool wait_for_output(const std::string &name, int polls) {
+      for (int poll = 0; poll < polls; ++poll) {
         for (const auto &entry : display_names(mem_type_e::unknown)) {
           if (entry == name) {
             return true;
           }
         }
         std::this_thread::sleep_for(OUTPUT_POLL);
-      } while (std::chrono::steady_clock::now() < deadline);
+      }
 
       return false;
     }
   }  // namespace
+
+  std::array<int, 3> helper_start_poll_budgets() {
+    // Three attempts of 2.1 s, 2.4 s and 2.7 s of polling, plus the teardown between them. The sum
+    // matches the single 8 s wait this replaced, so a helper that simply needs a few seconds is not
+    // cut short, and the whole window still fits the wait a client tolerates for a session.
+    return {7, 8, 9};
+  }
+
+  bool kscreen_output_is_enabled(std::string_view layout, std::string_view name) {
+    const std::string needle {name};
+    std::istringstream stream {std::string {layout}};
+    std::string line;
+    bool in_block = false;
+    while (std::getline(stream, line)) {
+      while (!line.empty() && (line.back() == '\r' || line.back() == ' ' || line.back() == '\t')) {
+        line.pop_back();
+      }
+
+      if (line.rfind("Output: ", 0) == 0) {
+        in_block = line.find(needle) != std::string::npos;
+        continue;
+      }
+      if (!in_block) {
+        continue;
+      }
+
+      auto trimmed = std::string_view {line};
+      while (!trimmed.empty() && (trimmed.front() == ' ' || trimmed.front() == '\t')) {
+        trimmed.remove_prefix(1);
+      }
+      if (trimmed == "enabled") {
+        return true;
+      }
+      if (trimmed == "disabled") {
+        return false;
+      }
+    }
+
+    return false;
+  }
 
   std::vector<std::string> helper_fallback_dirs() {
     std::vector<std::string> dirs;
@@ -580,28 +650,47 @@ namespace platf {
     }
 
     auto state = std::make_unique<impl_t>();
-    try {
-      state->child = boost::process::v1::child(
-        helper,
-        "--resolution", std::to_string(width) + "x" + std::to_string(height),
-        "--name", identity.name,
-        "--port", std::to_string(identity.port),
-        "--password", random_password());
-    }
-    catch (const std::exception &e) {
-      BOOST_LOG(warning) << "Could not start krfb-virtualmonitor: "sv << e.what();
-      return false;
-    }
-
     const auto &name = identity.output_name;
-    if (!wait_for_output(name)) {
+
+    // Retry the start, the way the do-hook this replaced did. Both ways it can fail are transient on
+    // this host: exec on the helper's path answers ENOENT for seconds at a time (measured - the file
+    // is intact and a copy of it always runs), and the compositor can need a moment before it
+    // enumerates a helper that did start. Each attempt tears its own helper down first, because a
+    // second krfb on the same port would fight the first one for the output; the last attempt is the
+    // one that reports the failure.
+    const auto budgets = helper_start_poll_budgets();
+    for (std::size_t attempt = 0; attempt < budgets.size(); ++attempt) {
+      try {
+        state->child = boost::process::v1::child(
+          helper,
+          "--resolution", std::to_string(width) + "x" + std::to_string(height),
+          "--name", identity.name,
+          "--port", std::to_string(identity.port),
+          "--password", random_password());
+      }
+      catch (const std::exception &e) {
+        // A helper that could not be started does not mean the output is absent: a previous
+        // session's helper, or one started by hand, may already hold it. The wait below decides.
+        BOOST_LOG(warning) << "Could not start krfb-virtualmonitor (attempt "sv << (attempt + 1) << "/"sv
+                           << budgets.size() << "): "sv << e.what();
+      }
+
+      if (wait_for_output(name, budgets[attempt])) {
+        break;
+      }
+
       BOOST_LOG(warning) << "Virtual display did not appear as ["sv << name << "] within "sv
-                         << OUTPUT_WAIT.count() << "s"sv;
-      state->child.terminate();
-      return false;
+                         << std::chrono::duration<double> {OUTPUT_POLL * budgets[attempt]}.count() << "s";
+
+      if (state->child.valid() && state->child.running()) {
+        state->child.terminate();
+      }
+      if (attempt + 1 == budgets.size()) {
+        return false;
+      }
     }
 
-    if (!enable_output(output_uuid(kscreen_output(), name))) {
+    if (!enable_output_by_name(name)) {
       BOOST_LOG(warning) << "Virtual output ["sv << name << "] appeared but could not be enabled"sv;
       state->child.terminate();
       return false;

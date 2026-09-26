@@ -10,6 +10,7 @@
   #include <chrono>
   #include <filesystem>
   #include <fstream>
+  #include <numeric>
   #include <string>
   #include <system_error>
   #include <thread>
@@ -503,6 +504,58 @@ TEST(VirtualDisplayIdentity, AppliesBothOverridesTogether) {
   EXPECT_EQ(identity.port, 5920);
   EXPECT_FALSE(identity.name_override_ignored);
   EXPECT_FALSE(identity.port_override_ignored);
+}
+
+TEST(KscreenOutputEnabled, ReadsTheBlockOfTheOutputThatWasAskedAbout) {
+  const std::string layout =
+    "Output: 1 eDP-1 d0212254-4127-41d2-9894-898eabae7a38\n"
+    "\tenabled\n"
+    "\tpriority 2\n"
+    "Output: 2 Virtual-SunshineVirt 90d4ef5c-f168-4ff4-ae20-c8d7009864cc\n"
+    "\tdisabled\n"
+    "\tpriority 1\n";
+
+  EXPECT_TRUE(platf::kscreen_output_is_enabled(layout, "eDP-1"));
+  EXPECT_FALSE(platf::kscreen_output_is_enabled(layout, "Virtual-SunshineVirt"));
+}
+
+TEST(KscreenOutputEnabled, DoesNotLetOtherStateLinesAnswerForTheOutput) {
+  // The block carries per-feature states of its own (`HDR: disabled` above all); only a bare
+  // `enabled` token means the output itself is on.
+  const std::string layout =
+    "Output: 2 Virtual-SunshineVirt 90d4ef5c-f168-4ff4-ae20-c8d7009864cc\n"
+    "\tdisabled\n"
+    "\tHDR: enabled\n";
+
+  EXPECT_FALSE(platf::kscreen_output_is_enabled(layout, "Virtual-SunshineVirt"));
+}
+
+TEST(KscreenOutputEnabled, ToleratesCarriageReturnsAndTrailingBlanks) {
+  const std::string layout = "Output: 2 Virtual-SunshineVirt 90d4ef5c\r\n\tenabled  \r\n";
+
+  EXPECT_TRUE(platf::kscreen_output_is_enabled(layout, "Virtual-SunshineVirt"));
+}
+
+TEST(KscreenOutputEnabled, RejectsAnOutputThatIsNotListed) {
+  EXPECT_FALSE(platf::kscreen_output_is_enabled("Output: 1 eDP-1 abc\n\tenabled\n", "Virtual-Nope"));
+  EXPECT_FALSE(platf::kscreen_output_is_enabled("", "eDP-1"));
+}
+
+TEST(VirtualDisplayStartBudget, RetriesMoreThanOnceAndStaysInsideTheClientWait) {
+  const auto budgets = platf::helper_start_poll_budgets();
+
+  // More than one attempt: a single one loses whenever the helper path is refused for a moment.
+  EXPECT_GT(budgets.size(), 1u);
+
+  // Attempts never shrink, so a slow-but-working helper is not cut short by a later attempt that
+  // would get less time than the one before it.
+  EXPECT_TRUE(std::is_sorted(budgets.begin(), budgets.end()));
+
+  // The start window replaces a single 8 s wait: it must not be shorter than the few seconds a
+  // helper may legitimately need, and it has to stay inside what a client waits for a session.
+  const auto total = std::accumulate(budgets.begin(), budgets.end(), 0) * std::chrono::milliseconds {300};
+  EXPECT_GE(total, std::chrono::seconds {6});
+  EXPECT_LE(total, std::chrono::seconds {9});
 }
 
 TEST(DisplayPickResolution, TranslatesAVirtualPickToTheOverriddenOutput) {

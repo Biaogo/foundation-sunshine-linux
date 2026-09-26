@@ -9,6 +9,7 @@
  */
 #pragma once
 
+#include <array>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -115,6 +116,31 @@ namespace platf {
 
   /// Executable that creates the virtual monitor on demand (KDE's krfb virtual-monitor helper).
   inline constexpr auto VIRTUAL_DISPLAY_HELPER = "krfb-virtualmonitor";
+
+  /**
+   * @brief Poll budgets for the attempts that start the virtual display helper.
+   *
+   * A start is retried instead of attempted once: the helper's executable path can answer exec with
+   * ENOENT for seconds at a time, and a compositor sometimes needs a moment before it enumerates a
+   * helper that did start. The budgets grow per attempt, and their sum is the whole start window —
+   * it has to stay inside the wait a client tolerates before it gives up on the session.
+   *
+   * @return Poll count per attempt, each poll being the virtual-display poll interval.
+   */
+  std::array<int, 3> helper_start_poll_budgets();
+
+  /**
+   * @brief Whether an output reads as enabled in `kscreen-doctor -o` output.
+   *
+   * The state is a bare `enabled` token on its own line inside the output's block. A plain search
+   * for the substring is not enough: other lines of the same block carry states of their own
+   * (`HDR: enabled`), and a neighbouring output's block must not answer for this one.
+   *
+   * @param layout Raw `kscreen-doctor -o` output.
+   * @param name Output name to look for.
+   * @return True when the named output's own block says it is enabled.
+   */
+  bool kscreen_output_is_enabled(std::string_view layout, std::string_view name);
 
   /// Executable that makes a created output live and applies display combinations (KScreen).
   inline constexpr auto KSCREEN_HELPER = "kscreen-doctor";
