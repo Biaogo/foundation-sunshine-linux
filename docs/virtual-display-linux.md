@@ -104,6 +104,33 @@ while (child.running() && std::getline(out, line)) { … }   // ← 病根
 修法：**读到 EOF**（去掉 `child.running()` 条件 ✗），并在放弃时把"列表多少字节、有没有列出该名字"
 写进日志，让下次失败自证 ✔。
 
+#### 真正的杀手：`kscreen-doctor -o` 带颜色，解析器却是按裸文本写的（同日二次定位）
+
+截断修掉之后**依旧**掉 eDP-1，而新加的日志给出了决定性一行：
+
+```
+Could not enable [Virtual-SunshineVirt]: the kscreen listing was 12819 bytes and did list it
+```
+
+列表完整、名字在，enable 却不生效 ⇒ 直接取原始字节看：
+
+```
+$ kscreen-doctor -o | head -2 | cat -v
+^[[01;32mOutput: ^[[0;0m1 eDP-1 d0212254-…
+	^[[01;31mdisabled^[[0;0m
+```
+
+**输出到管道也照样上色**（实测 47 行含转义序列 ✗）。于是：
+
+- `line.rfind("Output: ", 0) == 0` ⇒ 行首其实是 `\x1b[01;32m` ⇒ **块识别整条失效** ✗
+- `trimmed == "enabled"` ⇒ 实际是 `\x1b[01;32menabled\x1b[0;0m` ⇒ **永远不相等** ✗
+
+⇒ `enable_output_by_name()` 永远返回 false ⇒ 杀掉 helper ⇒ 回落 eDP-1 + 触控绑到已消失的输出。
+（这也是为什么手工测试"怎么测都正常" ✗：手工命令里都带 `sed 's/\x1b\[[0-9;]*m//g'` ✗。）
+
+修法：**在读取处统一剥掉 ANSI**（`capture_stdout()` 出口 `strip_ansi()` ✗）+ 纯函数 `kscreen_output_is_enabled()`
+自身也先剥一遍 ✔；回归测试用**彩色列表**作为输入 ✔（`KscreenOutputEnabled.ReadsAColouredListing` ✗）。
+
 依赖声明：deb 用 **Recommends**（不是 Depends，缺了只是没有虚拟屏，不该拦安装）声明
 `krfb, libkf5screen-bin | libkscreen-bin`，见 `cmake/packaging/linux.cmake`。
 2026-09-25 对着 Ubuntu 24.04 的包实测过：`krfb` 提供 `krfb-virtualmonitor`；`kscreen-doctor` 在

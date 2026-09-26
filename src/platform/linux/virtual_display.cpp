@@ -315,7 +315,9 @@ namespace platf {
           all += '\n';
         }
         child.wait();
-        return all;
+        // kscreen-doctor colours its output even through a pipe, and every caller of this helper
+        // parses that output. Strip here so no parser has to know about escape sequences.
+        return strip_ansi(all);
       }
       catch (const std::exception &e) {
         BOOST_LOG(debug) << "Could not run a helper command: "sv << e.what();
@@ -403,11 +405,13 @@ namespace platf {
     bool enable_output_by_name(const std::string &name) {
       std::size_t last_layout_size = 0;
       bool last_listed = false;
+      bool last_had_uuid = false;
       for (int attempt = 0; attempt < OUTPUT_ENABLE_POLLS; ++attempt) {
         const auto layout = kscreen_output();
         last_layout_size = layout.size();
         last_listed = layout.find(name) != std::string::npos;
         const auto uuid = output_uuid(layout, name);
+        last_had_uuid = !uuid.empty();
         if (!uuid.empty()) {
           enable_output(uuid);
           if (kscreen_output_is_enabled(kscreen_output(), name)) {
@@ -420,8 +424,9 @@ namespace platf {
       // Say what was actually seen: a listing too short to contain the output (a truncated read)
       // looks exactly like a compositor that has not created it yet.
       BOOST_LOG(warning) << "Could not enable ["sv << name << "]: the kscreen listing was "sv
-                         << last_layout_size << " bytes and "sv
-                         << (last_listed ? "did" : "did not") << " list it"sv;
+                         << last_layout_size << " bytes, "sv
+                         << (last_listed ? "did" : "did not") << " list it and "sv
+                         << (last_had_uuid ? "carried" : "did not carry") << " its uuid"sv;
       return false;
     }
 
@@ -453,7 +458,32 @@ namespace platf {
     return {7, 8, 9};
   }
 
+  std::string strip_ansi(std::string_view text) {
+    std::string clean;
+    clean.reserve(text.size());
+    for (std::size_t i = 0; i < text.size(); ++i) {
+      if (text[i] != '\x1b') {
+        clean += text[i];
+        continue;
+      }
+
+      // An escape sequence is "ESC [" up to a final byte in the range @..~; anything else is the
+      // two character form (ESC followed by one byte), which colour output also uses.
+      if (i + 1 < text.size() && text[i + 1] == '[') {
+        i += 2;
+        while (i < text.size() && (text[i] < '@' || text[i] > '~')) {
+          ++i;
+        }
+      } else {
+        ++i;
+      }
+    }
+    return clean;
+  }
+
   bool kscreen_output_is_enabled(std::string_view layout, std::string_view name) {
+    const std::string plain {strip_ansi(layout)};
+    layout = plain;
     const std::string needle {name};
     std::istringstream stream {std::string {layout}};
     std::string line;

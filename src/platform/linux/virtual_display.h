@@ -142,6 +142,19 @@ namespace platf {
    */
   bool kscreen_output_is_enabled(std::string_view layout, std::string_view name);
 
+  /**
+   * @brief Remove ANSI escape sequences from text.
+   *
+   * `kscreen-doctor -o` colours its output **even when stdout is a pipe** (measured 2026-09-26: 47
+   * lines carrying escape sequences). A parser that compares a state line against `enabled`, or
+   * that recognises a block by `Output: ` at the start of a line, therefore never matches. Strip
+   * the sequences once, where the text is read, so every consumer sees plain text.
+   *
+   * @param text Text that may contain ANSI escape sequences.
+   * @return The same text with those sequences removed.
+   */
+  std::string strip_ansi(std::string_view text);
+
   /// Executable that makes a created output live and applies display combinations (KScreen).
   inline constexpr auto KSCREEN_HELPER = "kscreen-doctor";
 

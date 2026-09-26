@@ -536,6 +536,38 @@ TEST(KscreenOutputEnabled, ToleratesCarriageReturnsAndTrailingBlanks) {
   EXPECT_TRUE(platf::kscreen_output_is_enabled(layout, "Virtual-SunshineVirt"));
 }
 
+TEST(KscreenOutputEnabled, ReadsAColouredListing) {
+  // Regression: `kscreen-doctor -o` colours its output even through a pipe, so the block line
+  // started with an escape sequence rather than `Output: `, and the state line was never the bare
+  // token `enabled`. Both checks silently failed for every real listing.
+  const std::string coloured =
+    "\x1b[01;32mOutput: \x1b[0;0m1 eDP-1 d0212254-4127-41d2-9894-898eabae7a38\n"
+    "\t\x1b[01;31mdisabled\x1b[0;0m\n"
+    "\x1b[01;32mOutput: \x1b[0;0m2 Virtual-SunshineVirt 90d4ef5c-f168-4ff4-ae20-c8d7009864cc\n"
+    "\t\x1b[01;32menabled\x1b[0;0m\n";
+
+  EXPECT_TRUE(platf::kscreen_output_is_enabled(coloured, "Virtual-SunshineVirt"));
+  EXPECT_FALSE(platf::kscreen_output_is_enabled(coloured, "eDP-1"));
+}
+
+TEST(AnsiStrip, RemovesTheSequencesKscreenDoctorEmits) {
+  const std::string coloured =
+    "\x1b[01;32mOutput: \x1b[0;0m2 Virtual-SunshineVirt 90d4ef5c\n"
+    "\t\x1b[01;31mdisabled\x1b[0;0m\n";
+
+  EXPECT_EQ(platf::strip_ansi(coloured), "Output: 2 Virtual-SunshineVirt 90d4ef5c\n\tdisabled\n");
+}
+
+TEST(AnsiStrip, LeavesPlainTextAlone) {
+  EXPECT_EQ(platf::strip_ansi("Output: 1 eDP-1\n\tdisabled\n"), "Output: 1 eDP-1\n\tdisabled\n");
+  EXPECT_EQ(platf::strip_ansi(""), "");
+}
+
+TEST(AnsiStrip, HandlesTheTwoCharacterForm) {
+  EXPECT_EQ(platf::strip_ansi("a\x1b" "b"), "a");
+  EXPECT_EQ(platf::strip_ansi("\x1b[01;32menabled\x1b[0;0m"), "enabled");
+}
+
 TEST(KscreenOutputEnabled, RejectsAnOutputThatIsNotListed) {
   EXPECT_FALSE(platf::kscreen_output_is_enabled("Output: 1 eDP-1 abc\n\tenabled\n", "Virtual-Nope"));
   EXPECT_FALSE(platf::kscreen_output_is_enabled("", "eDP-1"));
