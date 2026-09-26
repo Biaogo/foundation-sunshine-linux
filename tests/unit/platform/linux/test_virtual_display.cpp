@@ -156,12 +156,20 @@ TEST(VirtualDisplayHelperLookup, SkipsEmptyPathEntries) {
   EXPECT_EQ(platf::find_helper(platf::KSCREEN_HELPER, "", "::" + path_dir.path() + ":"), from_path);
 }
 
-TEST(VirtualDisplayHelperLookup, ReturnsEmptyWhenNoCandidateCarriesTheTool) {
+TEST(VirtualDisplayHelperLookup, ReturnsEmptyWhenNothingIsConfiguredAndNoCandidateCarriesTheTool) {
   const fake_tool_dir_t empty_dir {"empty"};
 
   EXPECT_TRUE(platf::find_helper(MISSING_TOOL, "", "").empty());
   EXPECT_TRUE(platf::find_helper(MISSING_TOOL, "", empty_dir.path()).empty());
-  EXPECT_TRUE(platf::find_helper(MISSING_TOOL, "/nonexistent/" + std::string {MISSING_TOOL}, "").empty());
+}
+
+TEST(VirtualDisplayHelperLookup, UsesAConfiguredPathThatDoesNotExist) {
+  // Same policy as `UsesAConfiguredPathThatCannotBeVerified`: the check cannot be trusted on this
+  // host, so a configured path is used even when nothing confirms it. A path that is really unusable
+  // fails where the helper is started instead of hiding the virtual display from every client.
+  const std::string configured = "/nonexistent/" + std::string {MISSING_TOOL};
+
+  EXPECT_EQ(platf::find_helper(MISSING_TOOL, configured, ""), configured);
 }
 
 TEST(VirtualDisplayHelperLookup, SearchesTheStandardDirectories) {

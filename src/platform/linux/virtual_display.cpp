@@ -86,23 +86,35 @@ namespace platf {
       }
     }
 
-    /// How often a failed executability check is retried before a helper is called unavailable.
+    /// How long a missed executability check on a CONFIGURED path is retried before it is reported.
     constexpr std::array HELPER_CHECK_RETRIES {std::chrono::milliseconds {15}, std::chrono::milliseconds {60},
       std::chrono::milliseconds {200}};
 
     /**
      * @brief Whether a path names a file this process is allowed to execute.
      *
-     * A store path is not always readable when the check happens: on the target host the same helper
-     * path answers `stat` one minute and misses the next (observed from a running service: its helper
-     * lookup failed an `X_OK` check on a path that is present and executable, which silently removed
-     * the virtual display options from the client list). One miss must therefore not decide that a
-     * helper is gone, so a miss is retried over a short window before the caller is told so.
+     * Single shot on purpose: this runs against every candidate directory of a search list, and a
+     * miss there is not evidence of anything (the first version retried internally, which made a
+     * client's display list take seconds and time out).
      *
      * @param path Candidate path.
      * @return True when the file exists and carries an execute bit for this process.
      */
     bool executable_file(const std::string &path) {
+      return !path.empty() && ::access(path.c_str(), X_OK) == 0;
+    }
+
+    /**
+     * @brief Executability check for a configured path, retried over a short window.
+     *
+     * A store path is not always readable when the check happens: on the target host the same helper
+     * path answers `stat` one minute and misses the next, from a running service too. Only a
+     * configured path is worth retrying - it is a single candidate, so the window costs nothing.
+     *
+     * @param path Configured path to test.
+     * @return True when the path was executable in any attempt.
+     */
+    bool executable_file_retried(const std::string &path) {
       if (path.empty()) {
         return false;
       }
@@ -417,21 +429,19 @@ namespace platf {
 
   std::string find_helper(const std::string &tool, const std::string &configured, const std::string &path_env) {
     if (!configured.empty()) {
-      if (executable_file(configured)) {
+      if (executable_file_retried(configured)) {
         return configured;
       }
 
-      // Distinguish "the leaf is momentarily unreadable" from "this path is not there at all": a
-      // flaky store path keeps its parent directory (measured: `ls -d <package>` answered while
-      // `<package>/bin/<tool>` did not), whereas a wrong path usually names a directory that is
-      // missing too. Trust a configured path whose directory resolves - a check that misfires here
-      // used to remove the virtual display options from every client's list while the helper was
-      // present and executable - and keep a path without a directory an honest miss.
-      std::error_code error;
-      if (std::filesystem::is_directory(std::filesystem::path {configured}.parent_path(), error)) {
-        warn_unverified_configured_helper(tool, configured);
-        return configured;
-      }
+      // The check could not confirm the path - and that is as far as it may go. This host answers
+      // store paths inconsistently (the same helper path misses `access` and `stat` for minutes
+      // while it is present and executable), so neither a failed check nor a failed parent-directory
+      // probe proves the path is wrong. The operator configured it on purpose: use it, say once that
+      // it could not be verified, and let a path that is really unusable fail loudly where the helper
+      // is started - a miss here used to remove the virtual display from every client's list and
+      // leave the session on a physical output.
+      warn_unverified_configured_helper(tool, configured);
+      return configured;
     }
 
     if (const auto from_path = search_dirs(tool, path_env); !from_path.empty()) {
