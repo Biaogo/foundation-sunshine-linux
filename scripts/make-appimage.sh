@@ -22,6 +22,12 @@ rm -rf AppDir
 DESTDIR=AppDir ninja install
 test -f AppDir/usr/share/sunshine/udev/rules.d/60-sunshine.rules && echo "udev rules: present"
 
+# Everything below runs AppImage-packaged tools (linuxdeploy, appimagetool). In a container
+# without /dev/fuse those must run unpacked, otherwise:
+#   fuse: device not found, try 'modprobe fuse' first
+#   Error: No suitable fusermount binary found on the $PATH
+export APPIMAGE_EXTRACT_AND_RUN=1
+
 # 2) custom AppRun + desktop file
 cp -f ../packaging/linux/AppImage/AppRun ./AppDir/
 chmod +x ./AppDir/AppRun

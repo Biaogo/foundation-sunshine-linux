@@ -240,7 +240,7 @@ jobs:
               "
           done
           # linuxdeploy + the qt plugin, then the packaging step transcribed from the CI job
-          docker exec "$C" bash -lc '
+          docker exec -e APPIMAGE_EXTRACT_AND_RUN=1 "$C" bash -lc '
             set -euo pipefail
             cd /src/build
             for i in 1 2 3 4 5; do
