@@ -50,13 +50,34 @@ export QMAKE="${QMAKE:-/usr/lib/qt6/bin/qmake}"
 export EXTRA_QT_MODULES="svg;"
 [ -x "$QMAKE" ] && "$QMAKE" -query QT_INSTALL_PLUGINS || echo "note: $QMAKE missing (qt plugin step may fail)"
 
+# Deploy into the AppDir only; the AppImage itself is built below.
 ./linuxdeploy-x86_64.AppImage \
   --appdir ./AppDir \
   --plugin qt \
   --executable ./sunshine \
   --icon-file "$ICON" \
-  --desktop-file "$(ls ./AppDir/*.desktop | head -1)" \
-  --output appimage
+  --desktop-file "$(ls ./AppDir/*.desktop | head -1)"
+
+# appimagetool fetches its type2 runtime from GitHub releases at packaging time. On a host whose
+# containers cannot reach GitHub releases (this NixOS box: cmake's downloader AND wget fail while
+# curl through the proxy works) that fetch dies with
+#   Failed to download runtime: server returned status code 0
+#   ERROR: Failed to run plugin: appimage (exit code: 1)
+# after a completely successful compile - i.e. no AppImage at all. Fetch the runtime with curl
+# and hand it to appimagetool with --runtime-file instead of letting the plugin try.
+RUNTIME="./runtime-x86_64"
+if [ ! -s "$RUNTIME" ]; then
+  echo "== fetching the AppImage type2 runtime with curl"
+  curl -fL --retry 3 --max-time 300 -o "$RUNTIME" \
+    "https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-x86_64"
+fi
+[ -s "$RUNTIME" ] || { echo "runtime-x86_64 unavailable"; exit 1; }
+
+[ -d squashfs-root ] || ./linuxdeploy-x86_64.AppImage --appimage-extract >/dev/null 2>&1
+AT=squashfs-root/plugins/linuxdeploy-plugin-appimage/usr/bin/appimagetool
+[ -x "$AT" ] || { echo "appimagetool not found inside the linuxdeploy plugin"; exit 1; }
+
+ARCH=x86_64 "$AT" --runtime-file "$RUNTIME" ./AppDir ./Sunshine-x86_64.AppImage
 
 ls -l Sunshine*.AppImage
 echo "APPIMAGE_OK"
