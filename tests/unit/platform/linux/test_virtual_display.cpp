@@ -7,10 +7,12 @@
 
   // standard includes
   #include <algorithm>
+  #include <chrono>
   #include <filesystem>
   #include <fstream>
   #include <string>
   #include <system_error>
+  #include <thread>
   #include <unistd.h>
 
   // lib includes
@@ -509,6 +511,24 @@ TEST(DisplayPickResolution, MatchesTheHostConfigPickAgainstTheOverriddenOutput) 
   EXPECT_EQ(platf::resolve_display_pick("", "Virtual-ProbeVirt", identity).virtual_display,
             platf::VIRTUAL_DISPLAY_HOOK_KWIN);
   EXPECT_TRUE(platf::resolve_display_pick("", "Virtual-SunshineVirt", identity).virtual_display.empty());
+}
+
+TEST(VirtualDisplayHelperLookup, PicksUpAHelperThatAppearsWhileTheCheckRetries) {
+  // A store path can miss an executability check and answer the next one - which is why the lookup
+  // retries - so a helper that shows up a moment later must still be found instead of being declared
+  // unavailable (that declaration removes the virtual display options from the client's list).
+  const fake_tool_dir_t dir {"retry"};
+  const auto tool = dir.path() + "/" + platf::VIRTUAL_DISPLAY_HELPER;
+
+  std::thread creator([&dir] {
+    std::this_thread::sleep_for(std::chrono::milliseconds {40});
+    dir.create(platf::VIRTUAL_DISPLAY_HELPER, true);
+  });
+
+  const auto found = platf::find_helper(platf::VIRTUAL_DISPLAY_HELPER, tool, dir.path());
+  creator.join();
+
+  EXPECT_EQ(found, tool);
 }
 
 #endif  // __linux__

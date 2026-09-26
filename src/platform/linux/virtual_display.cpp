@@ -30,6 +30,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <vector>
 
@@ -85,14 +86,33 @@ namespace platf {
       }
     }
 
+    /// How often a failed executability check is retried before a helper is called unavailable.
+    constexpr std::array HELPER_CHECK_RETRIES {std::chrono::milliseconds {15}, std::chrono::milliseconds {60},
+      std::chrono::milliseconds {200}};
+
     /**
      * @brief Whether a path names a file this process is allowed to execute.
+     *
+     * A store path is not always readable when the check happens: on the target host the same helper
+     * path answers `stat` one minute and misses the next (observed from a running service: its helper
+     * lookup failed an `X_OK` check on a path that is present and executable, which silently removed
+     * the virtual display options from the client list). One miss must therefore not decide that a
+     * helper is gone, so a miss is retried over a short window before the caller is told so.
      *
      * @param path Candidate path.
      * @return True when the file exists and carries an execute bit for this process.
      */
     bool executable_file(const std::string &path) {
-      return !path.empty() && ::access(path.c_str(), X_OK) == 0;
+      if (path.empty()) {
+        return false;
+      }
+      for (const auto delay : HELPER_CHECK_RETRIES) {
+        if (::access(path.c_str(), X_OK) == 0) {
+          return true;
+        }
+        std::this_thread::sleep_for(delay);
+      }
+      return ::access(path.c_str(), X_OK) == 0;
     }
 
     /**
