@@ -252,7 +252,27 @@ ensure_only_display / verify_only / disabled` 映射到上面同一组 kscreen �
 
 > 对照：**物理 HDR 屏上的 HDR 串流今天就应该已经能工作**（`is_hdr()` 会如实上报）——缺的只有虚拟输出这一条。
 
-**唯一硬门（待实测一次）**：KWin 允不允许给 krfb 的虚拟输出开 HDR。
+**唯一硬门 —— 已实测，门是关的（2026-09-25/26）**：对活的虚拟输出发
+`kscreen-doctor output.Virtual-SunshineVirt.hdr.enable`，KWin 的答复是 **`HDR: incapable`** ——
+krfb 的虚拟输出没有 HDR 能力位，链路上游根本起不来。
+
+**而且这不是"补一个开关"能解决的（结构性障碍）**：本机会话的采集走
+**`kwingrab`（KWin 合成器协议）**，而 `src/video.cpp` 的 HDR 判定写得很直白：
+
+> HDR can only be served by a KMS/DRM capture whose output advertises HDR metadata.
+> A compositor capture (KWin/PipeWire) has no HDR pipeline at all, and a client HDR request
+> there produced a still-SDR-coded 10-bit stream …
+
+⇒ 能出 HDR 的只有 **KMS/DRM** 采集，而那是**物理 CRTC**；虚拟输出不在 DRM 里。
+**两者当前互斥** —— "虚拟屏 + 真 HDR"不是本仓改几行能做到的 ✔。
+
+**现实可行的真 HDR 路径（本仓侧已就绪）**：物理 HDR 显示器 + `capture = kms`（需 `CAP_SYS_ADMIN`）。
+采集侧 `is_hdr()` / BT2020+P2084 协商早已实现，客户端要 HDR 且流确实是 HDR 时，编码自动走
+BT.2020/PQ —— 缺的只有"那条采集路径 + 一块真 HDR 输出" ✔。
+
+> 备注：想在**服务上下文之外**手工起 `krfb-virtualmonitor` 复现探针，实测会**静默退出**
+> （无输出、不监听端口）；由 Sunshine 自己拉起时才正常。要复现这类实验，必须让探测逻辑跑在
+> 会话里（或临时用测试实例），不要指望从普通 shell 起 helper。
 
 ```bash
 kscreen-doctor -o | sed 's/\x1b\[[0-9;]*m//g' | grep -A3 'Virtual-SunshineVirt'
