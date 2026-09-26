@@ -446,6 +446,24 @@ eDP-1 有 `HDR_OUTPUT_METADATA` ✔ 与 `Colorspace {Default, BT2020_RGB, BT2020
 ⇒ 所以 eDP-1 上的 HDR **要等 NVIDIA 修**；本仓这边的准备工作（HDR 门按采集路由判定 + 引擎侧 HDR 支持）
 一旦输出侧能开就会立刻生效。
 
+**重要更正（2026-09-26 用户实测）**：eDP-1 **不是开不了 HDR**，而是"**采集会话运行期间开不了**"。
+操作复现：连上 V+（选 eDP-1）→ 在系统设置里按 HDR 开关 → 鼠标移到"应用"→ **断开串流** → 点"应用" ⇒
+**HDR 成功开启、无任何报错**（用户截图确认）。这推翻了本节先前"nvidia-drm 缺陷 ⇒ 该输出永远开不了 HDR"
+的结论：`max bpc` 缺失仍是事实与可疑点，但不构成绝对封锁。
+
+**紧接着的第二现象（待定位）**：再次连上后，系统设置里 HDR **又被关回去了**。嫌疑点是本树的显示配置
+生命周期：`display_device.cpp` 的 "Reverting any active display device configuration"（`dd_configuration_option
+= disabled` 时的回退路径）、`nvhttp.cpp` 的 `revert_display_configuration`、以及 `stream.cpp` 的
+`config_revert_on_disconnect`。也就是说：即使 HDR 已开，会话开始/结束时的回退动作可能把它复位。
+
+⇒ 判定实验（三步，见 `docs/handoff-prompt.md` 式清单）：① 断开状态下开 HDR + 应用 ⇒ ② 立刻检查
+`~/.config/kwinoutputconfig.json` 里 eDP-1 的 `highDynamicRange` 是否为 **true**（判断"有没有存下来"
+✗）；③ 再连一次看是否变回 false（判断"谁按回去" ✗）。
+
+**背景（来自用户 nixos 仓提交）**：本机 EDID 覆盖是 **cold-boot 平铺缺陷**的遗留 workaround
+（`899abbe6`：nvidia 595.x Wayland EDID 读取回归 ⇒ 冷启动偶发掉到 640x480 并缓存整场会话）；
+`78da501` 曾因内屏报废而删除该 EDID，后又从历史取回以给 SDDM/kmsgrab 一个无头 DRM 输出。
+
 **另一个独立障碍（实测 2026-09-26）**：强制 `capture = kms` 启动一个**用户身份**的实例时，
 `kmsgrab` 的 `cap_sys_admin` RAII 提权会一路失败（`Failed to gain CAP_SYS_ADMIN` 刷屏 ⇒ KMS 源
 `Final KMS display_names return list:` 为空 ⇒ `/displays` 空列表 ⇒ 客户端 503 "Failed to initialize
