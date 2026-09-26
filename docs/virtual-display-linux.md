@@ -298,6 +298,34 @@ connector 的 **`supported_colorspaces` 非 0 时内核会创建 `HDR_OUTPUT_MET
 采集侧 `is_hdr()`/BT2020+P2084 早已就绪，客户端（如 OnePlus 13：HDR10/HDR10+/HLG/DV、
 P010、PQ 透传 ✔）本来就能解 —— 缺的一直只是主机这一端的 HDR 源。
 
+## 结论（2026-09-26 加测）：当前代码拿不到 HDR —— **不是配置问题，是判据错了**
+
+`src/video.cpp` 的 HDR 放行判据是"**显示 id 是不是空或纯数字**"：
+
+```cpp
+const auto &hdr_target = config.display_name.empty() ? config::video.output_name : config.display_name;
+if (config.dynamicRange && !is_kms_display_id(hdr_target)) {   // is_kms_display_id = 空或纯数字
+  BOOST_LOG(warning) << "HDR requested but " << … << " is a compositor output without an HDR pipeline, falling back to SDR";
+  config.dynamicRange = 0;
+}
+```
+
+而客户端能看到的列表（`platform/linux/misc.cpp` 的 `client_display_names()`）**故意只给合成器名字** ——
+它的注释写明：KMS 枚举在没有采集所需权限时也能成功，所以不能把连接器名字给客户端
+（"实测：客户端列表里是 `eDP-1`，而会话走的是 KWin"）。
+
+两条合起来 ⇒ 客户端选 **`eDP-1`** 会被判成"合成器输出" ⇒ **无论 `capture` 怎么配（含 `capture = kms`）都回退 SDR** ✗
+（只有 KMS 那一侧的**数字 id** 才放行）。
+
+**要让它成立，需要一起改三处**：
+1. **判据改成"本次会话实际使用的采集后端"**（或 `capture = kms` + 目标屏确实可由 KMS 采），而不是看名字像不像数字；
+2. **连接器名 ⇄ KMS 索引的映射** —— kmsgrab 需要的是 KMS 监视器/CRTC 侧的对象，客户端给的是 `eDP-1` 这种名字；
+3. **`capture` 未显式配置 + 客户端请求 HDR ⇒ 优先 kms**，失败时诚实回退并写明原因
+   （用户态体验对齐 alkaid 在 Windows 上的 VDD：客户端开 HDR 就自动生效）。
+
+> 依赖确认（2026-09-26 实测）：`/run/wrappers/bin/sunshine` 带 `cap_setpcap,cap_sys_admin=p`，
+> 运行进程 `CapInh=0x200100`（含 `cap_sys_admin`）⇒ **kmsgrab 提权的前提已经具备**，缺的只是上面的接线。
+
 > 备注：想在**服务上下文之外**手工起 `krfb-virtualmonitor` 复现探针，实测会**静默退出**
 > （无输出、不监听端口）；由 Sunshine 自己拉起时才正常。要复现这类实验，必须让探测逻辑跑在
 > 会话里（或临时用测试实例），不要指望从普通 shell 起 helper。
