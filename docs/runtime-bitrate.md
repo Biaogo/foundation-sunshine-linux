@@ -63,6 +63,25 @@ Warning: The running encoder could not change its bitrate to 200000 Kbps   ← 2
 **LLM/开发者注意**：`GET /bitrate` 的存在 + 会话不中断，**不等于**码率真的变了 ✗。日志里出现
 `NvEnc: video bitrate changed to … Kbps` 才算真的改了 ✔ —— 在 Linux 上这条**永远不会**出现 ✗。
 
-要让 Linux 真正改码率，需要在 ffmpeg 编码路径上**重建 AVCodecContext**（同一条会话内换掉编码器上下文，
-用新码率重开 + 强制一个 IDR ✗）。**尚未实现** ✗。已实现并被实测确认的是：V+ 改码率**不再导致掉线** ✔
-（请求被接受、会话保持 ✔，2026-09-26 两次实测 ✗）。
+### 已实现并实测通过（2026-09-26 晚）
+
+Linux 上**不需要重建上下文** ✗：ffmpeg 的 NVENC 封装在**每一帧提交前**都会比对 `avctx->bit_rate` /
+`rc_max_rate` / `rc_buffer_size` 与编码器当前配置 ✗，任一不同就调用 `nvEncReconfigureEncoder()` 并
+**自己 forceIDR** ✔。所以只要在编码线程里改这三个字段即可 ✔。
+
+实现（`src/video.cpp`）：`set_bitrate()` 在 HTTP 线程**只记下请求**（`std::atomic` ✗），
+`apply_pending_bitrate()` 在编码线程**下一帧前应用** ✔；VBV 按同比例缩放以保持帧数深度 ✔
+（纯函数 `video::scale_bitrate_budget()` @ `src/video_bitrate.h` ✔，带单测 ✔）。
+
+实测：V+ 在**一条会话里连改 5 次**（2000 → 1000 → 200000 → 10000 → 3000 Kbps ✗）⇒ 零失败、零掉线 ✔：
+
+```
+Info:  Video bitrate: codec context moved to 1000 Kbps          ← 本仓库
+Debug: [hevc_nvenc] avg bitrate change: 2000000 -> 1000000      ← ffmpeg 内部日志
+Debug: [hevc_nvenc] max bitrate change: 2000000 -> 1000000      ← ffmpeg 内部日志
+Debug: [hevc_nvenc] vbv buffer size change: 22222 -> 11111      ← ffmpeg 内部日志（按比例 ✔）
+Debug: Frame 565: IDR Keyframe (AV_FRAME_FLAG_KEY)             ← 重配后自动 IDR ✔
+```
+
+**判定标准**：出现 `avg bitrate change:` 才算真的改了 ✔ —— 这行是 **ffmpeg 自己打的** ✗，
+不受本仓库日志代码影响 ✗，无法被伪造 ✔。失败会出现 `failed to reconfigure nvenc` ✗。
