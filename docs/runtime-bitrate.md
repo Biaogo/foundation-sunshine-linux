@@ -40,3 +40,29 @@ User-Agent: okhttp/5.3.2         ← 实测客户端（OnePlus 13）
 > 参考实现：`AlkaidLab/foundation-sunshine`（同为 GPL-3.0）的 `nvhttp/dynamic_params.cpp` +
 > `stream::session::change_dynamic_param_for_client` + 编码器 `set_bitrate`。本实现只做**码率**
 > 一种动态参数，且不引入它的 ABR/LLM 控制面。
+
+
+## Linux 现状（2026-09-26 实测，必须知道）
+
+**这个端点在 Linux 上"能收、能保住会话"，但改不动码率。** 实测链（CUDA 构建，`h264_nvenc`）：
+
+```
+Info: Bitrate change to 200000 Kbps handed to a running session   ← /bitrate 收到并找到会话
+Warning: The running encoder could not change its bitrate to 200000 Kbps   ← 22 ms 后
+```
+
+原因不是逻辑错，是**平台错**：
+
+- Linux 上 NVENC 编码走的是 **ffmpeg 的 `h264_nvenc` / `hevc_nvenc`**（`video.cpp` 里 `nvenc` 这个 encoder_t 的
+  内部名字就是它们），**不是** `src/nvenc/` 那套 NVENC SDK 封装 ✗；
+- `src/nvenc/` 的 SDK 封装在 Linux 构建里**没有编进来**（二进制里 `NvEncReconfigureEncoder` 出现 0 次 ✗）；
+- 因此 `encode_session` 的 `set_bitrate()` 覆盖里 `!device->nvenc` 恒为真 ⇒ 直接 `return false` ✗；
+- 而 `nvEncReconfigureEncoder()` 那条热改路径（`nvEncReconfigureEncoder` + VBV 同比缩放 ✗）只在
+  **Windows（SDK 路径）** 上成立 ✗。
+
+**LLM/开发者注意**：`GET /bitrate` 的存在 + 会话不中断，**不等于**码率真的变了 ✗。日志里出现
+`NvEnc: video bitrate changed to … Kbps` 才算真的改了 ✔ —— 在 Linux 上这条**永远不会**出现 ✗。
+
+要让 Linux 真正改码率，需要在 ffmpeg 编码路径上**重建 AVCodecContext**（同一条会话内换掉编码器上下文，
+用新码率重开 + 强制一个 IDR ✗）。**尚未实现** ✗。已实现并被实测确认的是：V+ 改码率**不再导致掉线** ✔
+（请求被接受、会话保持 ✔，2026-09-26 两次实测 ✗）。
