@@ -288,10 +288,22 @@ jobs:
             done
             chmod +x linuxdeploy*.AppImage
             rm -rf AppDir && DESTDIR=AppDir ninja install
-            cp ../packaging/linux/AppImage/AppRun ./AppDir/ && chmod +x ./AppDir/AppRun
+            cp -f ../packaging/linux/AppImage/AppRun ./AppDir/ && chmod +x ./AppDir/AppRun
+            # `ninja install` puts the desktop file under usr/share/applications, while
+            # linuxdeploy is handed AppDir/<id>.desktop - mirror what the fork own
+            # make-appimage.sh does (which is why packaging works locally), and fail loudly if
+            # neither source exists instead of letting linuxdeploy report a bare ENOENT.
+            APP_ID=dev.lizardbyte.app.Sunshine
+            if [ -f "./AppDir/usr/share/applications/${APP_ID}.desktop" ] && \
+               [ ! "./AppDir/usr/share/applications/${APP_ID}.desktop" -ef "./AppDir/${APP_ID}.desktop" ]; then
+              cp -f "./AppDir/usr/share/applications/${APP_ID}.desktop" ./AppDir/
+            elif [ -f "../packaging/linux/AppImage/${APP_ID}.desktop" ]; then
+              cp -f "../packaging/linux/AppImage/${APP_ID}.desktop" ./AppDir/
+            fi
+            ls ./AppDir/*.desktop >/dev/null 2>&1 || { echo 'no desktop file for the AppImage'; ls -la ./AppDir | head -20; exit 1; }
             ./linuxdeploy-x86_64.AppImage --appdir ./AppDir --plugin qt \
               --executable ./sunshine --icon-file ../sunshine.png \
-              --desktop-file ./AppDir/dev.lizardbyte.app.Sunshine.desktop --output appimage
+              --desktop-file "./AppDir/${APP_ID}.desktop" --output appimage
             ls -l Sunshine-*.AppImage
           '
           AI=$(docker exec "$C" bash -lc 'ls /src/build/Sunshine-*.AppImage | head -1')
