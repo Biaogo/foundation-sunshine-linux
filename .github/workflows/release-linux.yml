@@ -1,0 +1,312 @@
+name: Release-Linux
+
+# Manual only. Dispatch this when you want a packaged Linux release: it builds the fork's Linux
+# matrix in throwaway containers and attaches every artifact to a GitHub Release.
+#
+# Upstream's own releases are produced by ci-linux.yml + ci-release.yml; this is the fork's
+# equivalent, limited to the lanes the Linux lineage actually changes (no Windows/macOS).
+#
+# All lanes are x86_64 and built with --skip-cuda. That does NOT remove NVENC: h264_nvenc /
+# hevc_nvenc stay compiled in and engage as soon as the target machine's driver provides
+# libcuda.so.1. Only build with CUDA when the receiver has no driver at all (gigabytes).
+#
+# The deb and rpm commands below are the same container recipes that produced, on the packaging
+# host, sunshine_2026.10.02_amd64.deb (verify-sunshine-deb.sh: VERDICT OK — metadata, integration
+# files and all six fix markers present) and Sunshine.rpm. Differences here: podman -> docker,
+# no http_proxy (runners have clean network), and the source comes from a checkout of the tag
+# instead of a local tree.
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to build (default: newest v<date>[.N]-linux tag by creation time)"
+        required: false
+        type: string
+      version:
+        description: "Package version (default: derived from the tag, e.g. 2026.09.26)"
+        required: false
+        type: string
+      create_release:
+        description: "Attach the artifacts to a GitHub Release"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-linux
+  cancel-in-progress: false
+
+jobs:
+  resolve:
+    name: Resolve tag
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.t.outputs.tag }}
+      sha: ${{ steps.t.outputs.sha }}
+      version: ${{ steps.t.outputs.version }}
+    steps:
+      - name: Pick the newest tag by real creation time
+        id: t
+        run: |
+          set -euo pipefail
+          FORK="${{ github.repository }}"
+          TAG="${{ inputs.tag }}"
+          # Names are not ordered by time (a same-day re-release carries a .N suffix, and a tag
+          # created today may bear an earlier date), so sort by real tag creation date.
+          rm -rf /tmp/fork-tags.git
+          git clone --quiet --bare --filter=blob:none "https://github.com/$FORK.git" /tmp/fork-tags.git
+          if [ -z "$TAG" ]; then
+            TAG=$(git -C /tmp/fork-tags.git for-each-ref --sort=-creatordate \
+                    --format='%(refname:short)' 'refs/tags/v*-linux' \
+                  | grep -E '^v[0-9]{4}[.][0-9]{2}[.][0-9]{2}([.][0-9]+)?-linux$' | head -1)
+          fi
+          [ -n "$TAG" ] || { echo "no v<date>[-.N]-linux tag found in $FORK" >&2; exit 1; }
+          SHA=$(git -C /tmp/fork-tags.git rev-list -n 1 "$TAG")
+          VERSION="${{ inputs.version }}"
+          if [ -z "$VERSION" ]; then VERSION="${TAG#v}"; VERSION="${VERSION%-linux}"; fi
+          echo "tag=$TAG sha=$SHA version=$VERSION"
+          { echo "tag=$TAG"; echo "sha=$SHA"; echo "version=$VERSION"; } >> "$GITHUB_OUTPUT"
+
+  deb:
+    name: deb on ${{ matrix.slug }}
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - image: ubuntu:22.04
+            slug: ubuntu22.04
+          - image: ubuntu:24.04
+            slug: ubuntu24.04
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
+          submodules: recursive
+      - name: Build
+        env:
+          IMAGE: ${{ matrix.image }}
+          SLUG: ${{ matrix.slug }}
+          BUILD_VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          C=fsl-deb
+          docker rm -f "$C" >/dev/null 2>&1 || true
+          docker run -d --name "$C" -v "$PWD:/src" -w /src "$IMAGE" sh -c 'mkdir -p /src; exec sleep infinity'
+          docker exec -e DEBIAN_FRONTEND=noninteractive "$C" bash -lc '
+            set -euo pipefail
+            apt-get update -qq
+            apt-get install -y -qq ca-certificates git curl wget xz-utils file cmake ninja-build
+            git config --global --add safe.directory "*"
+            # jammy ships cmake 3.22; the project wants >= 3.24 (its own target is 4.3.0)
+            if ! cmake --version | head -1 | grep -qE "version (4|3\.2[4-9])"; then
+              curl -fsSL -o /tmp/cmake.tar.gz https://github.com/Kitware/CMake/releases/download/v4.3.0/cmake-4.3.0-linux-x86_64.tar.gz
+              tar -xzf /tmp/cmake.tar.gz -C /opt && rm -f /tmp/cmake.tar.gz
+              for b in cmake ctest cpack; do ln -sf /opt/cmake-4.3.0-linux-x86_64/bin/$b /usr/local/bin/$b; done
+            fi
+            # the web UI needs Node >= 22; CMake bakes the ABSOLUTE npm path at configure time
+            VER=$(curl -fsSL https://nodejs.org/dist/index.json | grep -o "\"version\":\"v22[^\"]*\"" | head -1 | cut -d\" -f4)
+            curl -fsSL -o /tmp/node.tar.xz "https://nodejs.org/dist/${VER}/node-${VER}-linux-x64.tar.xz"
+            rm -rf /opt/node22 && tar -xJf /tmp/node.tar.xz -C /opt && mv /opt/node-${VER}-linux-x64 /opt/node22 && rm -f /tmp/node.tar.xz
+            for b in node npm npx; do ln -sf /opt/node22/bin/$b /usr/bin/$b; done
+            echo "cmake $(cmake --version | head -1) / node $(node --version) / npm $(npm --version)"
+          '
+          # Separate steps on purpose: one combined run hides which step failed.
+          for step in deps cmake build package; do
+            docker exec -e DEBIAN_FRONTEND=noninteractive -e BRANCH=master -e BUILD_VERSION="$BUILD_VERSION" \
+              -e NODE_OPTIONS=--max-old-space-size=4096 "$C" bash -lc "
+                export PATH=/opt/node22/bin:/usr/local/bin:\$PATH
+                cd /src
+                [ '$step' = cmake ] && rm -f build/CMakeCache.txt || true
+                ./scripts/linux_build.sh --skip-cuda --sudo-off --ubuntu-test-repo \
+                  --num-processors=6 --step=$step > /tmp/deb-$step.log 2>&1
+                echo step=$step exit=\$?
+                grep -anE 'error:|FAILED|CMake Error|Cannot find module' /tmp/deb-$step.log | tail -5 || true
+              "
+          done
+          DEB=$(docker exec "$C" bash -lc 'ls /src/build/cpack_artifacts/*.deb | head -1')
+          mkdir -p out && docker cp "$C:$DEB" "out/sunshine-${BUILD_VERSION}-${SLUG}_amd64.deb"
+          docker exec "$C" bash -lc 'ls -l /src/build/cpack_artifacts/'
+      - name: Attach the built packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb-${{ matrix.slug }}
+          path: out/*.deb
+          if-no-files-found: error
+
+  rpm:
+    name: rpm on fedora:44
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
+          submodules: recursive
+      - name: Build
+        env:
+          BUILD_VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          C=fsl-rpm
+          docker rm -f "$C" >/dev/null 2>&1 || true
+          docker run -d --name "$C" -v "$PWD:/src" -w /src fedora:44 sh -c 'mkdir -p /src; exec sleep infinity'
+          docker exec "$C" bash -lc '
+            set +e
+            # fedora 44 has gcc16; the build script still asks for gcc14/gcc-14, so install the real
+            # toolchain and provide the names it expects as symlinks. --skip-unavailable keeps one
+            # unknown name from voiding the whole transaction (that is what broke a first attempt).
+            dnf install -y --skip-unavailable --setopt=install_weak_deps=False \
+              appstream cmake desktop-file-utils doxygen gcc gcc-c++ git glslc graphviz ImageMagick \
+              libappstream-glib libcap-devel libcurl-devel libdrm-devel libevdev-devel libX11-devel \
+              libxcb-devel libXcursor-devel libXfixes-devel libXi-devel libXinerama-devel libXrandr-devel \
+              libXtst-devel mesa-libGL-devel mesa-libgbm-devel miniupnpc-devel ninja-build numactl-devel \
+              openssl-devel opus-devel pipewire-devel pulseaudio-libs-devel python3-jinja2 qt6-qtbase-devel \
+              qt6-qtsvg-devel rpm-build vulkan-loader-devel wget which xorg-x11-server-Xvfb boost-devel \
+              boost-static libva-devel nodejs nodejs22 nodejs24 npm
+            for n in gcc-14 gcc14; do ln -sf /usr/bin/gcc /usr/bin/$n; done
+            for n in g++-14 gcc14-c++; do ln -sf /usr/bin/g++ /usr/bin/$n; done
+            for c in gcc gcc-14 g++ g++-14 cmake ninja node npm rpmbuild; do printf "%-9s %s\n" "$c" "$(command -v $c || echo MISSING)"; done
+          '
+          for step in cmake build package; do
+            docker exec -e BUILD_VERSION="$BUILD_VERSION" -e NODE_OPTIONS=--max-old-space-size=4096 \
+              "$C" bash -lc "
+                cd /src
+                [ '$step' = cmake ] && rm -f build/CMakeCache.txt || true
+                ./scripts/linux_build.sh --skip-cuda --sudo-off --num-processors=6 --step=$step > /tmp/rpm-$step.log 2>&1
+                echo step=$step exit=\$?
+                grep -anE 'error:|FAILED|CMake Error|Cannot find module' /tmp/rpm-$step.log | tail -5 || true
+              "
+          done
+          RPM=$(docker exec "$C" bash -lc 'ls /src/build/cpack_artifacts/*.rpm | head -1')
+          mkdir -p out && docker cp "$C:$RPM" "out/sunshine-${BUILD_VERSION}-1.x86_64.rpm"
+      - name: Attach the built packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm
+          path: out/*.rpm
+          if-no-files-found: error
+
+  appimage:
+    name: AppImage (CPU)
+    needs: resolve
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ needs.resolve.outputs.tag }}
+          submodules: recursive
+      - name: Build
+        env:
+          BUILD_VERSION: ${{ needs.resolve.outputs.version }}
+        run: |
+          set -euo pipefail
+          C=fsl-ai
+          docker rm -f "$C" >/dev/null 2>&1 || true
+          docker run -d --name "$C" -v "$PWD:/src" -w /src ubuntu:22.04 sh -c 'mkdir -p /src; exec sleep infinity'
+          docker exec -e DEBIAN_FRONTEND=noninteractive "$C" bash -lc '
+            set -euo pipefail
+            apt-get update -qq
+            apt-get install -y -qq ca-certificates git curl wget xz-utils file cmake ninja-build libva-dev
+            git config --global --add safe.directory "*"
+            if ! cmake --version | head -1 | grep -qE "version (4|3\.2[4-9])"; then
+              curl -fsSL -o /tmp/cmake.tar.gz https://github.com/Kitware/CMake/releases/download/v4.3.0/cmake-4.3.0-linux-x86_64.tar.gz
+              tar -xzf /tmp/cmake.tar.gz -C /opt && rm -f /tmp/cmake.tar.gz
+              for b in cmake ctest cpack; do ln -sf /opt/cmake-4.3.0-linux-x86_64/bin/$b /usr/local/bin/$b; done
+            fi
+            VER=$(curl -fsSL https://nodejs.org/dist/index.json | grep -o "\"version\":\"v22[^\"]*\"" | head -1 | cut -d\" -f4)
+            curl -fsSL -o /tmp/node.tar.xz "https://nodejs.org/dist/${VER}/node-${VER}-linux-x64.tar.xz"
+            rm -rf /opt/node22 && tar -xJf /tmp/node.tar.xz -C /opt && mv /opt/node-${VER}-linux-x64 /opt/node22 && rm -f /tmp/node.tar.xz
+            for b in node npm npx; do ln -sf /opt/node22/bin/$b /usr/bin/$b; done
+          '
+          for step in deps cmake build; do
+            docker exec -e DEBIAN_FRONTEND=noninteractive -e BRANCH=master -e BUILD_VERSION="$BUILD_VERSION" \
+              -e NODE_OPTIONS=--max-old-space-size=4096 "$C" bash -lc "
+                export PATH=/opt/node22/bin:/usr/local/bin:\$PATH
+                cd /src
+                [ '$step' = cmake ] && rm -f build/CMakeCache.txt || true
+                ./scripts/linux_build.sh --skip-cuda --sudo-off --ubuntu-test-repo --appimage-build \
+                  --num-processors=6 --step=$step > /tmp/ai-$step.log 2>&1
+                echo step=$step exit=\$?
+                grep -anE 'error:|FAILED|CMake Error|Cannot find module' /tmp/ai-$step.log | tail -5 || true
+              "
+          done
+          # linuxdeploy + the qt plugin, then the packaging step transcribed from the CI job
+          docker exec "$C" bash -lc '
+            set -euo pipefail
+            cd /src/build
+            for i in 1 2 3 4 5; do
+              [ -x linuxdeploy-x86_64.AppImage ] && break
+              curl -fL --max-time 300 -o linuxdeploy-x86_64.AppImage \
+                https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage && break
+              echo "linuxdeploy: retry $i"; sleep 5
+            done
+            for i in 1 2 3 4 5; do
+              [ -x linuxdeploy-plugin-qt-x86_64.AppImage ] && break
+              curl -fL --max-time 300 -o linuxdeploy-plugin-qt-x86_64.AppImage \
+                https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage && break
+              echo "qt plugin: retry $i"; sleep 5
+            done
+            chmod +x linuxdeploy*.AppImage
+            rm -rf AppDir && DESTDIR=AppDir ninja install
+            cp ../packaging/linux/AppImage/AppRun ./AppDir/ && chmod +x ./AppDir/AppRun
+            ./linuxdeploy-x86_64.AppImage --appdir ./AppDir --plugin qt \
+              --executable ./sunshine --icon-file ../sunshine.png \
+              --desktop-file ./AppDir/dev.lizardbyte.app.Sunshine.desktop --output appimage
+            ls -l Sunshine-*.AppImage
+          '
+          AI=$(docker exec "$C" bash -lc 'ls /src/build/Sunshine-*.AppImage | head -1')
+          mkdir -p out && docker cp "$C:$AI" "out/Sunshine-${BUILD_VERSION}-x86_64.AppImage"
+      - name: Verify the packaged binary really carries this build
+        run: |
+          set -euo pipefail
+          chmod +x out/*.AppImage
+          ./out/*.AppImage --appimage-extract >/dev/null
+          B=squashfs-root/usr/bin/sunshine
+          missing=0
+          for m in "codec context moved to" "handed to a running session" "after the compositor settled" "topology: mode=" "Virtual display [" "kscreen listing"; do
+            n=$(grep -aFc -- "$m" "$B" || true)
+            printf '%-32s %s\n' "$m" "${n:-0}"
+            [ "${n:-0}" -gt 0 ] || missing=1
+          done
+          [ "$missing" -eq 0 ] || { echo "artifact is stale: fix markers missing"; exit 1; }
+      - name: Attach the built packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: appimage
+          path: out/*.AppImage
+          if-no-files-found: error
+
+  release:
+    name: Publish the release
+    needs: [resolve, deb, rpm, appimage]
+    # Publish whatever succeeded: a single unhappy lane (e.g. an untested distro) must not
+    # strand the artifacts that did build.
+    if: ${{ !cancelled() && inputs.create_release }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+          if-no-files-found: ignore
+      - name: Show what was collected
+        run: ls -lR dist | head -40
+      - name: Create the release and attach every artifact
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" \
+            --notes "Linux packages built from $TAG by the Release-Linux workflow (deb x2, rpm, AppImage, x86_64, --skip-cuda: NVENC is still compiled in)."
+          gh release upload "$TAG" dist/* --clobber
+          gh release view "$TAG" --json assets --jq '.assets[].name'
