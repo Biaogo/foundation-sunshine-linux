@@ -270,6 +270,34 @@ krfb 的虚拟输出没有 HDR 能力位，链路上游根本起不来。
 采集侧 `is_hdr()` / BT2020+P2084 协商早已实现，客户端要 HDR 且流确实是 HDR 时，编码自动走
 BT.2020/PQ —— 缺的只有"那条采集路径 + 一块真 HDR 输出" ✔。
 
+## 真 HDR 的 Linux 路线评估（2026-09-26 调研）
+
+**Windows 那边怎么做的**：AlkaidLab / qiin2333 的 Foundation Sunshine 用
+[`qiin2333/zako-vdd`](https://github.com/qiin2333/zako-vdd)（C++，MIT）—— 一个 **Windows IDD 内核驱动**，
+README 自述"专为 Foundation Sunshine 设计的 Windows 虚拟显示器驱动，提供完整的 HDR 支持"，
+特性含 **EDID 支持（可模拟特定显示器特性）**；要求 Windows 10 22H2+/x64/DX11/管理员装驱动。
+
+⇒ **代码不能参考**（Windows 内核驱动模型 + DX11，Linux 无对应 API），
+**但思路完全对应**：给虚拟输出一份**声明 HDR 的 EDID + 颜色空间能力**。
+
+**Linux 的原生对应物是 VKMS 的 configfs 接口**（内核文档 `gpu/vkms` + Bootlin/Louis Chauvet 的
+补丁系列）：`/sys/kernel/config/vkms/<DEV>` 下可建 device / connector / crtc / encoder / plane，
+connector 的 **`supported_colorspaces` 非 0 时内核会创建 `HDR_OUTPUT_METADATA`**，另有
+**`edid` / `edid_enabled`** 可注入原始 EDID。这条路能**同时**解掉本文件上面那两处障碍：
+虚拟输出变成真 DRM 输出（KWin 认它的 HDR 能力），而且它是 KMS/DRM ⇒ `capture = kms` 可用。
+
+**但本机当前内核还没有这组能力（2026-09-26 实测）**：`7.2.7-cachyos` 的 `vkms.ko` 里
+`supported_colorspaces` / `edid_enabled` / `HDR_OUTPUT_METADATA` / `drm_edid_read_custom`
+**全部 0 次命中** ⇒ 该系列补丁（v4）尚未合并。`CONFIG_DRM_VKMS=m`、`CONFIG_CONFIGFS_FS=y` 都在，
+所以等它合并后**不需要换发行版，只需要新内核**。
+
+**当前可落地的真 HDR 路径（不需要等内核）**：本机 `/sys/class/drm/` 有 `DP-1` / `DP-2` / `HDMI-A-1`
+三个物理连接器 ⇒ 给其中一个接上
+（a）一块 HDR 显示器，或（b）一个**带 HDR EDID 的假负载（EDID emulator / headless 插头）**，
+就能得到一块真 HDR 源，再配 `capture = kms`（需 `CAP_SYS_ADMIN`）。
+采集侧 `is_hdr()`/BT2020+P2084 早已就绪，客户端（如 OnePlus 13：HDR10/HDR10+/HLG/DV、
+P010、PQ 透传 ✔）本来就能解 —— 缺的一直只是主机这一端的 HDR 源。
+
 > 备注：想在**服务上下文之外**手工起 `krfb-virtualmonitor` 复现探针，实测会**静默退出**
 > （无输出、不监听端口）；由 Sunshine 自己拉起时才正常。要复现这类实验，必须让探测逻辑跑在
 > 会话里（或临时用测试实例），不要指望从普通 shell 起 helper。
