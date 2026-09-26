@@ -225,20 +225,31 @@ namespace platf {
         return;
       }
 
-      const auto &configured = configured_helper(tool);
       const auto option = helper_option(tool);
-
-      if (!configured.empty()) {
-        BOOST_LOG(warning) << "Configured "sv << option << " = ["sv << configured
-                           << "] is not an executable file; searched $PATH and "sv << fallback_dirs_text()
-                           << " instead. Helper "sv << tool << " is unavailable."sv;
-        return;
-      }
 
       BOOST_LOG(warning) << "Helper "sv << tool << " was not found in $PATH or "sv << fallback_dirs_text()
                          << "; the virtual display is disabled. Install "sv << helper_package(tool)
                          << ", or set "sv << option << " to an absolute path (for example "sv
                          << option << " = /usr/bin/"sv << tool << ")."sv;
+    }
+
+    /**
+     * @brief Report a configured helper that could not be verified, once per process.
+     *
+     * @param tool Executable name.
+     * @param configured Configured absolute path that failed the executability check.
+     */
+    void warn_unverified_configured_helper(const std::string &tool, const std::string &configured) {
+      static std::mutex mutex;
+      static std::set<std::string> warned;
+
+      const std::lock_guard<std::mutex> lock {mutex};
+      if (!warned.insert(tool).second) {
+        return;
+      }
+
+      BOOST_LOG(warning) << "Configured "sv << helper_option(tool) << " = ["sv << configured
+                         << "] could not be verified as an executable file right now; using it anyway."sv;
     }
 
     /**
@@ -405,8 +416,22 @@ namespace platf {
   }
 
   std::string find_helper(const std::string &tool, const std::string &configured, const std::string &path_env) {
-    if (executable_file(configured)) {
-      return configured;
+    if (!configured.empty()) {
+      if (executable_file(configured)) {
+        return configured;
+      }
+
+      // Distinguish "the leaf is momentarily unreadable" from "this path is not there at all": a
+      // flaky store path keeps its parent directory (measured: `ls -d <package>` answered while
+      // `<package>/bin/<tool>` did not), whereas a wrong path usually names a directory that is
+      // missing too. Trust a configured path whose directory resolves - a check that misfires here
+      // used to remove the virtual display options from every client's list while the helper was
+      // present and executable - and keep a path without a directory an honest miss.
+      std::error_code error;
+      if (std::filesystem::is_directory(std::filesystem::path {configured}.parent_path(), error)) {
+        warn_unverified_configured_helper(tool, configured);
+        return configured;
+      }
     }
 
     if (const auto from_path = search_dirs(tool, path_env); !from_path.empty()) {

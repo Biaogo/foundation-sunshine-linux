@@ -136,13 +136,17 @@ TEST(VirtualDisplayHelperLookup, SkipsAnEntryThatNothingCanExecute) {
   EXPECT_EQ(found, executable);
 }
 
-TEST(VirtualDisplayHelperLookup, IgnoresAnUnusableConfiguredPathAndSearchesOn) {
-  const fake_tool_dir_t configured_dir {"unusable-configured"};
-  const fake_tool_dir_t path_dir {"fallback-path"};
+TEST(VirtualDisplayHelperLookup, UsesAConfiguredPathThatCannotBeVerified) {
+  // A configured path is the operator's decision. The executability check is only a typo catcher and
+  // it misfires on this host (a store path can miss the check for minutes while the answer
+  // alternates), so a miss must not send the lookup to `$PATH` or declare the helper unavailable -
+  // that removed the virtual display options from every client's list while the helper was fine.
+  const fake_tool_dir_t configured_dir {"unverified-configured"};
+  const fake_tool_dir_t path_dir {"fallback-path-ignored"};
   const auto not_executable = configured_dir.create(platf::KSCREEN_HELPER, false);
-  const auto from_path = path_dir.create(platf::KSCREEN_HELPER, true);
+  path_dir.create(platf::KSCREEN_HELPER, true);
 
-  EXPECT_EQ(platf::find_helper(platf::KSCREEN_HELPER, not_executable, path_dir.path()), from_path);
+  EXPECT_EQ(platf::find_helper(platf::KSCREEN_HELPER, not_executable, path_dir.path()), not_executable);
 }
 
 TEST(VirtualDisplayHelperLookup, SkipsEmptyPathEntries) {
