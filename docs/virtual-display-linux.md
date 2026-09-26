@@ -394,3 +394,38 @@ kscreen-doctor output.Virtual-SunshineVirt.hdr.disable  # 回滚
 * 定位顺序（配置 → `$PATH` → 标准目录）同时写在 `docs/configuration.md` 的两个配置项说明里，
   改顺序要一起改，否则用户按文档排查会走偏。
 * 第 1 步先上，能把“菜单骗人 + 20 s 超时”这两件事一次性消灭，且不依赖第 2、3 步。
+
+## 现状补记（2026-09-26 实测）：EDID 覆盖与 NVIDIA 的 10-bit 路径
+
+**门已经改了**：HDR 的放行判据从"显示 id 的形状"换成 `display_id_uses_kms(display_name, capture)`
+（`src/video.h` / `src/video.cpp`），与 `platform/linux` 的路由同源 —— 显式 `capture = kms` 时 KMS 是唯一
+候选，而 kmsgrab 的 `map_display_name_to_monitor_index()` 本来就能解析连接器名，所以 `eDP-1` 这类名字
+在 `capture = kms` 下应当允许 HDR。`auto`/空 下的行为与旧判据逐条一致（已用真机 id 集合镜像核对）。
+
+**但端到端仍不通，卡在输出侧，与本仓无关**：把 eDP-1 的 EDID 改成带 HDR10(PQ) 的版本后，KWin 依旧刷
+
+```
+kwin_wayland: 0x502: GL_INVALID_OPERATION error generated. <image> and <target> are incompatible
+kwin_wayland: Invalid framebuffer status:  "GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT"
+```
+内核侧同时照旧生成 `[nvidia-drm] Infoframe changed on CRTC … (hdr=1 colorspace=1 …)`。这与 KDE bug 491751
+症状逐字一致（NVIDIA + Wayland，10-bit/HDR 合成路径；同一报告者接 HDMI 2.1 电视却正常）。
+⇒ 失败点在 KWin 建 10-bit 帧缓冲，**比 EDID 协商更下层**，所以换 EDID 不解决问题。
+
+**EDID 覆盖在 nvidia-drm 上不生效**（实测）：`/sys/kernel/debug/dri/0/eDP-1/edid_override` 写入成功
+（读到 `0x8a = 07`），但连接器实际报出的 `/sys/class/drm/card0-eDP-1/edid` 仍是 `05`，且
+`kscreen-doctor output.eDP-1.disable/enable` **不会**触发内核重读。要做 EDID 实验必须走启动期参数：
+
+```nix
+hardware.firmware = [ (pkgs.runCommandLocal "edid-edp-1-hdr10" {} ''
+  mkdir -p $out/lib/firmware/edid
+  cp /path/to/eDP-1-hdr10.edid $out/lib/firmware/edid/eDP-1-hdr10.bin
+'') ];
+boot.kernelParams = [ "drm.edid_firmware=eDP-1:edid/eDP-1-hdr10.bin" ];
+```
+（挂起/唤醒或重启后核对：`dd if=/sys/class/drm/card0-eDP-1/edid bs=1 count=384 status=none | xxd | sed -n '9,11p'`，
+看到 `07` 才说明生效。）
+
+**留给下一步的路**：借一块在 Linux+NVIDIA 下真能开 HDR 的屏/电视实测一次（判断是"屏"还是"驱动"），
+或更换 NVIDIA 驱动分支；虚拟输出那条路仍要等 VKMS 的 `supported_colorspaces`/`edid` 补丁合并。
+
