@@ -408,9 +408,18 @@ kscreen-doctor output.Virtual-SunshineVirt.hdr.disable  # 回滚
 kwin_wayland: 0x502: GL_INVALID_OPERATION error generated. <image> and <target> are incompatible
 kwin_wayland: Invalid framebuffer status:  "GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT"
 ```
-内核侧同时照旧生成 `[nvidia-drm] Infoframe changed on CRTC … (hdr=1 colorspace=1 …)`。这与 KDE bug 491751
-症状逐字一致（NVIDIA + Wayland，10-bit/HDR 合成路径；同一报告者接 HDMI 2.1 电视却正常）。
-⇒ 失败点在 KWin 建 10-bit 帧缓冲，**比 EDID 协商更下层**，所以换 EDID 不解决问题。
+内核侧同时照旧生成 `[nvidia-drm] Infoframe changed on CRTC … (hdr=1 colorspace=1 …)`。
+
+> **更正（同日实测）**：先前把上面那两条 GL 报错当作 HDR 的失败原因是**错的**。一次干净开机里它们
+> **6 条全部出现在生产实例的 KWin ScreenCast 会话开始的同一分钟**，当时**任何 HDR 尝试都没有**
+> ⇒ 它在普通串流会话里就会刷。所以它们**不是**可信的 HDR 诊断信号，失败原因尚未定位；
+> 判断 HDR 只认 `Sent HDR mode:` / `Color coding: HDR (BT.2020)` / 内核的 `hdr=1` infoframe 这几条。
+
+**实测补充**：`drm.edid_firmware`（启动期固件）**是有效的** —— 在一台已用
+`hardware.display.edid.packages` + `hardware.display.outputs.eDP-1` 生成 `video=eDP-1:e` 与
+`drm.edid_firmware=eDP-1:edid/legion-eDP-1.edid` 的主机上，`/sys/class/drm/card0-eDP-1/edid`
+与那份固件文件**逐字节一致**。所以要做 EDID 实验就走这条路（改仓里那份 .edid ⇒ 重建 ⇒ 重启），
+运行时 debugfs 覆盖不可靠：
 
 **EDID 覆盖在 nvidia-drm 上不生效**（实测）：`/sys/kernel/debug/dri/0/eDP-1/edid_override` 写入成功
 （读到 `0x8a = 07`），但连接器实际报出的 `/sys/class/drm/card0-eDP-1/edid` 仍是 `05`，且
