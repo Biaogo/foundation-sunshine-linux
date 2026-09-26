@@ -326,6 +326,36 @@ if (config.dynamicRange && !is_kms_display_id(hdr_target)) {   // is_kms_display
 > 依赖确认（2026-09-26 实测）：`/run/wrappers/bin/sunshine` 带 `cap_setpcap,cap_sys_admin=p`，
 > 运行进程 `CapInh=0x200100`（含 `cap_sys_admin`）⇒ **kmsgrab 提权的前提已经具备**，缺的只是上面的接线。
 
+## 实测：在 NVIDIA + KWin 上给 eDP-1 开 HDR 会被驱动拒绝（2026-09-26）
+
+操作：V+ 开 HDR + 选 eDP-1 + 系统设置里打开 eDP-1 并开 HDR。
+
+- KDE 报错：**"无法应用显示器配置：驱动程序拒绝了输出配置"**
+- 内核日志：`[nvidia-drm] Infoframe changed on CRTC 0 (hdr=1 colorspace=1 vsif=0), adding planes …`
+  ⇒ **HDR 请求确实到了驱动**，infoframe 也生成了；eDP-1 在 DRM 层变成 `enabled`
+- KWin 日志：`GL_INVALID_OPERATION … <image> and <target> are incompatible` +
+  `Invalid framebuffer status: "GL_FRAMEBUFFER_INCOMPLETE_ATTACHMENT"`（刷屏）
+
+**这是已知的上游缺陷，不是本机 eDP-1 的问题**：KDE bug **491751** 症状逐字吻合（同样的
+"driver rejected the output configuration" + 同样的 GL 刷屏），报告者为 NVIDIA RTX 4070 + Wayland；
+同一份报告里他在 **HDMI 2.1 接 LG C1 电视时 HDR 正常**，只在某台 DP 显示器上失败。
+相关：bug 519593（Blackwell + 595.x，HDR + 全屏视频导致崩溃，"resolved upstream" 但未真修）。
+
+⇒ **结论**：在 Linux 上"某块输出能不能开 HDR"取决于**该输出的 EDID / 链路**与 NVIDIA 驱动 +
+KWin 这条 10-bit 合成路径是否合得来，**不是 Sunsine 侧能决定的**。
+
+**一个值得先试的旁路**：`KWIN_DRM_NO_DIRECT_SCANOUT=1`（KWin 官方 wiki 记录的环境变量，见 bug 497991）
+—— 若失败点在 10-bit 的 direct-scanout 路径上，关掉它可能就让 HDR 应用成功（代价：略有性能损失，
+且需要重启 KWin）。**先试它，再谈买 EDID 插头**：借一台在 Linux 下能开 HDR 的电视/显示器试一次，
+成功则把那块屏的 EDID dump 出来烧进可写 EDID 的假负载（emulator），失败则省下这笔钱。
+
+**与目标的关系**（"V+ 开 HDR + 选任意屏都生效"）：
+- 物理输出（真 HDR 屏 / EDID 假负载）⇒ 可行，前提是上面这条上游缺陷不挡路 + fork 侧实现
+  "检测 HDR ⇒ 自动用 KMS 采集"；
+- **krfb 虚拟输出 ⇒ 短期做不到**（KDE 不给它 HDR 能力位，`HDR: incapable`）；
+- 折中：让虚拟输出与假负载做 KWin **replication（镜像）**，会话里"选虚拟屏"时实际采集假负载那块，
+  即可等价做到"选任意屏都出 HDR"。
+
 > 备注：想在**服务上下文之外**手工起 `krfb-virtualmonitor` 复现探针，实测会**静默退出**
 > （无输出、不监听端口）；由 Sunshine 自己拉起时才正常。要复现这类实验，必须让探测逻辑跑在
 > 会话里（或临时用测试实例），不要指望从普通 shell 起 helper。
