@@ -52,6 +52,7 @@ for tool in linuxdeploy linuxdeploy-plugin-qt; do
   fi
 done
 
+export QT_SELECT="${QT_SELECT:-qt6}"
 export QMAKE="${QMAKE:-/usr/lib/qt6/bin/qmake}"
 export EXTRA_QT_MODULES="svg;"
 [ -x "$QMAKE" ] && "$QMAKE" -query QT_INSTALL_PLUGINS || echo "note: $QMAKE missing (qt plugin step may fail)"
