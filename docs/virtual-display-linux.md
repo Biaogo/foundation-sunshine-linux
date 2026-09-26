@@ -435,6 +435,17 @@ boot.kernelParams = [ "drm.edid_firmware=eDP-1:edid/eDP-1-hdr10.bin" ];
 （挂起/唤醒或重启后核对：`dd if=/sys/class/drm/card0-eDP-1/edid bs=1 count=384 status=none | xxd | sed -n '9,11p'`，
 看到 `07` 才说明生效。）
 
-**留给下一步的路**：借一块在 Linux+NVIDIA 下真能开 HDR 的屏/电视实测一次（判断是"屏"还是"驱动"），
+**根因已定位为 NVIDIA 驱动缺陷（2026-09-26 实测 + 上游报告对照）**：本机 `drm_info` 读到
+eDP-1 有 `HDR_OUTPUT_METADATA` ✔ 与 `Colorspace {Default, BT2020_RGB, BT2020_YCC}` ✔、平面也支持
+`ABGR2101010`/`XBGR2101010`/`P010` ✔，**但整个 card0 上没有任何 `max bpc` 属性** ✗ —— KWin 无法把输出
+切到 10 bpc，于是 atomic commit 被驱动静默 EINVAL 拒绝。这与 NVIDIA 开发者论坛的现行未解决报告逐条吻合
+（RTX 5070 + 610.43.02 + Plasma 6.6.5 Wayland：同为"EDID 含 HDR10、有 Colorspace/HDR_OUTPUT_METADATA、
+无 max bpc、内核侧静默、KWin GL 帧缓冲刷屏、Windows 下同硬件正常"）。报告者试过不同刷新率、单显示器、
+只开 WCG、`nvidia_drm.color_pipeline=0/1` 均失败 ⇒ **没有 workaround**。
+（本机：RTX 3070 Ti Laptop + 615.71.09 + KWin/Plasma 6.6.6 + `7.2.7-cachyos`。）
+⇒ 所以 eDP-1 上的 HDR **要等 NVIDIA 修**；本仓这边的准备工作（HDR 门按采集路由判定 + 引擎侧 HDR 支持）
+一旦输出侧能开就会立刻生效。
+
+**留给下一步的路**：借一块在 Linux+NVIDIA 下真能开 HDR 的屏/电视实测一次（判断是"屏"还是"驱动"，
 或更换 NVIDIA 驱动分支；虚拟输出那条路仍要等 VKMS 的 `supported_colorspaces`/`edid` 补丁合并。
 
