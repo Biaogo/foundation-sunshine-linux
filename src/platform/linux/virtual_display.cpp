@@ -305,7 +305,12 @@ namespace platf {
 
         std::string line;
         std::string all;
-        while (child.running() && std::getline(out, line)) {
+        // Drain the pipe to EOF instead of stopping when the child exits: the child can be gone while
+        // its output is still buffered in the pipe, and the listing is what the rest of this file
+        // parses. Measured 2026-09-26: `kscreen-doctor -o` is 12.8 KB here (an output with 257 modes),
+        // and the virtual output's block sits past the point where a truncated read ended — which is
+        // why a freshly created output looked unenableable, intermittently and for no visible reason.
+        while (std::getline(out, line)) {
           all += line;
           all += '\n';
         }
@@ -396,8 +401,13 @@ namespace platf {
      * @return True once the output reads as enabled.
      */
     bool enable_output_by_name(const std::string &name) {
+      std::size_t last_layout_size = 0;
+      bool last_listed = false;
       for (int attempt = 0; attempt < OUTPUT_ENABLE_POLLS; ++attempt) {
-        const auto uuid = output_uuid(kscreen_output(), name);
+        const auto layout = kscreen_output();
+        last_layout_size = layout.size();
+        last_listed = layout.find(name) != std::string::npos;
+        const auto uuid = output_uuid(layout, name);
         if (!uuid.empty()) {
           enable_output(uuid);
           if (kscreen_output_is_enabled(kscreen_output(), name)) {
@@ -407,9 +417,13 @@ namespace platf {
         std::this_thread::sleep_for(OUTPUT_POLL);
       }
 
+      // Say what was actually seen: a listing too short to contain the output (a truncated read)
+      // looks exactly like a compositor that has not created it yet.
+      BOOST_LOG(warning) << "Could not enable ["sv << name << "]: the kscreen listing was "sv
+                         << last_layout_size << " bytes and "sv
+                         << (last_listed ? "did" : "did not") << " list it"sv;
       return false;
     }
-
 
     /**
      * @brief Poll the compositor's output list for a name.

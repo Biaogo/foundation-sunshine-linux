@@ -75,6 +75,35 @@ krfb 的虚拟输出，所以平时看不出问题；但它自己会失败（没
 对应的主机侧配套（`sunshine.nix`，同日提交）：profile 里装一个"先探针再 exec"的
 `krfb-virtualmonitor` 包装器（外加无合成器时静默跳过、清同端口遗留），两层合起来覆盖约 8~9 s。
 
+#### 真正的根因：`kscreen-doctor -o` 的输出被截断了（2026-09-26 定位）
+
+现象：新实例上照样出现 `Virtual output [Virtual-SunshineVirt] appeared but could not be enabled`
+（3 秒重试之后 ✗），随后 8 s 拿不到输出 ⇒ 回落 eDP-1，且**触控绑到一个没启用的输出** ⇒ 触控失效。
+
+手工复现时反而一切正常：`krfb-virtualmonitor --name SunshineVirt` 建出的输出在 `kscreen-doctor -o` 里
+**默认就是 `enabled`**、uuid 也能正常解析、`output.<uuid>.enable` 退出码 0 ✔。差别在于**大小**：
+
+```
+$ kscreen-doctor -o | wc -c
+12818                      # 257 个模式（虚拟输出会累积历史模式 ✗）
+$ kscreen-doctor -o | grep -n '^Output: '
+1:Output: 1 eDP-1 …
+29:Output: 2 Virtual-SunshineVirt …      # ← 目标块在第 29 行
+```
+
+而 `capture_stdout()` 原来是：
+
+```cpp
+while (child.running() && std::getline(out, line)) { … }   // ← 病根
+```
+
+**子进程退出后，管道中未读完的数据会被整段丢弃** ⇒ 12.8 KB 的列表可能在目标块之前就被截断 ⇒
+`output_uuid()` 取空 ⇒ `enable_output()` 连执行机会都没有 ⇒ 报"appeared but could not be enabled"。
+是否截断取决于子进程退出与读取的赛跑 ⇒ 表现成**间歇**（当天 3/21 ✗）。
+
+修法：**读到 EOF**（去掉 `child.running()` 条件 ✗），并在放弃时把"列表多少字节、有没有列出该名字"
+写进日志，让下次失败自证 ✔。
+
 依赖声明：deb 用 **Recommends**（不是 Depends，缺了只是没有虚拟屏，不该拦安装）声明
 `krfb, libkf5screen-bin | libkscreen-bin`，见 `cmake/packaging/linux.cmake`。
 2026-09-25 对着 Ubuntu 24.04 的包实测过：`krfb` 提供 `krfb-virtualmonitor`；`kscreen-doctor` 在
