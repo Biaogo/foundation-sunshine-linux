@@ -446,6 +446,15 @@ eDP-1 有 `HDR_OUTPUT_METADATA` ✔ 与 `Colorspace {Default, BT2020_RGB, BT2020
 ⇒ 所以 eDP-1 上的 HDR **要等 NVIDIA 修**；本仓这边的准备工作（HDR 门按采集路由判定 + 引擎侧 HDR 支持）
 一旦输出侧能开就会立刻生效。
 
+**另一个独立障碍（实测 2026-09-26）**：强制 `capture = kms` 启动一个**用户身份**的实例时，
+`kmsgrab` 的 `cap_sys_admin` RAII 提权会一路失败（`Failed to gain CAP_SYS_ADMIN` 刷屏 ⇒ KMS 源
+`Final KMS display_names return list:` 为空 ⇒ `/displays` 空列表 ⇒ 客户端 503 "Failed to initialize
+video capture/encoding"）。已排除的原因：给二进制加文件 capability（`cap_setpcap,cap_sys_admin=eip`，
+属主 root、非用户可写、/opt 在 btrfs 无 nosuid）**仍然失败** ⇒ 不是 cap 授予方式的问题，而是本进程
+自己先清掉了 PERMITTED（`misc.cpp` 的 `drop_elevated_privileges()`，其注释明确写"清掉 PERMITTED 会让
+KMS 在进程余下生命周期内不可用"）。⇒ 用测试实例做 **KMS 采集端到端验证**之前，必须先解决这条
+（或改用别的途径验证 KMS 选择逻辑）。
+
 **留给下一步的路**：借一块在 Linux+NVIDIA 下真能开 HDR 的屏/电视实测一次（判断是"屏"还是"驱动"，
 或更换 NVIDIA 驱动分支；虚拟输出那条路仍要等 VKMS 的 `supported_colorspaces`/`edid` 补丁合并。
 
