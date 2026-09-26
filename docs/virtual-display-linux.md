@@ -85,6 +85,26 @@ Plasma 5/KF5 的 **`libkf5screen-bin`** 里（`kscreen` 包只有 `kscreen-conso
 跨发行版的问题在**代码层**修；NixOS 模块里那行
 `PATH=…krfb/bin:…libkscreen/bin:$PATH` 仍可保留（顺序上最先命中），但已不是必需。
 
+#### 并排验收：`SUNSHINE_VDISPLAY_NAME` / `SUNSHINE_VDISPLAY_PORT`
+
+进程内创建虚拟输出之后，**端口（`5910`）和输出名（`SunshineVirt` → `Virtual-SunshineVirt`）曾是编译期常量**，导致第二个实例必定和正在跑的服务抢同一个输出（端口占用 + 同名输出不会被重复枚举）——本仓的「并排测试实例」习惯（不动生产服务）因此在虚拟屏这条路上失效。现在两个覆盖回来了：
+
+| 变量 | 默认 | 作用 |
+|---|---|---|
+| `SUNSHINE_VDISPLAY_NAME` | `SunshineVirt` | 传给 helper 的 `--name`；输出名固定是 `Virtual-<该值>`，**客户端可见的虚拟 id 也翻译到它**，所以三处一定一致 |
+| `SUNSHINE_VDISPLAY_PORT` | `5910` | helper 监听的本地 VNC 端口 |
+
+- 名字会先 trim；**留空/纯空白**、端口非数字或不在 `1-65535` → 回退默认，并各打一条 `Ignoring SUNSHINE_VDISPLAY_*` 警告（不静默）。
+- 生效时会打一条 `Virtual display overrides in use: output [Virtual-ProbeVirt], port 5920`，便于确认覆盖真的进来了。
+- 两个覆盖都是**进程级**（启动 Sunshine 时导出即可，不需要改配置），与旧 hook 脚本的约定一致。
+
+```bash
+# 第二个实例：复制配置目录 + 移位端口 + 自己的虚拟输出
+export SUNSHINE_VDISPLAY_NAME=ProbeVirt SUNSHINE_VDISPLAY_PORT=5920
+```
+
+注意：`output_name` 写死 `Virtual-SunshineVirt` 的配置在覆盖生效后不再命中"默认"pick（默认 pick 比对的是**当时的输出名**），要么把 `output_name` 一起改成 `Virtual-ProbeVirt`，要么只对**显式选虚拟 id**的客户端用覆盖。
+
 ### 第 3 步：屏幕组合（`dd_*` 模式）也进 C++
 
 把 `sunshine-topology.sh` 的语义搬进同一处：`ensure_active / ensure_primary /

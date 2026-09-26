@@ -11,6 +11,7 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <vector>
 
 namespace platf {
@@ -21,13 +22,55 @@ namespace platf {
   inline constexpr auto VDISPLAY_KMS_ID = "虚拟-KMS";
 
   /**
-   * @brief Capture output name the prep hooks give the virtual monitor.
+   * @brief Name a virtual monitor helper reports to the compositor by default.
    *
-   * The do-hook starts `krfb-virtualmonitor --name SunshineVirt`, which kscreen exposes as the
-   * `Virtual-SunshineVirt` output; a virtual pick is translated to this name before the capture
-   * path resolves it.
+   * The helper runs as `krfb-virtualmonitor --name SunshineVirt`, which kscreen exposes as the
+   * `Virtual-SunshineVirt` output; a virtual pick is translated to that output name before the
+   * capture path resolves it. `SUNSHINE_VDISPLAY_NAME` overrides the name so a second instance —
+   * the side-by-side test lane, or a probe — owns an output of its own instead of fighting over
+   * the one the running service already created (which the compositor would not enumerate twice).
    */
-  inline constexpr auto VIRTUAL_DISPLAY_OUTPUT_NAME = "Virtual-SunshineVirt";
+  inline constexpr auto VIRTUAL_DISPLAY_NAME = "SunshineVirt";
+
+  /// VNC port a virtual monitor helper listens on by default; only used locally by the compositor.
+  inline constexpr int VIRTUAL_DISPLAY_PORT = 5910;
+
+  /// Environment variable overriding @ref VIRTUAL_DISPLAY_NAME.
+  inline constexpr auto VIRTUAL_DISPLAY_NAME_ENV = "SUNSHINE_VDISPLAY_NAME";
+
+  /// Environment variable overriding @ref VIRTUAL_DISPLAY_PORT.
+  inline constexpr auto VIRTUAL_DISPLAY_PORT_ENV = "SUNSHINE_VDISPLAY_PORT";
+
+  /**
+   * @brief What to start for one virtual monitor, and what to look for afterwards.
+   */
+  struct virtual_display_identity_t {
+    std::string name;          ///< Name handed to the helper, e.g. `SunshineVirt`.
+    std::string output_name;   ///< Output the compositor exposes, e.g. `Virtual-SunshineVirt`.
+    int port;                  ///< VNC port the helper listens on.
+    bool name_override_ignored;  ///< A non-empty `SUNSHINE_VDISPLAY_NAME` could not be used.
+    bool port_override_ignored;  ///< A non-empty `SUNSHINE_VDISPLAY_PORT` could not be used.
+  };
+
+  /**
+   * @brief Resolve the helper identity, honouring the test-instance overrides.
+   *
+   * The `*_ignored` flags are set when a non-empty override had to be dropped (a blank name, a
+   * non-numeric or out-of-range port) so the caller can report the fallback instead of leaving the
+   * operator wondering why their override did nothing.
+   *
+   * @param name_override Value of `SUNSHINE_VDISPLAY_NAME` (empty when unset).
+   * @param port_override Value of `SUNSHINE_VDISPLAY_PORT` (empty when unset).
+   * @return Name, output name and port to use for this instance's helper.
+   */
+  virtual_display_identity_t resolve_virtual_display_identity(std::string_view name_override, std::string_view port_override);
+
+  /**
+   * @brief Output name the compositor exposes for a helper name.
+   * @param name Name handed to the helper.
+   * @return `Virtual-` followed by the name.
+   */
+  std::string virtual_display_output_name(std::string_view name);
 
   /// Value exported as SUNSHINE_CLIENT_VIRTUAL_DISPLAY for a virtual-KWin pick.
   inline constexpr auto VIRTUAL_DISPLAY_HOOK_KWIN = "kwin";
@@ -52,6 +95,17 @@ namespace platf {
    * host-config entry is the client's "默认" pick, which mirrors `output_name` — when that names the
    * virtual monitor the switch has to be injected as well, otherwise the hook no-ops and the capture
    * waits for a monitor nobody creates (measured 2026-09-25).
+   *
+   * @param requested Display the client picked; empty when it did not pick one.
+   * @param configured_output_name Sunshine's own `output_name` value.
+   * @param identity Helper identity a virtual pick is translated to.
+   * @return Capture target and hook switch.
+   */
+  display_pick_t resolve_display_pick(const std::string &requested, const std::string &configured_output_name,
+                                      const virtual_display_identity_t &identity);
+
+  /**
+   * @brief Translate the client's display pick using this process' helper identity.
    *
    * @param requested Display the client picked; empty when it did not pick one.
    * @param configured_output_name Sunshine's own `output_name` value.
@@ -234,7 +288,7 @@ namespace platf {
    * Flipped on 2026-09-25 after the launch path was verified end-to-end on the target host: the
    * host-config (默认) pick ran the global do-hook before the encoder probe and streamed through
    * KWin ScreenCast with the virtual monitor created by the hook. Both virtual ids resolve to the
-   * same plumbing (id -> VIRTUAL_DISPLAY_OUTPUT_NAME + the hook switch), so they share that path.
+   * same plumbing (id -> `Virtual-<helper name>` + the hook switch), so they share that path.
    * Turn it back off if a client picking `虚拟-KWin`/`虚拟-KMS` cannot start a session: an id that
    * launch cannot honour yields a hard 503 instead of a working stream.
    */

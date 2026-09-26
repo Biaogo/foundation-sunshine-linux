@@ -44,14 +44,46 @@
 
 namespace platf {
   namespace {
-    /// VNC port the helper listens on; only used locally by the compositor.
-    constexpr int VNC_PORT = 5910;
-
     /// How long to wait for the compositor to enumerate the new output.
     constexpr auto OUTPUT_WAIT = std::chrono::seconds {8};
 
     /// Poll interval while waiting for the output.
     constexpr auto OUTPUT_POLL = std::chrono::milliseconds {300};
+
+    /**
+     * @brief Value of an environment override (empty when unset).
+     */
+    std::string_view env_string(const char *name) {
+      const char *value = std::getenv(name);
+      return value ? std::string_view {value} : std::string_view {};
+    }
+
+    /**
+     * @brief Helper identity for this process.
+     *
+     * The overrides are per instance rather than per session, so resolving them once keeps the
+     * client-visible translation and the helper that gets started in agreement.
+     */
+    const virtual_display_identity_t &instance_identity() {
+      static const auto identity = resolve_virtual_display_identity(
+        env_string(VIRTUAL_DISPLAY_NAME_ENV), env_string(VIRTUAL_DISPLAY_PORT_ENV));
+      return identity;
+    }
+
+    /**
+     * @brief Report overrides that had to be dropped, so an override that does nothing says why.
+     */
+    void warn_ignored_overrides() {
+      const auto &identity = instance_identity();
+      if (identity.name_override_ignored) {
+        BOOST_LOG(warning) << "Ignoring "sv << VIRTUAL_DISPLAY_NAME_ENV << ": expected a helper name, using ["sv
+                           << VIRTUAL_DISPLAY_NAME << ']';
+      }
+      if (identity.port_override_ignored) {
+        BOOST_LOG(warning) << "Ignoring "sv << VIRTUAL_DISPLAY_PORT_ENV << ": expected a TCP port (1-65535), using "sv
+                           << VIRTUAL_DISPLAY_PORT;
+      }
+    }
 
     /**
      * @brief Whether a path names a file this process is allowed to execute.
@@ -371,23 +403,69 @@ namespace platf {
     return {};
   }
 
+  std::string virtual_display_output_name(std::string_view name) {
+    return "Virtual-" + std::string {name};
+  }
+
+  virtual_display_identity_t resolve_virtual_display_identity(std::string_view name_override, std::string_view port_override) {
+    virtual_display_identity_t identity;
+
+    // A name that differs only in whitespace would end up in the output name and never match an
+    // enumeration, so trim it and treat a blank result as "not overridden".
+    const std::string requested {name_override};
+    const auto first = requested.find_first_not_of(" \t\n\r");
+    const auto last = requested.find_last_not_of(" \t\n\r");
+    if (first == std::string::npos) {
+      identity.name = VIRTUAL_DISPLAY_NAME;
+      identity.name_override_ignored = !name_override.empty();
+    }
+    else {
+      identity.name = requested.substr(first, last - first + 1);
+    }
+
+    int port = 0;
+    if (!port_override.empty()) {
+      const std::string text {port_override};
+      try {
+        size_t consumed = 0;
+        const auto parsed = std::stoi(text, &consumed);
+        if (consumed == text.size() && parsed >= 1 && parsed <= 65535) {
+          port = parsed;
+        }
+      }
+      catch (const std::exception &) {
+        // Reported through `port_override_ignored` below.
+      }
+    }
+    identity.port = port > 0 ? port : VIRTUAL_DISPLAY_PORT;
+    identity.port_override_ignored = port == 0 && !port_override.empty();
+
+    identity.output_name = virtual_display_output_name(identity.name);
+    return identity;
+  }
+
   display_pick_t resolve_display_pick(const std::string &requested, const std::string &configured_output_name) {
+    return resolve_display_pick(requested, configured_output_name, instance_identity());
+  }
+
+  display_pick_t resolve_display_pick(const std::string &requested, const std::string &configured_output_name,
+                                      const virtual_display_identity_t &identity) {
     display_pick_t pick;
 
     if (!requested.empty()) {
       pick.name = requested;
       if (requested == VDISPLAY_KWIN_ID) {
-        pick.name = VIRTUAL_DISPLAY_OUTPUT_NAME;
+        pick.name = identity.output_name;
         pick.virtual_display = VIRTUAL_DISPLAY_HOOK_KWIN;
       }
       else if (requested == VDISPLAY_KMS_ID) {
-        pick.name = VIRTUAL_DISPLAY_OUTPUT_NAME;
+        pick.name = identity.output_name;
         pick.virtual_display = VIRTUAL_DISPLAY_HOOK_KMS;
       }
       return pick;
     }
 
-    if (configured_output_name == VIRTUAL_DISPLAY_OUTPUT_NAME) {
+    if (configured_output_name == identity.output_name) {
       pick.virtual_display = VIRTUAL_DISPLAY_HOOK_KWIN;
     }
     return pick;
@@ -439,13 +517,20 @@ namespace platf {
 
     // The helper needs the session's compositor connection: inherit this process' environment,
     // which for a user service already carries WAYLAND_DISPLAY and the session bus.
+    const auto &identity = instance_identity();
+    warn_ignored_overrides();
+    if (identity.name != VIRTUAL_DISPLAY_NAME || identity.port != VIRTUAL_DISPLAY_PORT) {
+      BOOST_LOG(info) << "Virtual display overrides in use: output ["sv << identity.output_name << "], port "sv
+                      << identity.port;
+    }
+
     auto state = std::make_unique<impl_t>();
     try {
       state->child = boost::process::v1::child(
         helper,
         "--resolution", std::to_string(width) + "x" + std::to_string(height),
-        "--name", "SunshineVirt",
-        "--port", std::to_string(VNC_PORT),
+        "--name", identity.name,
+        "--port", std::to_string(identity.port),
         "--password", random_password());
     }
     catch (const std::exception &e) {
@@ -453,7 +538,7 @@ namespace platf {
       return false;
     }
 
-    const std::string name {VIRTUAL_DISPLAY_OUTPUT_NAME};
+    const auto &name = identity.output_name;
     if (!wait_for_output(name)) {
       BOOST_LOG(warning) << "Virtual display did not appear as ["sv << name << "] within "sv
                          << OUTPUT_WAIT.count() << "s"sv;

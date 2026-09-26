@@ -390,14 +390,14 @@ TEST(DisplayPickResolution, PassesAPhysicalConnectorNameThrough) {
 TEST(DisplayPickResolution, MapsTheVirtualKWinIdToTheCreatedOutput) {
   const auto pick = platf::resolve_display_pick(platf::VDISPLAY_KWIN_ID, "");
 
-  EXPECT_EQ(pick.name, platf::VIRTUAL_DISPLAY_OUTPUT_NAME);
+  EXPECT_EQ(pick.name, "Virtual-SunshineVirt");
   EXPECT_EQ(pick.virtual_display, platf::VIRTUAL_DISPLAY_HOOK_KWIN);
 }
 
 TEST(DisplayPickResolution, MapsTheVirtualKmsIdToTheCreatedOutput) {
   const auto pick = platf::resolve_display_pick(platf::VDISPLAY_KMS_ID, "");
 
-  EXPECT_EQ(pick.name, platf::VIRTUAL_DISPLAY_OUTPUT_NAME);
+  EXPECT_EQ(pick.name, "Virtual-SunshineVirt");
   EXPECT_EQ(pick.virtual_display, platf::VIRTUAL_DISPLAY_HOOK_KMS);
 }
 
@@ -411,7 +411,7 @@ TEST(DisplayPickResolution, LeavesAnUnknownNameAlone) {
 TEST(DisplayPickResolution, AddsTheSwitchForTheHostConfigPickWhenItNamesTheVirtualOutput) {
   // The client's "默认" entry mirrors `output_name`; without the switch the do-hook no-ops and the
   // capture waits for a monitor nobody creates.
-  const auto pick = platf::resolve_display_pick("", platf::VIRTUAL_DISPLAY_OUTPUT_NAME);
+  const auto pick = platf::resolve_display_pick("", "Virtual-SunshineVirt");
 
   EXPECT_TRUE(pick.name.empty());
   EXPECT_EQ(pick.virtual_display, platf::VIRTUAL_DISPLAY_HOOK_KWIN);
@@ -429,6 +429,86 @@ TEST(DisplayPickResolution, AddsNothingWhenTheClientPickedNothingAndNoOutputIsCo
 
   EXPECT_TRUE(pick.name.empty());
   EXPECT_TRUE(pick.virtual_display.empty());
+}
+
+TEST(VirtualDisplayIdentity, DefaultsToTheStandardHelperAndPort) {
+  const auto identity = platf::resolve_virtual_display_identity("", "");
+
+  EXPECT_EQ(identity.name, platf::VIRTUAL_DISPLAY_NAME);
+  EXPECT_EQ(identity.output_name, "Virtual-SunshineVirt");
+  EXPECT_EQ(identity.port, platf::VIRTUAL_DISPLAY_PORT);
+  EXPECT_FALSE(identity.name_override_ignored);
+  EXPECT_FALSE(identity.port_override_ignored);
+}
+
+TEST(VirtualDisplayIdentity, UsesTheNameOverrideForBothTheHelperAndTheOutput) {
+  const auto identity = platf::resolve_virtual_display_identity("ProbeVirt", "");
+
+  EXPECT_EQ(identity.name, "ProbeVirt");
+  EXPECT_EQ(identity.output_name, "Virtual-ProbeVirt");
+  EXPECT_EQ(identity.port, platf::VIRTUAL_DISPLAY_PORT);
+  EXPECT_FALSE(identity.name_override_ignored);
+}
+
+TEST(VirtualDisplayIdentity, TrimsTheNameOverride) {
+  const auto identity = platf::resolve_virtual_display_identity("  ProbeVirt\t", "");
+
+  EXPECT_EQ(identity.name, "ProbeVirt");
+  EXPECT_EQ(identity.output_name, "Virtual-ProbeVirt");
+}
+
+TEST(VirtualDisplayIdentity, FallsBackAndReportsABlankName) {
+  const auto identity = platf::resolve_virtual_display_identity("   ", "");
+
+  EXPECT_EQ(identity.name, platf::VIRTUAL_DISPLAY_NAME);
+  EXPECT_EQ(identity.output_name, "Virtual-SunshineVirt");
+  EXPECT_TRUE(identity.name_override_ignored);
+}
+
+TEST(VirtualDisplayIdentity, UsesThePortOverride) {
+  const auto identity = platf::resolve_virtual_display_identity("", "5920");
+
+  EXPECT_EQ(identity.port, 5920);
+  EXPECT_FALSE(identity.port_override_ignored);
+}
+
+TEST(VirtualDisplayIdentity, FallsBackAndReportsAnUnusablePort) {
+  for (const auto *value : {"abc", "0", "-5", "70000", "5910abc", "5920 5", "  "}) {
+    const auto identity = platf::resolve_virtual_display_identity("", value);
+
+    EXPECT_EQ(identity.port, platf::VIRTUAL_DISPLAY_PORT) << "for [" << value << ']';
+    EXPECT_TRUE(identity.port_override_ignored) << "for [" << value << ']';
+  }
+}
+
+TEST(VirtualDisplayIdentity, AppliesBothOverridesTogether) {
+  const auto identity = platf::resolve_virtual_display_identity("ProbeVirt", "5920");
+
+  EXPECT_EQ(identity.name, "ProbeVirt");
+  EXPECT_EQ(identity.output_name, "Virtual-ProbeVirt");
+  EXPECT_EQ(identity.port, 5920);
+  EXPECT_FALSE(identity.name_override_ignored);
+  EXPECT_FALSE(identity.port_override_ignored);
+}
+
+TEST(DisplayPickResolution, TranslatesAVirtualPickToTheOverriddenOutput) {
+  const auto identity = platf::resolve_virtual_display_identity("ProbeVirt", "5920");
+
+  const auto kwin = platf::resolve_display_pick(platf::VDISPLAY_KWIN_ID, "", identity);
+  EXPECT_EQ(kwin.name, "Virtual-ProbeVirt");
+  EXPECT_EQ(kwin.virtual_display, platf::VIRTUAL_DISPLAY_HOOK_KWIN);
+
+  const auto kms = platf::resolve_display_pick(platf::VDISPLAY_KMS_ID, "", identity);
+  EXPECT_EQ(kms.name, "Virtual-ProbeVirt");
+  EXPECT_EQ(kms.virtual_display, platf::VIRTUAL_DISPLAY_HOOK_KMS);
+}
+
+TEST(DisplayPickResolution, MatchesTheHostConfigPickAgainstTheOverriddenOutput) {
+  const auto identity = platf::resolve_virtual_display_identity("ProbeVirt", "");
+
+  EXPECT_EQ(platf::resolve_display_pick("", "Virtual-ProbeVirt", identity).virtual_display,
+            platf::VIRTUAL_DISPLAY_HOOK_KWIN);
+  EXPECT_TRUE(platf::resolve_display_pick("", "Virtual-SunshineVirt", identity).virtual_display.empty());
 }
 
 #endif  // __linux__

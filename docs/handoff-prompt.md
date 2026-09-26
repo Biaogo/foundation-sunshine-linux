@@ -11,10 +11,16 @@
 - 我这条链有"治标 vs 治本"的讲究：NixOS 侧改一行能修我自己，但**跨发行版的问题必须在代码/打包层修**。
 
 ## 现在的事实状态（2026-09-25 深夜 · 第二批之后）
-- fork tag `v2026.10.01-linux` = `14a46eb4` ✓（已推、CI 已 pin）。**其后有 3 个新提交，只在本地、未 push**：
+- fork tag `v2026.10.01-linux` = `14a46eb4` ✓（已推、CI 已 pin）。**其后 9 个提交已全部 push 到 `origin/refork/linux`**（`git log --oneline -9` 可看全）：
   - `8876ee6d feat(linux): make the built-in virtual display self-contained`（helper 不依赖 PATH + KWin 解析纯函数化 + 拓扑稳定后复查）
   - `785f204b chore(linux): drop the temporary touch diagnostics`
   - `ea54d3f6 build(packaging): recommend the KDE virtual-display helpers`
+  - `7776915a docs: handoff — third batch`
+  - `95371cf7 refactor(linux): make the client display pick testable`（+7 条单测）
+  - `609bfeb8 fix(linux): let the compositor answer the display enumeration first`（portal 失败不再拖死 `wait_for_display()`）
+  - `013c54ee docs: correct the HDR reconnaissance`（**HDR 采集侧早已实现，别再重写**）
+  - 最后一条：`feat(linux): let a second instance own its own virtual output`（`SUNSHINE_VDISPLAY_NAME` / `SUNSHINE_VDISPLAY_PORT` 覆盖恢复 → **并排验收重新可行**）
+- **部署状态：生产跑的是 pin 的 `2026.10.01` build，上面这些提交一个都不在里面**（二进制里搜不到 `was not found in $PATH` / `re-enabling` / overrides 那几条串）。要在生产看到效果，得发新 tag（`vYYYY.MM.DD-linux`，**不能移动同名 tag**）让 CI pin+build+cachix，或临时把 nixos 侧 pin 指到本地 tree。
 - **NixOS 侧已切换完成**：`/run/current-system` → `system-216-link`（`…-nixos-system-linux-26.05.20260924.c508844`，9/25 21:28 生成），nixos 仓**已提交且干净**（HEAD `9fddd3c refactor(sunshine): use the fork's built-in virtual display`）。HM 模块里那行
   `PATH=${pkgs.kdePackages.krfb}/bin:${pkgs.kdePackages.libkscreen}/bin:$PATH` **保留**（现在只是"最先命中"，不再是必需）。
 - **虚拟屏在生产里确实回来了**：日志实测 `Virtual-SunshineVirt` → `Touch input bound` → `Streaming bitrate` → `Opus initialized`，且**有一条 22:13 起的真会话**（`CLIENT CONNECTED`）。
@@ -31,8 +37,7 @@
 | 7 真 HDR / 8 portal 默认 KWin / 9 上游同步 | **7 ✅ 侦查已更正** · **8 ✅** · 9 ❌ | 8：`display_names()` 改成 `nvfbc → kwin → wlroots → kms → x11 → portal`（原来 kwin 排在 portal 之后，等于让 portal 的失败拖死 `wait_for_display()`）。7：**采集侧本仓早就实现**（`is_hdr()`/`get_hdr_metadata()`/BT2020+P2084 协商都在 `pipewire.cpp`），交接词里"没写"是误判；真正只缺"把虚拟输出开成 HDR"这一步，硬门见 `docs/virtual-display-linux.md` 的 HDR 节 |
 
 ## 待办（按优先级）
-1. **★ 待办 4 的实测验收（唯一需要我连一次的事）**：`dd_configuration_option = ensure_active` 或
-   `ensure_primary` 连一次，判据：
+1. **★ 待办 4 的实测验收（唯一需要我连一次的事）**：**现在有两种做法** ——（a）发新 tag 让生产 build 含这些提交后连一次；（b）**先不动生产**：另起一个并排实例（复制配置目录 + 移位端口 + `SUNSHINE_VDISPLAY_NAME=ProbeVirt SUNSHINE_VDISPLAY_PORT=5920`，见 `docs/virtual-display-linux.md` 的"并排验收"节）连一次即可。判据：
    1. 会话**进行中** `kscreen-doctor -o`：`eDP-1`（及其它原本 enabled 的屏）仍是 `enabled`；
    2. 日志出现 `topology: re-enabling <uuid> after the compositor settled`（KWin 没抢跑时也可能不出现——那时第一趟就够了）；
    3. 断开后布局回基线（`topology: revert: pre-session topology restored`）。
