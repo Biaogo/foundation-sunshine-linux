@@ -119,8 +119,15 @@ printf 'virtual_display_helper = /path/to/krfb-virtualmonitor\n' >> "$D/sunshine
 printf 'kscreen_helper = /path/to/kscreen-doctor\n' >> "$D/sunshine.conf"
 
 # 防火墙放行移位端口（TCP: base, base-5, base+1, base+21；UDP: base+9/10/11，麦克风再加 base+12）
-sudo nixos-firewall-tool open tcp 49000 48995 49001 49021
-sudo nixos-firewall-tool open udp 49009 49010 49011
+# ⚠️ 一次只能开一个端口：该工具只读 $2/$3，多写会静默地只开第一个！
+sudo nixos-firewall-tool open tcp 49000
+sudo nixos-firewall-tool open tcp 48995
+sudo nixos-firewall-tool open tcp 49001
+sudo nixos-firewall-tool open tcp 49021
+sudo nixos-firewall-tool open udp 49009
+sudo nixos-firewall-tool open udp 49010
+sudo nixos-firewall-tool open udp 49011
+sudo nixos-firewall-tool show | grep -E '4899|4900|4901|4902'   # 8 条规则（4 TCP + 3 UDP × v4/v6）都要在
 
 env XDG_CONFIG_HOME="$B" SUNSHINE_VDISPLAY_NAME=ProbeVirt SUNSHINE_VDISPLAY_PORT=5920 \
   <store>/bin/sunshine &                                     # 记下 PID
@@ -130,6 +137,7 @@ grep -aE "config: '(port|output_name)'" "$D/sunshine.log"    # 确认读的是�
 grep -aiE 'fatal|already in use' "$D/sunshine.log"           # 必须为空
 ```
 
+- **`nixos-firewall-tool` 一次只接受一个端口**（它只读 `$2/$3`，多端口静默只开第一个）：漏开 `base-5`（HTTPS）时客户端表现为**显示器列表加载缓慢/为空、启动失败**，而服务器侧日志里**一条客户端请求都没有** —— 这个症状组合先查防火墙，别查代码。
 - **`$XDG_CONFIG_HOME/sunshine/` 这一层是必须的**：Sunshine 在该子目录里找配置，少一层就等于全新安装 —— 表现为索要新账号密码、`port` 被忽略、随后 `Fatal: Couldn't bind RTSP server to port [48010], Address already in use` 撞上正在跑的服务（伴随 `File <cfg>/sunshine/sunshine_state.json doesn't exist`，即没配对）。
 - 会话开始后日志应出现 `Virtual display overrides in use: output [Virtual-ProbeVirt], port 5920`（这行只在会话启动时打）。
 - harness 构建**不带 cap**（没走 setcap wrapper）⇒ 会话内 kwin/portal 可用（虚拟屏正是 kwin），**KMS/SDDM 不在这个形态的范围**。
