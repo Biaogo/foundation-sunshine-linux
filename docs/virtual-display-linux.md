@@ -485,3 +485,21 @@ KMS 在进程余下生命周期内不可用"）。⇒ 用测试实例做 **KMS �
 **留给下一步的路**：借一块在 Linux+NVIDIA 下真能开 HDR 的屏/电视实测一次（判断是"屏"还是"驱动"，
 或更换 NVIDIA 驱动分支；虚拟输出那条路仍要等 VKMS 的 `supported_colorspaces`/`edid` 补丁合并。
 
+
+## 虚拟屏的刷新率（2026-09-26 修复并实测）
+
+**回归**：从 NixOS hook 切到内置虚拟屏时，只搬了"点亮"，漏了 hook 的另外两步 ——
+`kscreen-doctor output.<名>.addCustomMode.<W>.<H>.<fps*1000>.full` 与
+`output.<名>.<W>x<H>@<fps>`。krfb 的虚拟输出自带的档位只有合成器给的那几档（本机 60/90/120），
+所以客户端要 144/165 会静默跑在合成器选的档位上，而日志却打印**请求值**（看起来"成功"了）。
+
+**修复**（`src/platform/linux/virtual_display.{h,cpp}`）：点亮之后补回那两步（best effort ——
+驱动/合成器可能拒绝，hook 当年也是这么写的），并把两个参数构造函数暴露到头文件以便单测；
+日志改成如实报告是否真的切过去（失败时追加 `(the compositor kept its own refresh rate)`）。
+
+**实测（本机，客户端请求 165 Hz）**：
+```
+Info: Virtual display [Virtual-TestVirt] created at 2376x1080@165      ← 无失败后缀
+kscreen-doctor: Virtual-TestVirt 速率去重 {'60.00': 1, '165.00': 1}，当前(*)档 = 165.00
+```
+⇒ 自定义模式被合成器接受且已切换到位，与旧 hook 行为一致。
