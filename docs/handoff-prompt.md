@@ -28,7 +28,7 @@
 | **3 打包层** | ✅ 已做 | `cmake/packaging/linux.cmake` 加 `Recommends: krfb, libkf5screen-bin \| libkscreen-bin`；README 加一节；真 cpack+dpkg 验到 control 字段 |
 | **4 KWin 抢跑竞态** | ⚠️ **实现完成，待你实测** | 立即 pass + `TOPOLOGY_SETTLE`(1s) 后复查（`outputs_to_reenable()` 纯函数，6 条单测）；判据见下 |
 | **6 清临时 debug 日志** | ✅ | 删 `Touch mapping:`、删每轮 `Touch binding poll`、顺手清掉 GDBus 重构遗留的孤儿 doxygen |
-| 7 真 HDR / 8 portal 默认 KWin / 9 上游同步 | 7 ❌ · **8 ✅** · 9 ❌ | 8：`display_names()` 改成 `nvfbc → kwin → wlroots → kms → x11 → portal`（原来 kwin 排在 portal 之后，等于让 portal 的失败拖死 `wait_for_display()`） |
+| 7 真 HDR / 8 portal 默认 KWin / 9 上游同步 | **7 ✅ 侦查已更正** · **8 ✅** · 9 ❌ | 8：`display_names()` 改成 `nvfbc → kwin → wlroots → kms → x11 → portal`（原来 kwin 排在 portal 之后，等于让 portal 的失败拖死 `wait_for_display()`）。7：**采集侧本仓早就实现**（`is_hdr()`/`get_hdr_metadata()`/BT2020+P2084 协商都在 `pipewire.cpp`），交接词里"没写"是误判；真正只缺"把虚拟输出开成 HDR"这一步，硬门见 `docs/virtual-display-linux.md` 的 HDR 节 |
 
 ## 待办（按优先级）
 1. **★ 待办 4 的实测验收（唯一需要我连一次的事）**：`dd_configuration_option = ensure_active` 或
@@ -39,7 +39,7 @@
 2. **单元测试补齐（部分已完成）**：`nvhttp.cpp` 里"客户端/主机配置的显示选择 → 输出名 + hook 开关"已抽成纯函数 `resolve_display_pick()`（`virtual_display.h`）并补 7 条测试；**剩下的**是 `session_virtual_display_start()` 的调用分支与 `stream.cpp` 收尾调用（属集成路径，靠会话实测覆盖）。
 3. **`src/rtsp.cpp:72` 的 GCC 15 告警**（**不是本次改动引入**，属 mic lane）：`-Werror=stringop-overflow`，GCC 15 在多层 inline 后的**误报**（守卫已挡 `channel_count > sizeof(mapping)`）。两条路：循环上界补一条本地可证的 `&& i < static_cast<int>(sizeof(result.mapping))`，或构建里加 `-Wno-error=stringop-overflow`。**Ubuntu 的 GCC 13/14 CI 不受影响**，只在"NixOS/GCC 15 + BUILD_WERROR=ON"时才炸。
 4. **新提交与发版**：第二批的 4 个提交连同本轮的 `test(linux): cover the client display pick` **已 push 到 `origin/refork/linux`**（未打 tag）。要发版时注意：`v*` tag 必须 `vYYYY.MM.DD-linux`、**不能移动同名 tag**（CI 按名字判新旧）。
-5. 真 HDR（虚拟输出宣告 BT.2020/PQ，独立工程）。
+5. 真 HDR：**采集侧无需改动**（`pipewire.cpp` 里 `is_hdr()` / `get_hdr_metadata()` / BT2020+P2084 协商早已实现，我之前说"没写"是只看了 `kwingrab.cpp` 的误判）。真正只剩一步：**让虚拟输出变成 HDR** —— 客户端要 HDR 时创建后调 `kscreen-doctor output.<uuid>.hdr.enable`，收尾恢复（`kscreen_output_t` 快照加 HDR 位）。**动之前先跑硬门**：KWin 允不允许给 krfb 的虚拟输出开 HDR（步骤与回滚见 `docs/virtual-display-linux.md` 的 HDR 节）。
 6. ✅ portal 采集默认值：Linux 优先 KWin —— `display_names()` 已改成 `kwin` 优先于 `x11/portal`（见对账表最后一行的理由）。实测判据：会话里先出现 `Requested display [...] is available`，紧随 `Screencasting with KWin ScreenCast`。
 7. 上游 LizardByte 同步（人工分批；队列 `docs/upstream-linux-sync.md`）。
 8. **harness 的 `--argstr testFilter` 实际不生效**（drv 的 `checkPhase` 里带了 `--gtest_filter=…`，但跑的还是全量套件）——gate 参数现在是摆设，值得单独查。

@@ -92,6 +92,31 @@ ensure_only_display / verify_only / disabled` 映射到上面同一组 kscreen �
 在**任何**启动路径都生效（不再依赖钩子），失败也能进日志/HTTP 响应。
 这一步同时消掉“钩子必须和 Sunshine 同版本演进”的耦合。
 
+## HDR（第二期：虚拟屏）
+
+**采集侧不是缺口 —— 本仓早就实现了**（2026-09-25 逐行核实；此前交接里"采集环节完全没写"的说法有误，以本节为准）：
+
+| 环节 | 实现位置 |
+|---|---|
+| 检测 | `pipewire.cpp` 的格式回调把**合成器协商出的** `color_primaries`/`transfer_function` 记进 `shared_state`（同时打 `[pipewire] Color primaries:` / `Transfer function:` 日志）；`pipewire_display_t::is_hdr()` 就是判 "BT2020 + SMPTE2084"，`get_hdr_metadata()` 给出 Rec2020 原色 + HDR10 标称亮度（4000/1；CLL 这个接口不给） |
+| 协商 | `format_map` 把 10-bit 格式排在表首；协商到 `xBGR_210LE` 时 `build_format_parameter` 自动声明 `colorPrimaries=BT2020` + `transferFunction=SMPTE2084` |
+| 编码 | `colorspace_from_client_config(config, is_hdr())`（`video.cpp:2648`）：客户端要 HDR **且**流是 HDR → BT.2020/PQ |
+
+**真正缺的只有一步**：虚拟输出只能用 SDR 创建（krfb 无色彩参数，`kwinoutputconfig.json` 里 `highDynamicRange=false`），链路上游起不来。要接通就得在创建后 `kscreen-doctor output.<uuid>.hdr.enable`，并在收尾恢复（`kscreen_output_t` 快照需带上 HDR 位）。
+
+> 对照：**物理 HDR 屏上的 HDR 串流今天就应该已经能工作**（`is_hdr()` 会如实上报）——缺的只有虚拟输出这一条。
+
+**唯一硬门（待实测一次）**：KWin 允不允许给 krfb 的虚拟输出开 HDR。
+
+```bash
+kscreen-doctor -o | sed 's/\x1b\[[0-9;]*m//g' | grep -A3 'Virtual-SunshineVirt'
+kscreen-doctor output.Virtual-SunshineVirt.hdr.enable   # 会在真实桌面生效
+kscreen-doctor -o | sed 's/\x1b\[[0-9;]*m//g' | grep -A3 'Virtual-SunshineVirt' | grep -i hdr
+kscreen-doctor output.Virtual-SunshineVirt.hdr.disable  # 回滚
+```
+
+门开后：合成器给 10-bit → 我们声明 BT2020/PQ → `is_hdr()` 如实上报 → 编码选 BT.2020/PQ（全部现成，只需接上开关）。
+
 ## 测试
 
 * 单元：id → 名字映射、`virtual_display_available()` 的探测逻辑（可注入 PATH 桩）。
