@@ -242,6 +242,37 @@ jobs:
           # linuxdeploy + the qt plugin, then the packaging step transcribed from the CI job
           docker exec -e APPIMAGE_EXTRACT_AND_RUN=1 "$C" bash -lc '
             set -euo pipefail
+            # On Ubuntu /usr/bin/qmake is the qtchooser wrapper with no default Qt configured,
+            # and linuxdeploy-plugin-qt then dies with:
+            #   ERROR: Call to qmake failed: qmake: could not find a Qt installation of (empty)
+            #   ERROR: Failed to query Qt paths using qmake -query
+            #   ERROR: Failed to run plugin: qt (exit code: 1)
+            # qt6-base-dev ships the real qmake; point the plugin at it explicitly. That is what
+            # the fork own make-appimage.sh does, which is why packaging works locally.
+            export QT_SELECT=qt6
+            export EXTRA_QT_MODULES="svg;"
+            # Do not guess the path: distros disagree on where Qt6 keeps qmake, and /usr/bin/qmake
+            # may be the qtchooser wrapper with no default Qt at all. Accept only a qmake that can
+            # actually answer -query, i.e. a real Qt installation.
+            QMAKE=""
+            for c in qmake6 /usr/lib/qt6/bin/qmake6 /usr/lib/qt6/bin/qmake \
+                     /usr/lib/x86_64-linux-gnu/qt6/bin/qmake /usr/lib64/qt6/bin/qmake; do
+              if command -v "$c" >/dev/null 2>&1 || [ -x "$c" ]; then
+                p="$(command -v "$c" 2>/dev/null || echo "$c")"
+                if "$p" -query QT_INSTALL_PLUGINS >/dev/null 2>&1; then QMAKE="$p"; break; fi
+              fi
+            done
+            export QMAKE
+            if [ -z "$QMAKE" ]; then
+              echo "no usable qmake - dumping what is there so the next run can be fixed:"
+              command -v qmake qmake6 || true
+              ls -l /usr/lib/qt6/bin /usr/lib/x86_64-linux-gnu/qt6/bin 2>&1 || true
+              dpkg -l | grep -E "qt6|qtchooser" | head -20 || true
+              find /usr -maxdepth 5 -name "qmake*" 2>/dev/null | head -10 || true
+              exit 1
+            fi
+            echo "using qmake: $QMAKE"
+            "$QMAKE" -query QT_INSTALL_PLUGINS
             cd /src/build
             for i in 1 2 3 4 5; do
               [ -x linuxdeploy-x86_64.AppImage ] && break
