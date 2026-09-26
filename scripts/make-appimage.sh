@@ -14,13 +14,19 @@ cd /src/build
 APP_ID="dev.lizardbyte.app.Sunshine"
 
 # 1) install the build into the AppDir (ci-linux.yml step "Package Linux - AppImage")
+# Start from a clean AppDir: a leftover one from an earlier run already holds the desktop file
+# at AppDir/<app-id>.desktop, so the copy below then fails with "are the same file" and (under
+# set -e) aborts the whole packaging step before linuxdeploy ever runs. That is exactly how a
+# build whose compile succeeded produced no AppImage at all.
+rm -rf AppDir
 DESTDIR=AppDir ninja install
 test -f AppDir/usr/share/sunshine/udev/rules.d/60-sunshine.rules && echo "udev rules: present"
 
 # 2) custom AppRun + desktop file
 cp -f ../packaging/linux/AppImage/AppRun ./AppDir/
 chmod +x ./AppDir/AppRun
-if [ -f "./AppDir/usr/share/applications/${APP_ID}.desktop" ]; then
+if [ -f "./AppDir/usr/share/applications/${APP_ID}.desktop" ] && \
+   [ ! "./AppDir/usr/share/applications/${APP_ID}.desktop" -ef "./AppDir/${APP_ID}.desktop" ]; then
   cp -f "./AppDir/usr/share/applications/${APP_ID}.desktop" ./AppDir/
 elif [ -f "../packaging/linux/AppImage/${APP_ID}.desktop" ]; then
   cp -f "../packaging/linux/AppImage/${APP_ID}.desktop" ./AppDir/
