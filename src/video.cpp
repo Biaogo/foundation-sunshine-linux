@@ -35,6 +35,7 @@ extern "C" {
 #include "platform/common.h"
 #include "sync.h"
 #include "video.h"
+#include "video_bitrate.h"
 
 #ifdef _WIN32
 extern "C" {
@@ -474,6 +475,52 @@ namespace video {
       device.reset();
     }
 
+    /**
+     * @brief Ask the running FFmpeg encoder to move to a different average bitrate.
+     *
+     * The request is recorded here and applied by the encode worker on the next frame it
+     * submits, which is the only thread allowed to touch the codec context. FFmpeg's NVENC
+     * wrapper compares these rate-control fields against the encoder's live configuration
+     * and reconfigures the encoder (forcing an IDR) when any of them moved.
+     *
+     * @param bitrate_kbps Requested video bitrate.
+     * @return True when the request was recorded for the next frame.
+     */
+    bool set_bitrate(int bitrate_kbps) override {
+      if (!avcodec_ctx || bitrate_kbps <= 0) {
+        return false;
+      }
+
+      pending_bitrate_kbps.store(bitrate_kbps);
+      return true;
+    }
+
+    /**
+     * @brief Apply a bitrate recorded by set_bitrate() to the codec context.
+     *
+     * Called from the encode worker before it submits a frame. Scaling the VBV buffer keeps
+     * the same buffer depth in frames that the initial configuration set up.
+     *
+     * @return True when the codec context was updated for this frame.
+     */
+    bool apply_pending_bitrate() {
+      auto bitrate_kbps = pending_bitrate_kbps.exchange(0);
+      if (!bitrate_kbps || !avcodec_ctx) {
+        return false;
+      }
+
+      const auto bitrate = bitrate_kbps * 1000LL;
+      const auto old_bitrate = avcodec_ctx->bit_rate;
+
+      avcodec_ctx->bit_rate = bitrate;
+      avcodec_ctx->rc_max_rate = bitrate;
+      avcodec_ctx->rc_buffer_size = scale_bitrate_budget(avcodec_ctx->rc_buffer_size, old_bitrate, bitrate);
+      avcodec_ctx->rc_min_rate = bitrate;
+
+      BOOST_LOG(info) << "Video bitrate: codec context moved to "sv << bitrate_kbps << " Kbps"sv;
+      return true;
+    }
+
     // Ensure objects are destroyed in the correct order
     /**
      * @brief Assign state from another instance while preserving ownership semantics.
@@ -540,6 +587,7 @@ namespace video {
     }
 
     avcodec_ctx_t avcodec_ctx;  ///< FFmpeg codec context owned by the encode session.
+    std::atomic<int> pending_bitrate_kbps {};  ///< Bitrate requested by the stream thread, in Kbps, 0 when idle.
     std::unique_ptr<platf::avcodec_encode_device_t> device;  ///< Platform device used by the FFmpeg hardware encoder.
 
     std::vector<packet_raw_t::replace_t> replacements;  ///< NAL-unit byte ranges that must be replaced before packet send.
@@ -1911,8 +1959,11 @@ namespace video {
     auto &frame = session.device->frame;
     frame->pts = frame_nr;
 
-    auto &ctx = session.avcodec_ctx;
+    // Apply a bitrate change requested while the stream was running, before this frame goes out.
+    session.apply_pending_bitrate();
 
+    auto &ctx = session.avcodec_ctx;
+  
     auto &sps = session.sps;
     auto &vps = session.vps;
 
