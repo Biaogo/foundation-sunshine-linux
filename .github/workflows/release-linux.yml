@@ -300,7 +300,7 @@ jobs:
             elif [ -f "../packaging/linux/AppImage/${APP_ID}.desktop" ]; then
               cp -f "../packaging/linux/AppImage/${APP_ID}.desktop" ./AppDir/
             fi
-            ls ./AppDir/*.desktop >/dev/null 2>&1 || { echo 'no desktop file for the AppImage'; ls -la ./AppDir | head -20; exit 1; }
+            ls ./AppDir/*.desktop >/dev/null 2>&1 || { echo no desktop file for the AppImage; ls -la ./AppDir | head -20; exit 1; }
             ./linuxdeploy-x86_64.AppImage --appdir ./AppDir --plugin qt \
               --executable ./sunshine --icon-file ../sunshine.png \
               --desktop-file "./AppDir/${APP_ID}.desktop" --output appimage
