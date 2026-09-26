@@ -402,6 +402,47 @@ namespace platf {
      * @param name Output name to make live.
      * @return True once the output reads as enabled.
      */
+    /**
+     * @brief Ask the compositor to run the virtual output at the client's refresh rate.
+     *
+     * krfb's virtual output only carries the compositor's own rates (60/90/120 on the reference host),
+     * so a client asking for e.g. 165 used to end up on whatever the compositor had picked. The
+     * replaced NixOS hook added a custom mode for the client's rate and switched to it; the built-in
+     * path lost that step when it took over. Both steps are best effort: a refused mode leaves the
+     * compositor's default in place and Sunshine's frame pacing copes with the mismatch.
+     *
+     * @param output Output name as the compositor lists it.
+     * @param width Requested width in pixels.
+     * @param height Requested height in pixels.
+     * @param fps Requested refresh rate in whole hertz.
+     * @return True when the mode switch was issued without an exception.
+     */
+    bool apply_client_refresh_rate(const std::string &output, int width, int height, int fps) {
+      const auto exe = tool_path(KSCREEN_HELPER);
+      if (exe.empty() || output.empty() || width <= 0 || height <= 0 || fps <= 0) {
+        return false;
+      }
+
+      try {
+        boost::process::v1::child add(exe, add_custom_mode_arg(output, width, height, fps));
+        add.wait();
+      }
+      catch (const std::exception &e) {
+        // Not fatal: the mode may already exist, or the driver may refuse it.
+        BOOST_LOG(debug) << "Could not add "sv << width << 'x' << height << '@' << fps << ": "sv << e.what();
+      }
+
+      try {
+        boost::process::v1::child pick(exe, set_mode_arg(output, width, height, fps));
+        pick.wait();
+        return true;
+      }
+      catch (const std::exception &e) {
+        BOOST_LOG(warning) << "Could not select "sv << width << 'x' << height << '@' << fps << ": "sv << e.what();
+        return false;
+      }
+    }
+
     bool enable_output_by_name(const std::string &name) {
       std::size_t last_layout_size = 0;
       bool last_listed = false;
@@ -740,10 +781,15 @@ namespace platf {
       return false;
     }
 
+    // The compositor's virtual output only knows its own rates; hand it the client's and select it,
+    // the way the NixOS hook this replaced used to.
+    const bool refresh_selected = apply_client_refresh_rate(name, width, height, fps);
+
     state->output_name = name;
     impl_ = std::move(state);
     BOOST_LOG(info) << "Virtual display ["sv << name << "] created at "sv << width << 'x' << height
-                    << '@' << fps;
+                    << '@' << fps
+                    << (refresh_selected ? ""sv : " (the compositor kept its own refresh rate)"sv);
     return true;
   }
 

@@ -285,6 +285,38 @@ namespace platf {
    * @param fps Requested refresh rate.
    * @return True when the monitor was created and is enumerated by the compositor.
    */
+  /**
+   * @brief Build the kscreen-doctor argument that adds a mode for a refresh rate.
+   *
+   * kscreen-doctor names the refresh rate in millihertz and wants a blanking argument, e.g.
+   * `output.1.addCustomMode.1920.1080.75000.full`. The replaced NixOS hook did exactly this to make
+   * the client's rate show up on the virtual output; a driver or compositor may refuse the mode, so
+   * callers treat a failure as non-fatal.
+   *
+   * @param output Output name as the compositor lists it.
+   * @param width Mode width in pixels.
+   * @param height Mode height in pixels.
+   * @param fps Refresh rate in whole hertz.
+   * @return The kscreen-doctor argument.
+   */
+  inline std::string add_custom_mode_arg(const std::string &output, int width, int height, int fps) {
+    return "output." + output + ".addCustomMode." + std::to_string(width) + "." + std::to_string(height) + "." +
+           std::to_string(fps * 1000) + ".full";
+  }
+
+  /**
+   * @brief Build the kscreen-doctor argument that selects a `widthxheight@fps` mode.
+   *
+   * @param output Output name as the compositor lists it.
+   * @param width Mode width in pixels.
+   * @param height Mode height in pixels.
+   * @param fps Refresh rate in whole hertz.
+   * @return The kscreen-doctor argument.
+   */
+  inline std::string set_mode_arg(const std::string &output, int width, int height, int fps) {
+    return "output." + output + "." + std::to_string(width) + "x" + std::to_string(height) + "@" + std::to_string(fps);
+  }
+
   bool session_virtual_display_start(int width, int height, int fps);
 
   /**

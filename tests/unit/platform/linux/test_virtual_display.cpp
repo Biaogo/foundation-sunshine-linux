@@ -628,4 +628,30 @@ TEST(VirtualDisplayHelperLookup, PicksUpAHelperThatAppearsWhileTheCheckRetries) 
   EXPECT_EQ(found, tool);
 }
 
+
+  /**
+   * @brief The client's refresh rate has to be handed to the compositor, as the NixOS hook used to.
+   *
+   * krfb's virtual output only knows the compositor's own rates (60/90/120 on the reference host), so
+   * without these two kscreen-doctor calls a client asking for 165 streams at whatever rate the
+   * compositor picked. The replaced hook did exactly this pair; the built-in path has to keep doing it.
+   */
+  TEST(VirtualDisplayRefreshMode, BuildsTheArgumentsTheHookUsed) {
+    EXPECT_EQ("output.Virtual-SunshineVirt.addCustomMode.3168.1440.165000.full",
+              platf::add_custom_mode_arg("Virtual-SunshineVirt", 3168, 1440, 165));
+    EXPECT_EQ("output.Virtual-SunshineVirt.3168x1440@165",
+              platf::set_mode_arg("Virtual-SunshineVirt", 3168, 1440, 165));
+
+    // The documented shape, and a rate whose millihertz form is not a multiple of a thousand.
+    EXPECT_EQ("output.1.addCustomMode.1920.1080.75000.full", platf::add_custom_mode_arg("1", 1920, 1080, 75));
+    EXPECT_EQ("output.1.1920x1080@60", platf::set_mode_arg("1", 1920, 1080, 60));
+
+    // The refresh rate is whole hertz in the mode argument and millihertz in the custom mode: 90 Hz
+    // has to become 90000, not 900 or 9000.
+    EXPECT_EQ("output.Virtual-ProbeVirt.addCustomMode.2376.1080.90000.full",
+              platf::add_custom_mode_arg("Virtual-ProbeVirt", 2376, 1080, 90));
+    EXPECT_EQ("output.Virtual-ProbeVirt.2376x1080@90",
+              platf::set_mode_arg("Virtual-ProbeVirt", 2376, 1080, 90));
+  }
+
 #endif  // __linux__
