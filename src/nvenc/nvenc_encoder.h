@@ -70,6 +70,20 @@ namespace nvenc {
      * @return `true` on success, `false` on error.
      */
     virtual bool invalidate_ref_frames(std::uint64_t first_frame, std::uint64_t last_frame) = 0;
+
+    /**
+     * @brief Change the video bitrate of a live encoder session.
+     *
+     * The default answers `false`: an implementation that cannot reconfigure a running session says so
+     * instead of pretending the change was applied.
+     *
+     * @param bitrate_kbps Requested video bitrate.
+     * @return `true` on success, `false` on error.
+     */
+    virtual bool set_bitrate(int bitrate_kbps) {
+      (void) bitrate_kbps;
+      return false;
+    }
   };
 
 }  // namespace nvenc

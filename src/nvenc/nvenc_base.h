@@ -75,6 +75,14 @@ namespace NVENC_NAMESPACE {
      */
     bool invalidate_ref_frames(uint64_t first_frame, uint64_t last_frame) override;
 
+    /**
+     * @brief Change the video bitrate of the live encoder session.
+     *
+     * @param bitrate_kbps Requested video bitrate.
+     * @return `true` on success, `false` on error.
+     */
+    bool set_bitrate(int bitrate_kbps) override;
+
   protected:
     /**
      * @brief Required. Used for loading NvEnc library and setting `nvenc` variable with `NvEncodeAPICreateInstance()`.
@@ -121,6 +129,9 @@ namespace NVENC_NAMESPACE {
     const NV_ENC_DEVICE_TYPE device_type;  ///< NVENC device backend used by this encoder instance.
 
     void *encoder = nullptr;  ///< Opaque NVENC encoder session handle returned by the driver.
+
+    NV_ENC_INITIALIZE_PARAMS init_params_snapshot {};  ///< Parameters the live encoder was created with; the SDK reconfigures a session from exactly these.
+    NV_ENC_CONFIG encode_config_snapshot {};  ///< Encoder configuration the live encoder was created with; carries the rate-control values a change updates.
 
     struct {
       uint32_t width = 0;

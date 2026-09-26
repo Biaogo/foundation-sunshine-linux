@@ -598,6 +598,20 @@ namespace video {
      * @param first_frame First frame.
      * @param last_frame Last frame.
      */
+    /**
+     * @brief Change the encoder's video bitrate while it runs.
+     *
+     * @param bitrate_kbps Requested video bitrate.
+     * @return True when the encoder applied the change.
+     */
+    bool set_bitrate(int bitrate_kbps) override {
+      if (!device || !device->nvenc) {
+        return false;
+      }
+
+      return device->nvenc->set_bitrate(bitrate_kbps);
+    }
+
     void invalidate_ref_frames(int64_t first_frame, int64_t last_frame) override {
       if (!device || !device->nvenc) {
         return;
@@ -637,6 +651,7 @@ namespace video {
     safe::mail_raw_t::event_t<bool> shutdown_event;  ///< Event raised when the stream should shut down.
     safe::mail_raw_t::queue_t<packet_t> packets;  ///< Queue receiving encoded video packets for the stream sender.
     safe::mail_raw_t::event_t<bool> idr_events;  ///< Event raised when an IDR frame is requested.
+    safe::mail_raw_t::event_t<int> bitrate_events;  ///< Event carrying a requested video bitrate change, in Kbps.
     safe::mail_raw_t::event_t<hdr_info_t> hdr_events;  ///< Event carrying updated HDR metadata.
     safe::mail_raw_t::event_t<input::touch_port_t> touch_port_events;  ///< Event carrying updated touch viewport metadata.
 
@@ -2507,6 +2522,7 @@ namespace video {
     auto shutdown_event = mail->event<bool>(mail::shutdown);
     auto packets = mail::man->queue<packet_t>(mail::video_packets);
     auto idr_events = mail->event<bool>(mail::idr);
+    auto bitrate_events = mail->event<int>(mail::bitrate);
     auto invalidate_ref_frames_events = mail->event<std::pair<int64_t, int64_t>>(mail::invalidate_ref_frames);
 
     {
@@ -2532,6 +2548,14 @@ namespace video {
       if (idr_events->peek()) {
         requested_idr_frame = true;
         idr_events->pop();
+      }
+
+      while (bitrate_events->peek()) {
+        if (auto bitrate = bitrate_events->pop(0ms)) {
+          if (!session->set_bitrate(*bitrate)) {
+            BOOST_LOG(warning) << "The running encoder could not change its bitrate to "sv << *bitrate << " Kbps"sv;
+          }
+        }
       }
 
       if (requested_idr_frame) {
@@ -2850,6 +2874,12 @@ namespace video {
             ctx->idr_events->pop();
           }
 
+          while (ctx->bitrate_events->peek()) {
+            if (auto bitrate = ctx->bitrate_events->pop(0ms)) {
+              pos->session->set_bitrate(*bitrate);
+            }
+          }
+
           if (frame_captured && pos->session->convert(*img)) {
             BOOST_LOG(error) << "Could not convert image"sv;
             ctx->shutdown_event->raise(true);
@@ -3069,6 +3099,7 @@ namespace video {
         mail->event<bool>(mail::shutdown),
         mail::man->queue<packet_t>(mail::video_packets),
         std::move(idr_events),
+        mail->event<int>(mail::bitrate),
         mail->event<hdr_info_t>(mail::hdr),
         mail->event<input::touch_port_t>(mail::touch_port),
         config,

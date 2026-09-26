@@ -37,6 +37,7 @@
   #include "platform/linux/virtual_display.h"
 #endif
 #include "process.h"
+#include "stream.h"
 #include "rtsp.h"
 #include "system_tray.h"
 #include "utility.h"
@@ -1728,6 +1729,80 @@ namespace nvhttp {
    * @param response HTTP response object to populate.
    * @param request HTTP request data from the client.
    */
+  /**
+   * @brief Validate a client-supplied runtime bitrate.
+   *
+   * @param bitrate_kbps Value parsed from the request.
+   * @return True when the value is a usable video bitrate.
+   */
+  bool is_valid_stream_bitrate(std::int64_t bitrate_kbps) {
+    return bitrate_kbps > 0 && bitrate_kbps <= MAX_STREAM_BITRATE_KBPS;
+  }
+
+  /**
+   * @brief Change the video bitrate of the client's running session.
+   *
+   * Moonlight-derived clients ask for this on the paired-client HTTPS channel while they stream
+   * (measured: `GET /bitrate?uuid=…&clientname=…&uniqueid=…&bitrate=…`). Without the route they read
+   * the failure as "the host cannot do this" and fall back to a full reconnect, which is what a
+   * stream that drops whenever the bitrate changes looks like from the operator's side.
+   *
+   * @param response Response carrying the GameStream-style result document.
+   * @param request Request with `bitrate` plus the client identifiers as query parameters.
+   */
+  void change_bitrate(resp_https_t response, req_https_t request) {
+    print_req<SunshineHTTPS>(request);
+
+    pt::ptree tree;
+    auto g = util::fail_guard([&]() {
+      std::ostringstream data;
+      pt::write_xml(data, tree);
+      response->write(data.str());
+      response->close_connection_after_response = true;
+    });
+
+    tree.put("root.<xmlattr>.status_code", 200);
+    tree.put("root.bitrate", 0);
+
+    auto args = request->parse_query_string();
+
+    const auto bitrate_param = args.find("bitrate");
+    if (bitrate_param == args.end()) {
+      tree.put("root.<xmlattr>.status_code", 400);
+      tree.put("root.<xmlattr>.status_message", "Missing bitrate parameter");
+      return;
+    }
+
+    const auto bitrate_kbps = util::from_view(bitrate_param->second);
+    if (!is_valid_stream_bitrate(bitrate_kbps)) {
+      tree.put("root.<xmlattr>.status_code", 400);
+      tree.put("root.<xmlattr>.status_message", "Invalid bitrate value. Must be between 1 and "s +
+                                                   std::to_string(MAX_STREAM_BITRATE_KBPS) + " Kbps");
+      return;
+    }
+
+    const auto unique_id_param = args.find("uniqueid");
+    const auto &unique_id = unique_id_param == args.end() ? std::string {} : unique_id_param->second;
+    const auto client_name = args.find("clientname");
+
+    // last_verified_client_cert is the certificate the TLS handshake authenticated for this request,
+    // so a session reached through it is the requesting client's own.
+    if (!stream::session::change_bitrate(last_verified_client_cert, unique_id, static_cast<int>(bitrate_kbps))) {
+      tree.put("root.<xmlattr>.status_code", 503);
+      tree.put("root.<xmlattr>.status_message", "No running session to change the bitrate of");
+      BOOST_LOG(warning) << "Bitrate change for client ["sv
+                         << (client_name == args.end() ? "unknown"sv : std::string_view {client_name->second})
+                         << "] ignored: no running session matches"sv;
+      return;
+    }
+
+    tree.put("root.bitrate", 1);
+    tree.put("root.<xmlattr>.bitrate", bitrate_kbps);
+    if (client_name != args.end()) {
+      tree.put("root.<xmlattr>.clientname", client_name->second);
+    }
+  }
+
   void cancel(resp_https_t response, req_https_t request) {
     print_req<SunshineHTTPS>(request);
 
@@ -1890,6 +1965,8 @@ namespace nvhttp {
     // Client-facing display list (Moonlight's display selector). Serves the active capture
     // backend's outputs, plus the Linux virtual-display ids once that feature is offered.
     https_server.resource["^/displays$"]["GET"] = get_displays<SunshineHTTPS>;
+    // Runtime bitrate change for an already-streaming client (see change_bitrate).
+    https_server.resource["^/bitrate$"]["GET"] = change_bitrate;
 
     https_server.config.reuse_address = true;
     https_server.config.address = net::get_bind_address(address_family);

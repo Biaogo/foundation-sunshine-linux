@@ -95,5 +95,19 @@ namespace stream {
      * @return PEM certificate associated with the session's client.
      */
     const std::string &client_cert(session_t &session);
+    /**
+     * @brief Hand a video bitrate change to a running stream session.
+     *
+     * The client-facing `/bitrate` route resolves its target through this. A Moonlight-derived client
+     * changes the bitrate while it streams; a host that does not apply the change leaves the client to
+     * fall back to a full reconnect, which is what "the stream drops when the bitrate changes" looks
+     * like from the operator's side.
+     *
+     * @param client_cert PEM certificate of the authenticated client (empty when unknown).
+     * @param client_unique_id Moonlight unique id sent by the client (empty when unknown).
+     * @param bitrate_kbps Requested video bitrate.
+     * @return True when a running session matched and the change reached its video worker.
+     */
+    bool change_bitrate(const std::string &client_cert, const std::string &client_unique_id, int bitrate_kbps);
   }  // namespace session
 }  // namespace stream

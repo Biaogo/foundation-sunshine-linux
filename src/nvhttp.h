@@ -9,6 +9,7 @@
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -205,6 +206,23 @@ namespace nvhttp {
    * @return `true` when the name is non-empty and within the storage limit.
    */
   bool is_valid_pairing_name(std::string_view name);
+
+  /**
+   * @brief Largest video bitrate a client may request while it streams (Kbps).
+   */
+  constexpr auto MAX_STREAM_BITRATE_KBPS = 800000;
+
+  /**
+   * @brief Validate a client-supplied runtime bitrate against the range the API accepts.
+   *
+   * The upper bound matches the range Moonlight-derived clients stay inside; a host that accepted
+   * anything could be asked for a bitrate no encoder can configure.
+   *
+   * @param bitrate_kbps Value parsed from the request (64-bit so an out-of-range value cannot wrap
+   * into the accepted range before it is checked).
+   * @return `true` when the value is a usable video bitrate.
+   */
+  bool is_valid_stream_bitrate(std::int64_t bitrate_kbps);
 
   /**
    * @brief Insert a newly created pairing session into bounded pending storage.

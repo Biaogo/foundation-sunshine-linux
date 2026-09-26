@@ -439,6 +439,19 @@ namespace video {
     virtual void request_idr_frame() = 0;
 
     /**
+     * @brief Change the video bitrate of the live encoder.
+     *
+     * Implementations that cannot reconfigure a running encoder answer "no" instead of pretending.
+     *
+     * @param bitrate_kbps Requested video bitrate.
+     * @return True when the encoder applied the change.
+     */
+    virtual bool set_bitrate(int bitrate_kbps) {
+      (void) bitrate_kbps;
+      return false;
+    }
+
+    /**
      * @brief Mark the frame as a request for a normal inter frame.
      */
     virtual void request_normal_frame() = 0;

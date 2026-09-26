@@ -486,7 +486,46 @@ namespace NVENC_NAMESPACE {
     }
   }
 
+  bool nvenc_base::set_bitrate(int bitrate_kbps) {
+    if (!encoder || bitrate_kbps <= 0 || !init_params_snapshot.encodeConfig) {
+      return false;
+    }
+
+    const auto previous_bitrate = encode_config_snapshot.rcParams.averageBitRate;
+    encode_config_snapshot.rcParams.averageBitRate = static_cast<std::uint32_t>(bitrate_kbps) * 1000;
+    if (previous_bitrate > 0 && encode_config_snapshot.rcParams.vbvBufferSize > 0) {
+      // The VBV size is sized for the bitrate it was configured with, so scale it by the same factor.
+      encode_config_snapshot.rcParams.vbvBufferSize = static_cast<std::uint32_t>(
+        static_cast<std::uint64_t>(encode_config_snapshot.rcParams.vbvBufferSize) *
+        encode_config_snapshot.rcParams.averageBitRate / previous_bitrate
+      );
+    }
+
+    NV_ENC_RECONFIGURE_PARAMS params = {};
+    params.version = NV_ENC_RECONFIGURE_PARAMS_VER;
+    params.reInitEncodeParams = init_params_snapshot;
+    params.reInitEncodeParams.encodeConfig = &encode_config_snapshot;
+    params.resetEncoder = 0;
+    params.forceIDR = 0;
+
+    if (nvenc_failed(nvenc->nvEncReconfigureEncoder(encoder, &params))) {
+      BOOST_LOG(error) << "NvEnc: NvEncReconfigureEncoder() failed: " << last_nvenc_error_string;
+      return false;
+    }
+
+    BOOST_LOG(info) << "NvEnc: video bitrate changed to " << bitrate_kbps << " Kbps";
+    return true;
+  }
+
   bool nvenc_base::initialize_encoder_resources(NV_ENC_INITIALIZE_PARAMS &init_params) {
+    // Keep what the encoder is created with: the SDK reconfigures a live session from exactly these
+    // parameters, so a saved copy is what makes set_bitrate() possible later.
+    init_params_snapshot = init_params;
+    if (init_params.encodeConfig) {
+      encode_config_snapshot = *init_params.encodeConfig;
+      init_params_snapshot.encodeConfig = &encode_config_snapshot;
+    }
+
     if (nvenc_failed(nvenc->nvEncInitializeEncoder(encoder, &init_params))) {
       BOOST_LOG(error) << "NvEnc: NvEncInitializeEncoder() failed: " << last_nvenc_error_string;
       return false;

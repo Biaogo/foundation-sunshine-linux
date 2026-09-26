@@ -516,6 +516,7 @@ namespace stream {
       std::uint64_t gcm_iv_counter;  ///< Counter incorporated into video AES-GCM initialization vectors.
 
       safe::mail_raw_t::event_t<bool> idr_events;  ///< Event requesting an instantaneous decoder refresh frame.
+      safe::mail_raw_t::event_t<int> bitrate_events;  ///< Event carrying a requested video bitrate change, in Kbps.
       safe::mail_raw_t::event_t<std::pair<int64_t, int64_t>> invalidate_ref_frames_events;  ///< Event carrying the reference-frame range to invalidate.
 
       std::unique_ptr<platf::deinit_t> qos;  ///< Lifetime guard for video-socket QoS configuration.
@@ -556,6 +557,7 @@ namespace stream {
 
     std::uint32_t launch_session_id;  ///< RTSP launch-session ID associated with this stream.
     std::string client_cert;  ///< PEM certificate for the paired client owning the stream.
+    std::string client_unique_id;  ///< Moonlight unique id the client launched with (empty when it sent none).
     std::string input_session_id;  ///< Stable client identity used to retain input devices across resume.
 
     safe::mail_raw_t::event_t<bool> shutdown_event;  ///< Event raised when the stream should shut down.
@@ -2199,6 +2201,40 @@ namespace stream {
     }
 
     /**
+     * @brief Hand a video bitrate change to a running stream session.
+     */
+    bool change_bitrate(const std::string &client_cert, const std::string &client_unique_id, int bitrate_kbps) {
+      // Only a live broadcast can carry a change: without one there is no session to reconfigure, and
+      // starting a broadcast here would be a session of its own. A broadcast that has not started yet
+      // hands back a null reference (this is how the rest of the file checks it).
+      auto broadcast_ref = broadcast.ref();
+      if (!broadcast_ref) {
+        return false;
+      }
+
+      auto lg = broadcast_ref->control_server._sessions.lock();
+      for (auto *session_p : *broadcast_ref->control_server._sessions) {
+        if (session_p->state.load(std::memory_order_relaxed) != state_e::RUNNING) {
+          continue;
+        }
+
+        // The certificate is what the TLS handshake authenticated, so it is the identity to trust;
+        // the client-supplied ids are the fallback for clients that send them without a certificate.
+        const bool cert_matches = !client_cert.empty() && session_p->client_cert == client_cert;
+        const bool id_matches = !client_unique_id.empty() && session_p->client_unique_id == client_unique_id;
+        if (!cert_matches && !id_matches) {
+          continue;
+        }
+
+        session_p->video.bitrate_events->raise(bitrate_kbps);
+        BOOST_LOG(info) << "Bitrate change to "sv << bitrate_kbps << " Kbps handed to a running session"sv;
+        return true;
+      }
+
+      return false;
+    }
+
+    /**
      * @brief Stop the active streaming session and prevent new packets from being queued.
      */
     void stop(session_t &session) {
@@ -2356,6 +2392,7 @@ namespace stream {
         }
       }
       session->client_cert = launch_session.client_cert;
+      session->client_unique_id = launch_session.unique_id;
       session->input_session_id = launch_session.client_cert.empty() ? launch_session.unique_id : launch_session.client_cert;
 
       session->config = config;
@@ -2370,6 +2407,7 @@ namespace stream {
       };
 
       session->video.idr_events = mail->event<bool>(mail::idr);
+      session->video.bitrate_events = mail->event<int>(mail::bitrate);
       session->video.invalidate_ref_frames_events = mail->event<std::pair<int64_t, int64_t>>(mail::invalidate_ref_frames);
       session->video.lowseq = 0;
       session->video.ping_payload = launch_session.av_ping_payload;
