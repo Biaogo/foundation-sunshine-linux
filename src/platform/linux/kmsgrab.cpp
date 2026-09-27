@@ -129,7 +129,10 @@ namespace platf {
 
         void drop_privileges() {
           instance().run([] {
-            platf::drop_elevated_privileges(true);
+            // Keep CAP_SYS_ADMIN in PERMITTED: the per-task RAII re-raises it from PERMITTED, so
+            // clearing PERMITTED here would permanently kill KMS capture in this worker thread.
+            BOOST_LOG(info) << "[kms] dropping worker privileges, keeping PERMITTED for kms RAII"sv;
+            platf::drop_elevated_privileges(false);
           });
         }
 

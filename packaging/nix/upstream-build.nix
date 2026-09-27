@@ -6,9 +6,9 @@
    extended for the 2026-09 upstream tree (libvirtualhid/libdisplaydevice/lizardbyte-common/glad).
 
    Usage:
-     nix-build upstream-sunshine.nix --arg configureOnly true          # deps probe only (fast)
-     nix-build upstream-sunshine.nix --arg buildTests true             # unit tests (gtest)
-     nix-build upstream-sunshine.nix --arg cudaSupport true -o result  # real build
+     nix-build upstream-build.nix --arg configureOnly true          # deps probe only (fast)
+     nix-build upstream-build.nix --arg buildTests true             # unit tests (gtest)
+     nix-build upstream-build.nix --arg cudaSupport true -o result  # real build
 */
 { pkgs ? import <nixpkgs> { config.allowUnfree = true; }  # CUDA EULA for cudaSupport
 , srcPath ? /tmp/fsl-refork-src
