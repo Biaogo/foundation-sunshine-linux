@@ -336,12 +336,13 @@ namespace pipewire {
         std::array<const struct spa_pod *, MAX_PARAMS> params;
 
         // Add preferred parameters for DMA-BUF with modifiers
-        // Use DMA-BUF for VAAPI, or for CUDA when the display GPU is NVIDIA (pure NVIDIA system).
-        // On hybrid GPU systems (Intel+NVIDIA), DMA-BUFs come from the Intel GPU and cannot
-        // be imported into CUDA, so we fall back to memory buffers in that case.
-        bool use_dmabuf = n_dmabuf_infos > 0 && (mem_type == platf::mem_type_e::vaapi ||
-                                                 mem_type == platf::mem_type_e::vulkan ||
-                                                 (mem_type == platf::mem_type_e::cuda && display_is_nvidia));
+        // DMA-BUF is advertised only when this build can consume it for the encoder's memory type:
+        // VAAPI always can, CUDA only when the display GPU is NVIDIA (a hybrid system's DMA-BUFs
+        // come from the Intel GPU and cannot be imported into CUDA), and neither can when its
+        // encode device was compiled out. Otherwise the frames would reach the software converter,
+        // which has no system-memory pointer to read. The memory-buffer formats added below stay
+        // in the parameter list either way and are what such a build falls back to.
+        const bool use_dmabuf = n_dmabuf_infos > 0 && platf::mem_type_consumes_dmabuf(mem_type, display_is_nvidia);
         if (use_dmabuf) {
           for (int i = 0; i < n_dmabuf_infos; i++) {
             auto format_param = build_format_parameter(&pod_builder, width, height, target_framerate, dmabuf_infos[i].format, dmabuf_infos[i].modifiers, dmabuf_infos[i].n_modifiers);

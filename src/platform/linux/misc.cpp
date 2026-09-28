@@ -1670,6 +1670,43 @@ namespace platf {
 #endif
   }
 
+  bool mem_type_consumes_dmabuf(mem_type_e mem_type, bool display_is_nvidia) {
+    // Keyed on the encode devices this build actually contains (cmake/compile_definitions/linux.cmake).
+    // A DMA-BUF frame has no CPU pointer, so the software converter cannot stand in for a missing
+    // device: swscale answers EINVAL and the session never produces a frame. Capture must fall back
+    // to memory buffers, which the software converter can read, instead of negotiating DMA-BUF.
+#if defined(SUNSHINE_BUILD_CUDA)
+    constexpr bool cuda_encode_device_available = true;
+#else
+    constexpr bool cuda_encode_device_available = false;
+#endif
+
+#if defined(SUNSHINE_BUILD_VAAPI)
+    constexpr bool vaapi_encode_device_available = true;
+#else
+    constexpr bool vaapi_encode_device_available = false;
+#endif
+
+#if defined(SUNSHINE_BUILD_VULKAN)
+    constexpr bool vulkan_encode_device_available = true;
+#else
+    constexpr bool vulkan_encode_device_available = false;
+#endif
+
+    switch (mem_type) {
+      case mem_type_e::vaapi:
+        return vaapi_encode_device_available;
+      case mem_type_e::vulkan:
+        return vulkan_encode_device_available;
+      case mem_type_e::cuda:
+        // DMA-BUFs produced by a non-NVIDIA compositor cannot be imported into CUDA.
+        return cuda_encode_device_available && display_is_nvidia;
+      default:
+        // System-memory, DXGI and VideoToolbox paths never read a DMA-BUF here.
+        return false;
+    }
+  }
+
   void drop_elevated_privileges(bool all_caps) {
 #if !defined(__FreeBSD__)
     bool failed = false;

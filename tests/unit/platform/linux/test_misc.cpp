@@ -16,6 +16,7 @@
 
   // local includes
   #include "src/logging.h"
+  #include "src/platform/common.h"
   #include "src/platform/linux/misc.h"
 
 namespace {
@@ -107,6 +108,41 @@ TEST_F(ProcessEnvironmentSecurity, PreservesTraySessionVariables) {
   ASSERT_TRUE(platf::sanitize_process_environment());
   EXPECT_STREQ(std::getenv("QT_QPA_PLATFORMTHEME"), "gtk3");
   EXPECT_STREQ(std::getenv("WAYLAND_DISPLAY"), "wayland-test");
+}
+
+TEST(DmabufConsumption, FollowsTheCompiledEncodeDevices) {
+  // Mirrors cmake/compile_definitions/linux.cmake: capture may only negotiate DMA-BUF when this
+  // build contains the encode device that can read such a frame, because a DMA-BUF has no
+  // system-memory pointer for the software converter to fall back on.
+#if defined(SUNSHINE_BUILD_VAAPI)
+  EXPECT_TRUE(platf::mem_type_consumes_dmabuf(platf::mem_type_e::vaapi, false));
+#else
+  EXPECT_FALSE(platf::mem_type_consumes_dmabuf(platf::mem_type_e::vaapi, false));
+#endif
+
+#if defined(SUNSHINE_BUILD_VULKAN)
+  EXPECT_TRUE(platf::mem_type_consumes_dmabuf(platf::mem_type_e::vulkan, false));
+#else
+  EXPECT_FALSE(platf::mem_type_consumes_dmabuf(platf::mem_type_e::vulkan, false));
+#endif
+
+#if defined(SUNSHINE_BUILD_CUDA)
+  EXPECT_TRUE(platf::mem_type_consumes_dmabuf(platf::mem_type_e::cuda, true));
+  // A hybrid system's DMA-BUFs come from the Intel GPU, so CUDA cannot import them.
+  EXPECT_FALSE(platf::mem_type_consumes_dmabuf(platf::mem_type_e::cuda, false));
+#else
+  // Without the CUDA encode device the frames would reach the software converter, so the
+  // memory-buffer formats have to be advertised instead.
+  EXPECT_FALSE(platf::mem_type_consumes_dmabuf(platf::mem_type_e::cuda, true));
+  EXPECT_FALSE(platf::mem_type_consumes_dmabuf(platf::mem_type_e::cuda, false));
+#endif
+}
+
+TEST(DmabufConsumption, NeverClaimsMemoryTypesWithoutAPlatformDevice) {
+  EXPECT_FALSE(platf::mem_type_consumes_dmabuf(platf::mem_type_e::system, true));
+  EXPECT_FALSE(platf::mem_type_consumes_dmabuf(platf::mem_type_e::dxgi, true));
+  EXPECT_FALSE(platf::mem_type_consumes_dmabuf(platf::mem_type_e::videotoolbox, true));
+  EXPECT_FALSE(platf::mem_type_consumes_dmabuf(platf::mem_type_e::unknown, true));
 }
 
 #endif  // __linux__

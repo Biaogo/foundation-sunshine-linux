@@ -137,6 +137,12 @@ $ kscreen-doctor -o | head -2 | cat -v
 Plasma 5/KF5 的 **`libkf5screen-bin`** 里（`kscreen` 包只有 `kscreen-console`，别写错），Plasma 6/KF6
 是 `libkscreen-bin`，NixOS 是 `libkscreen`。非 Plasma（GNOME 等）不满足 → 第 1 步就不 advertise。
 
+**rpm 侧同名声明**（`CPACK_RPM_PACKAGE_RECOMMENDS = "krfb, libkscreen"`，2026-09-28 加）：Fedora 的
+包名与 Debian 不同 —— `kscreen-doctor` 由 **`libkscreen`** 提供（2026-09-28 对着 Fedora 43 的
+packages.fedoraproject.org 文件清单核对：`usr/bin/kscreen-doctor` 在 `libkscreen` 里），`krfb` 与
+Debian 同名。该变量要求 CMake ≥ 4.1（旧的 cmake/rpmbuild 只会打一条 warning 并丢掉这个字段，
+效果退化成"没有虚拟屏 id、其余照常"）。
+
 #### helper 定位：不依赖服务的 `PATH`（2026-09-25 实测坑，已修）
 
 内置实现要起两个外部命令（`krfb-virtualmonitor`、`kscreen-doctor`），原先只做一次

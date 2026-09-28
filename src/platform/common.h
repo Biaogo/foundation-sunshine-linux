@@ -1441,4 +1441,21 @@ namespace platf {
    */
   void drop_elevated_privileges(bool all_caps);
 
+  /**
+   * @brief Whether this build can read DMA-BUF frames for an encoder's memory type.
+   *
+   * A DMA-BUF frame carries no system-memory pointer, so only the platform encode device of the
+   * matching backend can consume it. Offering DMA-BUF to the compositor while that backend is not
+   * part of the build (`SUNSHINE_ENABLE_CUDA`/`SUNSHINE_ENABLE_VAAPI`/`SUNSHINE_ENABLE_VULKAN`
+   * =OFF) hands the frames to the software converter instead, which has nothing to read: swscale
+   * rejects the data-less image with EINVAL on every frame ("Couldn't scale frame" / "Could not
+   * convert image"), the encoder is rebuilt in a loop and the client sees no video at all. Capture
+   * must advertise the memory-buffer formats in that case.
+   *
+   * @param mem_type Memory type required by the selected encoder.
+   * @param display_is_nvidia True when the compositor renders on the NVIDIA GPU.
+   * @return True when DMA-BUF frames can be consumed for this memory type.
+   */
+  bool mem_type_consumes_dmabuf(mem_type_e mem_type, bool display_is_nvidia);
+
 }  // namespace platf

@@ -250,6 +250,14 @@ namespace video {
   util::Either<avcodec_buffer_t, int> vulkan_init_avcodec_hardware_input_buffer(platf::avcodec_encode_device_t *);
 
   int avcodec_software_encode_device_t::convert(platf::img_t &img) {
+    // A DMA-BUF capture carries no system-memory pointer, so only the platform encode device of
+    // the encoder's memory type can read it. swscale would only answer EINVAL for such an image,
+    // which says nothing about why the conversion failed, so name the real cause here.
+    if (!img.data) {
+      BOOST_LOG(error) << "Captured frame has no system-memory buffer to convert (DMA-BUF capture without a matching encode device)"sv;
+      return -1;
+    }
+
     // If we need to add aspect ratio padding, we need to scale into an intermediate output buffer
     bool requires_padding = (sw_frame->width != sws_output_frame->width || sw_frame->height != sws_output_frame->height);
 

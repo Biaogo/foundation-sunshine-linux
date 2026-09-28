@@ -94,11 +94,16 @@ endif()
 set(CPACK_RPM_USER_FILELIST "%caps(cap_sys_admin,cap_sys_nice+p) ${SUNSHINE_EXECUTABLE_PATH}")
 
 # Dependencies
+# `libcap2-bin` matters for the postinstall script, not for linking: assets/linux/misc/postinst runs
+# `setcap` to put CAP_SYS_ADMIN/CAP_SYS_NICE on the binary, and on a system without that package the
+# call is skipped, which leaves KMS capture (pre-login streaming / `capture = kms`) permanently
+# unusable ("Failed to gain CAP_SYS_ADMIN" in the log).
 set(CPACK_DEB_COMPONENT_INSTALL ON)
 set(CPACK_DEBIAN_PACKAGE_DEPENDS "\
             ${CPACK_DEB_PLATFORM_PACKAGE_DEPENDS} \
             debianutils, \
             libcap2, \
+            libcap2-bin, \
             libcurl4, \
             libdrm2, \
             libgbm1, \
@@ -170,6 +175,12 @@ set(CPACK_RPM_PACKAGE_AUTOREQ ON)
 # from `libkscreen`, so the Nix package does not need this at all.
 if(SUNSHINE_ENABLE_KWIN)
     set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "krfb, libkf5screen-bin | libkscreen-bin")
+    # Fedora names the same two tools differently: `libkscreen` is the package that ships
+    # /usr/bin/kscreen-doctor there (verified against the Fedora 43 file list, 2026-09-28) and `krfb`
+    # ships krfb-virtualmonitor, exactly as on Debian. CPACK_RPM_PACKAGE_RECOMMENDS needs CMake >= 4.1
+    # and a Recommends-capable rpmbuild; anything older drops the field with a warning, which is the
+    # same "no virtual display ids, everything else still streams" state as not setting it at all.
+    set(CPACK_RPM_PACKAGE_RECOMMENDS "krfb, libkscreen")
 endif()
 
 # application icon
