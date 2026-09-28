@@ -1377,7 +1377,11 @@ namespace pipewire {
         bool intel_present = check_intel("/sys/class/drm/card0/device/vendor") ||
                              check_intel("/sys/class/drm/card1/device/vendor");
         if (intel_present) {
-          BOOST_LOG(info) << "[pipewire] Hybrid GPU system detected (Intel + discrete) - CUDA will use memory buffers"sv;
+          // Note: this prints for ANY host whose card0/card1 is Intel, including an iGPU-only box where
+          // there is no discrete GPU at all ("Intel + discrete" was simply wrong, and it sent a
+          // tester's log down the NVIDIA path). What matters is that the compositor's DMA-BUFs come
+          // from the Intel GPU and cannot be imported into CUDA.
+          BOOST_LOG(info) << "[pipewire] Intel display GPU detected - CUDA will use memory buffers (Intel DMA-BUFs cannot be imported into CUDA)"sv;
           display_is_nvidia = false;
         } else {
           // No Intel GPU found, check if NVIDIA is present
