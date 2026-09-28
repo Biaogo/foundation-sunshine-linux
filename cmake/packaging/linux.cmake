@@ -56,6 +56,14 @@ if(DEFINED ENV{DEBIAN_PACKAGE_RELEASE})  # cmake-lint: disable=W0106
     set(CPACK_DEBIAN_PACKAGE_RELEASE "$ENV{DEBIAN_PACKAGE_RELEASE}")
 endif()
 
+# RPM specific: RPM_PACKAGE_RELEASE is the counterpart of DEBIAN_PACKAGE_RELEASE above. Both are the
+# rebuild identifier of the package (CI passes the short commit), and both are needed because a
+# commit cannot live in the version instead: rpmbuild rejects a "-" in the version field, and the
+# AppStream metainfo / the /api/version endpoint are fed by PROJECT_VERSION, which stays clean.
+if(DEFINED ENV{RPM_PACKAGE_RELEASE})  # cmake-lint: disable=W0106
+    set(CPACK_RPM_PACKAGE_RELEASE "$ENV{RPM_PACKAGE_RELEASE}")
+endif()
+
 # FreeBSD specific
 set(CPACK_FREEBSD_PACKAGE_MAINTAINER "${CPACK_PACKAGE_VENDOR}")
 set(CPACK_FREEBSD_PACKAGE_ORIGIN "misc/${CPACK_PACKAGE_NAME}")

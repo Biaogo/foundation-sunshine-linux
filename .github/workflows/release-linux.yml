@@ -16,6 +16,20 @@ name: Release-Linux
 # no http_proxy (runners have clean network), and the source comes from a checkout of the tag
 # instead of a local tree.
 #
+# Every lane carries the commit it was built from, in all three places that can hold it:
+#   * COMMIT=<short sha> is exported at configure time, so PROJECT_VERSION_COMMIT is non-empty and
+#     the binary's startup line reads "Sunshine version: <date version> commit: <sha>".
+#     Without it that field ships empty (the fork's older packages all report "commit: ").
+#   * the packages carry it in the field their format reserves for a rebuild identifier: the deb
+#     revision (sunshine_<version>-<sha>_<arch>.deb) and the rpm release
+#     (sunshine-<version>-<sha>.<arch>.rpm). PROJECT_VERSION itself stays the clean date version —
+#     the AppStream metainfo and the /api/version endpoint are fed by it, so the commit does not
+#     belong there (and rpmbuild rejects a "-" in the rpm version field anyway).
+#   * the AppImage has no version field to attach a rebuild identifier to, so the commit rides in
+#     the asset name and in the binary inside it.
+#
+# Each lane fails loudly if the commit did not make it into the package it just built.
+#
 # The release job derives dist/SHA256SUMS from whatever lanes succeeded and uploads it with the
 # packages, so `sha256sum -c SHA256SUMS` works for anyone who downloads the assets.
 
@@ -50,6 +64,7 @@ jobs:
     outputs:
       tag: ${{ steps.t.outputs.tag }}
       sha: ${{ steps.t.outputs.sha }}
+      commit: ${{ steps.t.outputs.commit }}
       version: ${{ steps.t.outputs.version }}
     steps:
       - name: Pick the newest tag by real creation time
@@ -69,10 +84,13 @@ jobs:
           fi
           [ -n "$TAG" ] || { echo "no v<date>[-.N]-linux tag found in $FORK" >&2; exit 1; }
           SHA=$(git -C /tmp/fork-tags.git rev-list -n 1 "$TAG")
+          # Eight digits, the width the release notes and the vault use for this repository.
+          COMMIT=$(git -C /tmp/fork-tags.git rev-parse --short=8 "$TAG^{commit}")
           VERSION="${{ inputs.version }}"
           if [ -z "$VERSION" ]; then VERSION="${TAG#v}"; VERSION="${VERSION%-linux}"; fi
-          echo "tag=$TAG sha=$SHA version=$VERSION"
-          { echo "tag=$TAG"; echo "sha=$SHA"; echo "version=$VERSION"; } >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG sha=$SHA commit=$COMMIT version=$VERSION"
+          { echo "tag=$TAG"; echo "sha=$SHA"; echo "commit=$COMMIT"; echo "version=$VERSION"; } \
+            >> "$GITHUB_OUTPUT"
 
   deb:
     name: deb on ${{ matrix.slug }}
@@ -97,6 +115,7 @@ jobs:
           IMAGE: ${{ matrix.image }}
           SLUG: ${{ matrix.slug }}
           BUILD_VERSION: ${{ needs.resolve.outputs.version }}
+          COMMIT: ${{ needs.resolve.outputs.commit }}
         run: |
           set -euo pipefail
           C=fsl-deb
@@ -121,8 +140,11 @@ jobs:
             echo "cmake $(cmake --version | head -1) / node $(node --version) / npm $(npm --version)"
           '
           # Separate steps on purpose: one combined run hides which step failed.
+          # COMMIT bakes the commit into the binary (PROJECT_VERSION_COMMIT); the deb revision is
+          # DEBIAN_PACKAGE_RELEASE, which is what a `dpkg -l sunshine` prints after the version.
           for step in deps cmake build package; do
             docker exec -e DEBIAN_FRONTEND=noninteractive -e BRANCH=master -e BUILD_VERSION="$BUILD_VERSION" \
+              -e COMMIT="$COMMIT" -e DEBIAN_PACKAGE_RELEASE="$COMMIT" \
               -e NODE_OPTIONS=--max-old-space-size=4096 "$C" bash -lc "
                 export PATH=/opt/node22/bin:/usr/local/bin:\$PATH
                 cd /src
@@ -134,7 +156,15 @@ jobs:
               "
           done
           DEB=$(docker exec "$C" bash -lc 'ls /src/build/cpack_artifacts/*.deb | head -1')
-          mkdir -p out && docker cp "$C:$DEB" "out/sunshine-${BUILD_VERSION}-${SLUG}_amd64.deb"
+          # Gate on the packaged metadata, not on the build log: the deb version must name the
+          # commit, otherwise this lane shipped the very defect it exists to fix.
+          docker exec "$C" bash -lc "dpkg-deb -f '$DEB' Package Version Architecture"
+          DEBVER=$(docker exec "$C" bash -lc "dpkg-deb -f '$DEB' Version")
+          case "$DEBVER" in
+            *"$COMMIT"*) echo "deb version '$DEBVER' carries commit $COMMIT" ;;
+            *) echo "deb version '$DEBVER' does not carry commit $COMMIT" >&2; exit 1 ;;
+          esac
+          mkdir -p out && docker cp "$C:$DEB" "out/sunshine-${BUILD_VERSION}-${COMMIT}-${SLUG}_amd64.deb"
           docker exec "$C" bash -lc 'ls -l /src/build/cpack_artifacts/'
       - name: Attach the built packages
         uses: actions/upload-artifact@v4
@@ -156,6 +186,7 @@ jobs:
       - name: Build
         env:
           BUILD_VERSION: ${{ needs.resolve.outputs.version }}
+          COMMIT: ${{ needs.resolve.outputs.commit }}
         run: |
           set -euo pipefail
           C=fsl-rpm
@@ -178,8 +209,13 @@ jobs:
             for n in g++-14 gcc14-c++; do ln -sf /usr/bin/g++ /usr/bin/$n; done
             for c in gcc gcc-14 g++ g++-14 cmake ninja node npm rpmbuild; do printf "%-9s %s\n" "$c" "$(command -v $c || echo MISSING)"; done
           '
+          # BRANCH=master + BUILD_VERSION put build_version.cmake on its CI path, so cpack's rpm
+          # version is the release version. Without BRANCH it takes the git-describe path and the
+          # rpm says 0.0.0-<sha> while the asset name says <version>. COMMIT also bakes the commit
+          # into the binary, RPM_PACKAGE_RELEASE is the rpm rebuild identifier (its release field).
           for step in cmake build package; do
-            docker exec -e BUILD_VERSION="$BUILD_VERSION" -e NODE_OPTIONS=--max-old-space-size=4096 \
+            docker exec -e BRANCH=master -e BUILD_VERSION="$BUILD_VERSION" -e COMMIT="$COMMIT" \
+              -e RPM_PACKAGE_RELEASE="$COMMIT" -e NODE_OPTIONS=--max-old-space-size=4096 \
               "$C" bash -lc "
                 cd /src
                 [ '$step' = cmake ] && rm -f build/CMakeCache.txt || true
@@ -189,7 +225,15 @@ jobs:
               "
           done
           RPM=$(docker exec "$C" bash -lc 'ls /src/build/cpack_artifacts/*.rpm | head -1')
-          mkdir -p out && docker cp "$C:$RPM" "out/sunshine-${BUILD_VERSION}-1.x86_64.rpm"
+          # Gate on the rpm's own metadata: name-version-release must name both the version and the
+          # commit. A release of "1" here means RPM_PACKAGE_RELEASE never reached cpack.
+          docker exec "$C" bash -lc "rpm -qp --queryformat '%{NAME} %{VERSION} %{RELEASE}.%{ARCH}\n' '$RPM'"
+          RPMVER=$(docker exec "$C" bash -lc "rpm -qp --queryformat '%{VERSION}-%{RELEASE}' '$RPM'")
+          case "$RPMVER" in
+            "$BUILD_VERSION-$COMMIT") echo "rpm version '$RPMVER' carries commit $COMMIT" ;;
+            *) echo "rpm version '$RPMVER' is not $BUILD_VERSION-$COMMIT" >&2; exit 1 ;;
+          esac
+          mkdir -p out && docker cp "$C:$RPM" "out/sunshine-${BUILD_VERSION}-${COMMIT}.x86_64.rpm"
       - name: Attach the built packages
         uses: actions/upload-artifact@v4
         with:
@@ -210,6 +254,7 @@ jobs:
       - name: Build
         env:
           BUILD_VERSION: ${{ needs.resolve.outputs.version }}
+          COMMIT: ${{ needs.resolve.outputs.commit }}
         run: |
           set -euo pipefail
           C=fsl-ai
@@ -232,7 +277,7 @@ jobs:
           '
           for step in deps cmake build; do
             docker exec -e DEBIAN_FRONTEND=noninteractive -e BRANCH=master -e BUILD_VERSION="$BUILD_VERSION" \
-              -e NODE_OPTIONS=--max-old-space-size=4096 "$C" bash -lc "
+              -e COMMIT="$COMMIT" -e NODE_OPTIONS=--max-old-space-size=4096 "$C" bash -lc "
                 export PATH=/opt/node22/bin:/usr/local/bin:\$PATH
                 cd /src
                 [ '$step' = cmake ] && rm -f build/CMakeCache.txt || true
@@ -310,8 +355,10 @@ jobs:
             ls -l Sunshine-*.AppImage
           '
           AI=$(docker exec "$C" bash -lc 'ls /src/build/Sunshine-*.AppImage | head -1')
-          mkdir -p out && docker cp "$C:$AI" "out/Sunshine-${BUILD_VERSION}-x86_64.AppImage"
+          mkdir -p out && docker cp "$C:$AI" "out/Sunshine-${BUILD_VERSION}-${COMMIT}-x86_64.AppImage"
       - name: Verify the packaged binary really carries this build
+        env:
+          COMMIT: ${{ needs.resolve.outputs.commit }}
         run: |
           set -euo pipefail
           chmod +x out/*.AppImage
@@ -323,6 +370,11 @@ jobs:
             printf '%-32s %s\n' "$m" "${n:-0}"
             [ "${n:-0}" -gt 0 ] || missing=1
           done
+          # The commit is a compile definition (PROJECT_VERSION_COMMIT): if the lane ever stops
+          # exporting COMMIT, the binary reports "commit: " and this gate says so.
+          n=$(grep -aFc -- "$COMMIT" "$B" || true)
+          printf '%-32s %s\n' "commit $COMMIT" "${n:-0}"
+          [ "${n:-0}" -gt 0 ] || { echo "the packaged binary does not carry commit $COMMIT"; missing=1; }
           [ "$missing" -eq 0 ] || { echo "artifact is stale: fix markers missing"; exit 1; }
       - name: Attach the built packages
         uses: actions/upload-artifact@v4
@@ -368,7 +420,9 @@ jobs:
           # Say out loud which lane produced nothing: a short release must not look complete.
           # (Match against the array, not `ls <glob>` - with nullglob a non-matching glob
           #  expands to nothing and a bare `ls` would silently succeed.)
-          for expected in ubuntu22.04_amd64.deb ubuntu24.04_amd64.deb 1.x86_64.rpm x86_64.AppImage; do
+          # The version/commit part of each name is checked by the lane that built it; here the
+          # lane-specific tail is what tells the four expected assets apart.
+          for expected in ubuntu22.04_amd64.deb ubuntu24.04_amd64.deb .x86_64.rpm x86_64.AppImage; do
             found=0
             for f in "${files[@]}"; do
               case "$f" in *"$expected") found=1; break ;; esac
@@ -382,7 +436,7 @@ jobs:
         run: |
           set -euo pipefail
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" \
-            --notes "Linux packages built from $TAG by the Release-Linux workflow (deb x2, rpm, AppImage, x86_64, --skip-cuda: NVENC is still compiled in)."
+            --notes "Linux packages built from $TAG (commit ${{ needs.resolve.outputs.commit }}) by the Release-Linux workflow (deb x2, rpm, AppImage, x86_64, --skip-cuda: NVENC is still compiled in). The commit is in the metadata of each package: the deb revision, the rpm release, and the AppImage binary, whose startup line reads 'Sunshine version: ... commit: ${{ needs.resolve.outputs.commit }}'."
           gh release upload "$TAG" dist/* --clobber
           gh release view "$TAG" --json assets --jq '.assets[].name'
       - name: Fill the checksums into the release notes
