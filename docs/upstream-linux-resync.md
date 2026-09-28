@@ -244,6 +244,22 @@ before the launch path is proven is the one regression this port must not introd
 with the host's `output_name` set to the virtual monitor, every session now runs the do-hook (that is
 the fork's rule-20 behaviour, intentional, but it means the hook must be safe for non-virtual picks).
 
+### Upstream-identical defects patched on this branch (not in LizardByte)
+
+These fix bugs that exist **verbatim in `upstream/master` @ `05350c05`**. They live on this branch
+only (AGENTS.md rules out PRs in the LizardByte org), so a later `git merge upstream/master` cannot
+bring them along, and "take upstream's version" of one of these files silently drops the fix. Re-apply
+by hand — or hand them upstream manually — when either happens.
+
+| commit | what | state |
+|---|---|---|
+| `979fcd2e` (2026-09-28) | CodeQL `cpp/integer-multiplication-cast-to-long` (CWE-190/192/197/681), this fork's code-scanning alerts #1 and #2, both upstream's own code. `src/platform/linux/cuda.cpp:248`: `img.row_pitch * img.height`, where every `img_t` field is `std::int32_t`, so the product is a 32-bit `int` widened to `size_type` only after the multiplication. `src/platform/windows/audio.cpp:679`: `std::max(frames, frame_size) * 2u * channels_out`, where all three operands are `std::uint32_t` (`frames` from `IAudioClient::GetBufferSize`), likewise widened only on the way into `buffer_t(size_t)`. Fix: cast the multiplicands to `std::size_t` so the chain is evaluated at the destination width — no formula, behaviour, include or signature change. Neither site can overflow as it stands (the CUDA one needs a single frame above 2 GiB; a WASAPI shared buffer holds a few thousand samples), so this closes the alerts rather than dismissing them. | type-level verified only — there is no CUDA/WASAPI toolchain on the dev box, so `cuda.cpp`/`audio.cpp` cannot be compiled here; the check was `static_assert` on the result types (old products `int32_t`/`uint32_t`, new ones `std::size_t`), old and new values equal (`1920x1080 -> 8294400`, `480 frames x 2 channels -> 1920`), and `g++ 15.3 -Wall -Wextra -Wconversion -Wsign-conversion -pedantic -Werror` clean on the new expressions (the old `cuda.cpp` line trips `-Wsign-conversion`). The alerts themselves close on the next CodeQL analysis of `refork/linux` — the weekly Sunday cron; the workflow listens on push to `master`, `pull_request` and that cron, so pushing this branch does not re-scan. |
+
+Note for §1's file inventory: `cuda.cpp` is listed there as *fork-untouched*, i.e. "taking upstream's
+version loses nothing of ours". After `979fcd2e` that is no longer exact — the branch now carries one
+line upstream does not have — but two hunks this small are better re-applied by hand than given a
+file-level boundary.
+
 ### Acceptance — real client sessions on the target host (2026-09-25)
 
 Run against a second instance of the CUDA build (`--arg cudaSupport true`, `/tmp/fst-test` holding a
