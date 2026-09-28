@@ -279,7 +279,12 @@ code but upstream's own `postinst`/dependency list):
 
 Also `ffb34bd2` (2026-09-28): `VirtualDisplayRefreshMode.BuildsTheArgumentsTheHookUsed` still expected
 the pre-`a757804a` `output.<name>.<W>x<H>@<fps>` form, so `test_sunshine` was red on every build of
-this branch; the expectations now carry the `mode` segment the code emits.
+this branch; the expectations now carry the `mode` segment the code emits. And `6ad5a1b1`: the pipeline
+log claimed `Hybrid GPU system detected (Intel + discrete)` on any host with an Intel card0/card1 —
+including an iGPU-only laptop, where it reads as "there is a discrete GPU here" and points whoever
+reads the log at NVIDIA (the `nvenc` probe failing with `Cannot load libcuda.so.1` is simply expected
+there). The message now states the condition that actually matters: the compositor's DMA-BUFs come
+from Intel and cannot be imported into CUDA.
 
 ### Acceptance — real client sessions on the target host (2026-09-25)
 
