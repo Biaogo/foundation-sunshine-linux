@@ -260,6 +260,27 @@ version loses nothing of ours". After `979fcd2e` that is no longer exact — the
 line upstream does not have — but two hunks this small are better re-applied by hand than given a
 file-level boundary.
 
+| commit | what | state |
+|---|---|---|
+| `882fa537` (2026-09-28) | `src/platform/linux/pipewire.cpp` negotiated DMA-BUF from runtime facts alone (`mem_type == cuda && display_is_nvidia`), while the encode device that consumes such a frame is compiled out by `-DSUNSHINE_ENABLE_CUDA=OFF`. The frame then has no system-memory pointer — `alloc_img()` leaves `img.data` null on the DMA-BUF path and only the duplicated fds land in the image descriptor — so it reaches `avcodec_software_encode_device_t::convert()` and `sws_scale_frame` answers `EINVAL` for every single frame: `Couldn't scale frame: Invalid argument` + `Could not convert image`, encoder rebuilt every ~300 ms, no video on the client. Every package the release lane builds (deb x2, rpm, AppImage) is a `--skip-cuda` build, so a host whose compositor renders on the NVIDIA GPU could not stream at all — measured with the released 2026.09.28 deb on a pure-NVIDIA KUbuntu 24.04 box (KWin ScreenCast; the `hevc_nvenc` probe passes there because it converts the *dummy* image, which does carry a pointer, so the failure only starts with the first captured frame). A hybrid Intel+NVIDIA host keeps `display_is_nvidia == false`, stays on memory buffers and never hit it. Fix: `platf::mem_type_consumes_dmabuf()` (`src/platform/linux/misc.cpp`, declared in `src/platform/common.h`) turns the question into a compile-time capability, `ensure_stream()` advertises DMA-BUF only when it answers true, and `convert()` names the missing CPU pointer instead of leaking swscale's `EINVAL`. Unit tests `DmabufConsumption.*` in `tests/unit/platform/linux/test_misc.cpp`. | build-verified in the release lane's own recipe (ubuntu:24.04 container, `--skip-cuda`, `-DBUILD_WERROR=ON`): `sunshine` and `tests/test_sunshine` build clean and the new tests pass. Full suite after `ffb34bd2`: 692 tests, 675 passed, 14 skipped, 0 product failures — the 2 remaining ones (`LinuxHelperPathConfigTest.*`) only miss `build/tests/test_assets/apps.json`, an artifact of reusing an existing build tree instead of a fresh `--step=cmake`, and pass as soon as the assets are copied in; the 14 skips plus the 3 setUp failures (Audio/MouseHID/Encoder) are the container having no PulseAudio, `/dev/uinput` or GPU. The pure-NVIDIA end-to-end still has to be confirmed on the test host. |
+
+Two defects the same test round exposed in the packaging layer (fixed in `882fa537`, not upstream's
+code but upstream's own `postinst`/dependency list):
+
+- the deb did not depend on `libcap2-bin`, so `assets/linux/misc/postinst`'s `setcap` call is skipped
+  on a system without it and the binary keeps no `CAP_SYS_ADMIN` — KMS capture (pre-login streaming /
+  `capture = kms`) is then permanently unusable. The tester's KUbuntu log shows exactly that
+  (`Failed to gain CAP_SYS_ADMIN` throughout, absent from the Fedora/rpm log because rpm applies the
+  same caps through `%caps(cap_sys_admin,cap_sys_nice+p)` in `CPACK_RPM_USER_FILELIST`).
+- the rpm declared no `Recommends` for the virtual-display helpers. `CPACK_RPM_PACKAGE_RECOMMENDS =
+  "krfb, libkscreen"` mirrors the deb's line (needs CMake >= 4.1; Fedora ships `kscreen-doctor` in
+  `libkscreen`, verified against the Fedora 43 file list on 2026-09-28 — see
+  `docs/virtual-display-linux.md`).
+
+Also `ffb34bd2` (2026-09-28): `VirtualDisplayRefreshMode.BuildsTheArgumentsTheHookUsed` still expected
+the pre-`a757804a` `output.<name>.<W>x<H>@<fps>` form, so `test_sunshine` was red on every build of
+this branch; the expectations now carry the `mode` segment the code emits.
+
 ### Acceptance — real client sessions on the target host (2026-09-25)
 
 Run against a second instance of the CUDA build (`--arg cudaSupport true`, `/tmp/fst-test` holding a
