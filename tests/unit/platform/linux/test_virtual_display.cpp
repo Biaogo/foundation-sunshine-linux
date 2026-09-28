@@ -731,18 +731,21 @@ TEST(VirtualDisplayHelperLookup, PicksUpAHelperThatAppearsWhileTheCheckRetries) 
   TEST(VirtualDisplayRefreshMode, BuildsTheArgumentsTheHookUsed) {
     EXPECT_EQ("output.Virtual-SunshineVirt.addCustomMode.3168.1440.165000.full",
               platf::add_custom_mode_arg("Virtual-SunshineVirt", 3168, 1440, 165));
-    EXPECT_EQ("output.Virtual-SunshineVirt.3168x1440@165",
+    EXPECT_EQ("output.Virtual-SunshineVirt.mode.3168x1440@165",
               platf::set_mode_arg("Virtual-SunshineVirt", 3168, 1440, 165));
 
     // The documented shape, and a rate whose millihertz form is not a multiple of a thousand.
+    // Every `mode` argument keeps the operation segment: kscreen-doctor answers "Unable to parse
+    // arguments" for `output.<name>.<W>x<H>@<fps>`, exits 0 and leaves the output on its old mode,
+    // which is what left the virtual output serving the compositor's own rate.
     EXPECT_EQ("output.1.addCustomMode.1920.1080.75000.full", platf::add_custom_mode_arg("1", 1920, 1080, 75));
-    EXPECT_EQ("output.1.1920x1080@60", platf::set_mode_arg("1", 1920, 1080, 60));
+    EXPECT_EQ("output.1.mode.1920x1080@60", platf::set_mode_arg("1", 1920, 1080, 60));
 
     // The refresh rate is whole hertz in the mode argument and millihertz in the custom mode: 90 Hz
     // has to become 90000, not 900 or 9000.
     EXPECT_EQ("output.Virtual-ProbeVirt.addCustomMode.2376.1080.90000.full",
               platf::add_custom_mode_arg("Virtual-ProbeVirt", 2376, 1080, 90));
-    EXPECT_EQ("output.Virtual-ProbeVirt.2376x1080@90",
+    EXPECT_EQ("output.Virtual-ProbeVirt.mode.2376x1080@90",
               platf::set_mode_arg("Virtual-ProbeVirt", 2376, 1080, 90));
   }
 
