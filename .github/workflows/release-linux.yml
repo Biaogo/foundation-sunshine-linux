@@ -381,3 +381,35 @@ jobs:
             --notes "Linux packages built from $TAG by the Release-Linux workflow (deb x2, rpm, AppImage, x86_64, --skip-cuda: NVENC is still compiled in)."
           gh release upload "$TAG" dist/* --clobber
           gh release view "$TAG" --json assets --jq '.assets[].name'
+      - name: Fill the checksums into the release notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          gh release view "$TAG" --json body --jq .body > /tmp/release-body.md
+          python3 - /tmp/release-body.md dist/SHA256SUMS <<'PY'
+          # Put the hashes where the notes ask for them instead of leaving a placeholder:
+          #   <!-- SHA256SUMS -->  -> replaced by a fenced block
+          #   <构建完成后填入>      -> replaced by the bare lines (it already sits inside a fence)
+          # No marker? Append a section - unless the notes already point at the asset.
+          import pathlib
+          import sys
+
+          body_path, sums_path = (pathlib.Path(p) for p in sys.argv[1:3])
+          body = body_path.read_text()
+          sums = sums_path.read_text().rstrip("\n")
+          marker, legacy = "<!-- SHA256SUMS -->", "<构建完成后填入>"
+          if marker in body:
+              body = body.replace(marker, "```\n" + sums + "\n```")
+          elif legacy in body:
+              body = body.replace(legacy, sums)
+          elif "SHA256SUMS" in body:
+              print("release notes already reference SHA256SUMS - left alone")
+              raise SystemExit(0)
+          else:
+              body = body.rstrip("\n") + "\n\n## 校验（SHA256SUMS）\n\n```\n" + sums + "\n```\n"
+          body_path.write_text(body)
+          print("release notes updated with the checksums")
+          PY
+          gh release edit "$TAG" --notes-file /tmp/release-body.md
