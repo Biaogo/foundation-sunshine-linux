@@ -523,6 +523,12 @@ function install_cuda() {
   elif [[ "$force_cuda_runfile" == 0 ]] && detect_nvcc_path > /dev/null 2>&1; then
     if [[ "$cuda_system_package" == 1 ]]; then
       apply_cuda_patches "$(cuda_system_toolkit_path)"
+    elif [[ "$cuda_patches" == 1 ]]; then
+      # A toolkit the caller installed itself (scripts/install-cuda-redist.sh puts one in
+      # build/cuda) still needs the math_functions.h patch on glibc >= 2.41, which is what
+      # --cuda-patches asks for; without this branch the flag did nothing for such toolkits and
+      # the CUDA compile failed on the redeclaration instead.
+      apply_cuda_patches "$(dirname "$(dirname "$(detect_nvcc_path)")")"
     fi
     return
   fi
@@ -707,9 +713,6 @@ function run_step_cmake() {
   # Setup NVM environment if needed (for web UI builds)
   setup_nvm_environment
   setup_cuda_system_package_environment
-  if [[ "$skip_cuda" == 0 ]] && [[ "$cuda_system_package" == 1 ]]; then
-    apply_cuda_patches "$(cuda_system_toolkit_path)"
-  fi
 
   # Detect CUDA path using the reusable function
   nvcc_path=""
@@ -718,6 +721,18 @@ function run_step_cmake() {
       nvcc_path="${build_dir}/cuda/bin/nvcc"
     else
       nvcc_path=$(detect_nvcc_path)
+    fi
+  fi
+
+  # The math_functions.h patch has to land on whichever toolkit this configure will use: a distro
+  # package, or one the caller installed itself (scripts/install-cuda-redist.sh puts one in
+  # build/cuda). A lane that skips the deps step never runs install_cuda, so patching here is the
+  # only chance - apply_cuda_patches is a no-op unless --cuda-patches or the distro table asked.
+  if [[ "$skip_cuda" == 0 ]]; then
+    if [[ "$cuda_system_package" == 1 ]]; then
+      apply_cuda_patches "$(cuda_system_toolkit_path)"
+    elif [[ -n "$nvcc_path" ]]; then
+      apply_cuda_patches "$(dirname "$(dirname "$nvcc_path")")"
     fi
   fi
 
@@ -894,10 +909,21 @@ case "${distro}:${version}" in
     gcc_version="14"
     nvm_node=0
     ;;
-  "${DISTRO_FEDORA}":42|"${DISTRO_FEDORA}":43|"${DISTRO_FEDORA}":44)
+  "${DISTRO_FEDORA}":42|"${DISTRO_FEDORA}":43)
     package_update_command="${sudo_cmd} dnf update -y"
     package_install_command="${sudo_cmd} dnf install -y"
     gcc_version="14"
+    nvm_node=0
+    ;;
+  "${DISTRO_FEDORA}":44)
+    package_update_command="${sudo_cmd} dnf update -y"
+    package_install_command="${sudo_cmd} dnf install -y"
+    # Fedora 44's default gcc is 16 and CUDA 13.x refuses host compilers newer than gcc 15
+    # ("unsupported GNU version!"), so this version asks for the CUDA-capable gcc the Fedora spec
+    # uses for f44+ as well (packaging/linux/copr/Sunshine.spec: BuildRequires: gcc15).
+    cuda_version="13.1.1"
+    cuda_build="590.48.01"
+    gcc_version="15"
     nvm_node=0
     ;;
   "${DISTRO_FEDORA}":45)

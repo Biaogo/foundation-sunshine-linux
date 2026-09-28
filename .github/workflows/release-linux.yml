@@ -202,20 +202,27 @@ jobs:
           docker run -d --name "$C" -v "$PWD:/src" -w /src fedora:44 sh -c 'mkdir -p /src; exec sleep infinity'
           docker exec "$C" bash -lc '
             set +e
-            # fedora 44 has gcc16; the build script still asks for gcc14/gcc-14, so install the real
-            # toolchain and provide the names it expects as symlinks. --skip-unavailable keeps one
-            # unknown name from voiding the whole transaction (that is what broke a first attempt).
+            # fedora 44 ships gcc 16, and CUDA 13.x refuses host compilers newer than gcc 15
+            # ("unsupported GNU version!"), so this lane builds with gcc 15 - the same choice the
+            # Fedora spec makes for f44+ (packaging/linux/copr/Sunshine.spec: BuildRequires: gcc15).
+            # --skip-unavailable keeps one unknown name from voiding the whole transaction.
             dnf install -y --skip-unavailable --setopt=install_weak_deps=False \
-              appstream cmake desktop-file-utils doxygen gcc gcc-c++ git glslc graphviz ImageMagick \
+              appstream cmake desktop-file-utils doxygen gcc gcc-c++ gcc15 gcc15-c++ git glslc graphviz ImageMagick \
               libappstream-glib libcap-devel libcurl-devel libdrm-devel libevdev-devel libX11-devel \
               libxcb-devel libXcursor-devel libXfixes-devel libXi-devel libXinerama-devel libXrandr-devel \
               libXtst-devel mesa-libGL-devel mesa-libgbm-devel miniupnpc-devel ninja-build numactl-devel \
               openssl-devel opus-devel pipewire-devel pulseaudio-libs-devel python3-jinja2 qt6-qtbase-devel \
               qt6-qtsvg-devel rpm-build vulkan-loader-devel wget which xorg-x11-server-Xvfb boost-devel \
               boost-static libva-devel nodejs nodejs22 nodejs24 npm xz
-            for n in gcc-14 gcc14; do ln -sf /usr/bin/gcc /usr/bin/$n; done
-            for n in g++-14 gcc14-c++; do ln -sf /usr/bin/g++ /usr/bin/$n; done
-            for c in gcc gcc-14 g++ g++-14 cmake ninja node npm rpmbuild; do printf "%-9s %s\n" "$c" "$(command -v $c || echo MISSING)"; done
+            # both spellings: the build script asks for gcc-${gcc_version}, cmake for its own names
+            G15=""; for c in gcc-15 gcc15; do p="$(command -v "$c" || true)"; if [ -n "$p" ]; then G15="$p"; break; fi; done
+            GXX15=""; for c in g++-15 g++15; do p="$(command -v "$c" || true)"; if [ -n "$p" ]; then GXX15="$p"; break; fi; done
+            if [ -z "$G15" ] || [ -z "$GXX15" ]; then echo "gcc 15 missing from this image:"; rpm -qa "gcc*"; exit 1; fi
+            ln -sf "$G15" /usr/bin/gcc-15
+            ln -sf "$G15" /usr/bin/gcc15
+            ln -sf "$GXX15" /usr/bin/g++-15
+            ln -sf "$GXX15" /usr/bin/g++15
+            for c in gcc gcc-15 g++ g++-15 cmake ninja node npm rpmbuild; do printf "%-9s %s\n" "$c" "$(command -v $c || echo MISSING)"; done
           '
           # CUDA toolkit from NVIDIA's redistributable archives - see scripts/install-cuda-redist.sh
           # for why the monolithic runfile is not used (libxml2.so.2 is gone on fedora:44).
@@ -230,7 +237,7 @@ jobs:
               "$C" bash -lc "
                 cd /src
                 [ '$step' = cmake ] && rm -f build/CMakeCache.txt || true
-                ./scripts/linux_build.sh --sudo-off --num-processors=6 --step=$step > /tmp/rpm-$step.log 2>&1
+                ./scripts/linux_build.sh --cuda-patches --sudo-off --num-processors=6 --step=$step > /tmp/rpm-$step.log 2>&1
                 echo step=$step exit=\$?
                 grep -anE 'error:|FAILED|CMake Error|Cannot find module' /tmp/rpm-$step.log | tail -5 || true
               "
