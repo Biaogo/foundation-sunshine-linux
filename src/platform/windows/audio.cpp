@@ -676,7 +676,7 @@ namespace platf::audio {
       }
 
       // *2 --> needs to fit double
-      sample_buf = util::buffer_t<float> {std::max(frames, frame_size) * 2 * channels_out};
+      sample_buf = util::buffer_t<float> {static_cast<std::size_t>(std::max(frames, frame_size)) * 2u * static_cast<std::size_t>(channels_out)};
       sample_buf_pos = std::begin(sample_buf);
 
       status = audio_client->GetService(IID_IAudioCaptureClient, (void **) &audio_capture);

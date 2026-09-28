@@ -245,7 +245,7 @@ namespace cuda {
       img.row_pitch = img.width * img.pixel_pitch;
 
       std::vector<std::uint8_t> image_data;
-      image_data.resize(img.row_pitch * img.height);
+      image_data.resize(static_cast<std::size_t>(img.row_pitch) * static_cast<std::size_t>(img.height));
 
       img.data = image_data.data();
 
