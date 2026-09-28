@@ -9,8 +9,10 @@
 # --src <tree>  source tree to build (default: the source FOD of the packaging
 #               flake's pinned release, i.e. the exact released sources WITH
 #               submodules — a working tree is usually missing submodule content).
-# --cuda        keep CUDA enabled (the container then needs the CUDA toolkit;
-#               the default CPU build is ~48 MB, a CUDA one is gigabytes).
+# --cuda        keep CUDA enabled. The release lane (release-linux.yml) now builds every
+#               artifact with the CUDA toolkit, so pass this to reproduce a released
+#               AppImage; it needs the toolkit inside the container (gigabytes), while the
+#               default CPU build stays ~48 MB.
 # --keep        leave the container around for inspection.
 #
 # The traps handled here are documented in the skill

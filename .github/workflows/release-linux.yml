@@ -6,9 +6,14 @@ name: Release-Linux
 # Upstream's own releases are produced by ci-linux.yml + ci-release.yml; this is the fork's
 # equivalent, limited to the lanes the Linux lineage actually changes (no Windows/macOS).
 #
-# All lanes are x86_64 and built with --skip-cuda. That does NOT remove NVENC: h264_nvenc /
-# hevc_nvenc stay compiled in and engage as soon as the target machine's driver provides
-# libcuda.so.1. Only build with CUDA when the receiver has no driver at all (gigabytes).
+# All lanes are x86_64 and built with the CUDA toolkit (no --skip-cuda):
+# scripts/install-cuda-redist.sh unpacks NVIDIA's redistributable archives into build/cuda and
+# cmake takes that nvcc as CMAKE_CUDA_COMPILER, so the shipped
+# binaries can build the CUDA encode device that consumes DMA-BUF/VRAM frames. A --skip-cuda
+# build still compiles h264_nvenc/hevc_nvenc in, but it cannot build that device: on a host whose
+# compositor renders on the NVIDIA GPU the DMA-BUF it then advertises has no CPU pointer and every
+# frame fails to scale (the 2026.09.28 black screen), and a hybrid Intel+NVIDIA host silently
+# loses the zero-copy route. Cost: ~4 GB runfile plus its install tree inside the workspace.
 #
 # The deb and rpm commands below are the same container recipes that produced, on the packaging
 # host, sunshine_2026.10.02_amd64.deb (verify-sunshine-deb.sh: VERDICT OK — metadata, integration
@@ -139,6 +144,9 @@ jobs:
             for b in node npm npx; do ln -sf /opt/node22/bin/$b /usr/bin/$b; done
             echo "cmake $(cmake --version | head -1) / node $(node --version) / npm $(npm --version)"
           '
+          # CUDA toolkit from NVIDIA's redistributable archives - see scripts/install-cuda-redist.sh
+          # for why the monolithic runfile is not used (libxml2.so.2, ~8 GB inside the workspace).
+          docker exec "$C" bash -lc 'cd /src && ./scripts/install-cuda-redist.sh'
           # Separate steps on purpose: one combined run hides which step failed.
           # COMMIT bakes the commit into the binary (PROJECT_VERSION_COMMIT); the deb revision is
           # DEBIAN_PACKAGE_RELEASE, which is what a `dpkg -l sunshine` prints after the version.
@@ -149,7 +157,7 @@ jobs:
                 export PATH=/opt/node22/bin:/usr/local/bin:\$PATH
                 cd /src
                 [ '$step' = cmake ] && rm -f build/CMakeCache.txt || true
-                ./scripts/linux_build.sh --skip-cuda --sudo-off --ubuntu-test-repo \
+                ./scripts/linux_build.sh --sudo-off --ubuntu-test-repo \
                   --num-processors=6 --step=$step > /tmp/deb-$step.log 2>&1
                 echo step=$step exit=\$?
                 grep -anE 'error:|FAILED|CMake Error|Cannot find module' /tmp/deb-$step.log | tail -5 || true
@@ -209,6 +217,9 @@ jobs:
             for n in g++-14 gcc14-c++; do ln -sf /usr/bin/g++ /usr/bin/$n; done
             for c in gcc gcc-14 g++ g++-14 cmake ninja node npm rpmbuild; do printf "%-9s %s\n" "$c" "$(command -v $c || echo MISSING)"; done
           '
+          # CUDA toolkit from NVIDIA's redistributable archives - see scripts/install-cuda-redist.sh
+          # for why the monolithic runfile is not used (libxml2.so.2 is gone on fedora:44).
+          docker exec "$C" bash -lc 'cd /src && ./scripts/install-cuda-redist.sh'
           # BRANCH=master + BUILD_VERSION put build_version.cmake on its CI path, so cpack's rpm
           # version is the release version. Without BRANCH it takes the git-describe path and the
           # rpm says 0.0.0-<sha> while the asset name says <version>. COMMIT also bakes the commit
@@ -219,7 +230,7 @@ jobs:
               "$C" bash -lc "
                 cd /src
                 [ '$step' = cmake ] && rm -f build/CMakeCache.txt || true
-                ./scripts/linux_build.sh --skip-cuda --sudo-off --num-processors=6 --step=$step > /tmp/rpm-$step.log 2>&1
+                ./scripts/linux_build.sh --sudo-off --num-processors=6 --step=$step > /tmp/rpm-$step.log 2>&1
                 echo step=$step exit=\$?
                 grep -anE 'error:|FAILED|CMake Error|Cannot find module' /tmp/rpm-$step.log | tail -5 || true
               "
@@ -242,7 +253,7 @@ jobs:
           if-no-files-found: error
 
   appimage:
-    name: AppImage (CPU)
+    name: AppImage
     needs: resolve
     runs-on: ubuntu-latest
     timeout-minutes: 120
@@ -275,13 +286,16 @@ jobs:
             rm -rf /opt/node22 && tar -xJf /tmp/node.tar.xz -C /opt && mv /opt/node-${VER}-linux-x64 /opt/node22 && rm -f /tmp/node.tar.xz
             for b in node npm npx; do ln -sf /opt/node22/bin/$b /usr/bin/$b; done
           '
+          # CUDA toolkit from NVIDIA's redistributable archives - see scripts/install-cuda-redist.sh
+          # for why the monolithic runfile is not used (libxml2.so.2, ~8 GB inside the workspace).
+          docker exec "$C" bash -lc 'cd /src && ./scripts/install-cuda-redist.sh'
           for step in deps cmake build; do
             docker exec -e DEBIAN_FRONTEND=noninteractive -e BRANCH=master -e BUILD_VERSION="$BUILD_VERSION" \
               -e COMMIT="$COMMIT" -e NODE_OPTIONS=--max-old-space-size=4096 "$C" bash -lc "
                 export PATH=/opt/node22/bin:/usr/local/bin:\$PATH
                 cd /src
                 [ '$step' = cmake ] && rm -f build/CMakeCache.txt || true
-                ./scripts/linux_build.sh --skip-cuda --sudo-off --ubuntu-test-repo --appimage-build \
+                ./scripts/linux_build.sh --sudo-off --ubuntu-test-repo --appimage-build \
                   --num-processors=6 --step=$step > /tmp/ai-$step.log 2>&1
                 echo step=$step exit=\$?
                 grep -anE 'error:|FAILED|CMake Error|Cannot find module' /tmp/ai-$step.log | tail -5 || true
@@ -436,7 +450,7 @@ jobs:
         run: |
           set -euo pipefail
           gh release view "$TAG" >/dev/null 2>&1 || gh release create "$TAG" --title "$TAG" \
-            --notes "Linux packages built from $TAG (commit ${{ needs.resolve.outputs.commit }}) by the Release-Linux workflow (deb x2, rpm, AppImage, x86_64, --skip-cuda: NVENC is still compiled in). The commit is in the metadata of each package: the deb revision, the rpm release, and the AppImage binary, whose startup line reads 'Sunshine version: ... commit: ${{ needs.resolve.outputs.commit }}'."
+            --notes "Linux packages built from $TAG (commit ${{ needs.resolve.outputs.commit }}) by the Release-Linux workflow (deb x2, rpm, AppImage, x86_64, built with the CUDA toolkit). The commit is in the metadata of each package: the deb revision, the rpm release, and the AppImage binary, whose startup line reads 'Sunshine version: ... commit: ${{ needs.resolve.outputs.commit }}'."
           gh release upload "$TAG" dist/* --clobber
           gh release view "$TAG" --json assets --jq '.assets[].name'
       - name: Fill the checksums into the release notes
