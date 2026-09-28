@@ -338,6 +338,10 @@ jobs:
     # strand the artifacts that did build.
     if: ${{ !cancelled() && inputs.create_release }}
     runs-on: ubuntu-latest
+    # This job has no checkout, so gh has no git remote to infer the repository from and dies with
+    # "failed to run git: fatal: not a git repository" before it even reaches the API.
+    env:
+      GH_REPO: ${{ github.repository }}
     steps:
       - uses: actions/download-artifact@v4
         with:
