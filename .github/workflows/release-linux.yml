@@ -212,7 +212,7 @@ jobs:
               libXtst-devel mesa-libGL-devel mesa-libgbm-devel miniupnpc-devel ninja-build numactl-devel \
               openssl-devel opus-devel pipewire-devel pulseaudio-libs-devel python3-jinja2 qt6-qtbase-devel \
               qt6-qtsvg-devel rpm-build vulkan-loader-devel wget which xorg-x11-server-Xvfb boost-devel \
-              boost-static libva-devel nodejs nodejs22 nodejs24 npm
+              boost-static libva-devel nodejs nodejs22 nodejs24 npm xz
             for n in gcc-14 gcc14; do ln -sf /usr/bin/gcc /usr/bin/$n; done
             for n in g++-14 gcc14-c++; do ln -sf /usr/bin/g++ /usr/bin/$n; done
             for c in gcc gcc-14 g++ g++-14 cmake ninja node npm rpmbuild; do printf "%-9s %s\n" "$c" "$(command -v $c || echo MISSING)"; done

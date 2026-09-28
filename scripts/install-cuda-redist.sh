@@ -68,6 +68,12 @@ if ! command -v wget >/dev/null 2>&1; then
   echo "wget is required to fetch the cuda components" >&2
   exit 1
 fi
+# tar -xJf needs the xz binary, which is not in every build root (the Fedora container needs the
+# xz package; the Ubuntu lanes install xz-utils) - fail with the reason instead of tar's error
+if ! command -v xz >/dev/null 2>&1; then
+  echo "xz is required to unpack the cuda components (tar -xJf)" >&2
+  exit 1
+fi
 
 mkdir -p "${destination}" "${target_dir}"
 work_dir="$(mktemp -d)"
