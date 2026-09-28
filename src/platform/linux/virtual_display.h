@@ -11,6 +11,7 @@
 
 #include <array>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -141,6 +142,42 @@ namespace platf {
    * @return True when the named output's own block says it is enabled.
    */
   bool kscreen_output_is_enabled(std::string_view layout, std::string_view name);
+
+  /**
+   * @brief Read the mode an output's block marks as its current one.
+   *
+   * `kscreen-doctor -o` lists the modes of an output as `id:WIDTHxHEIGHT@RATE` tokens on one line and
+   * marks the current one with `*` (`1:2376x1080@60.00*!`). The rate is the compositor's own value and
+   * is rarely the whole number that was asked for: a requested 165 is enumerated as 164.64, so the
+   * rate is reported rounded to whole hertz — the same rounding `kscreen-doctor` itself applies when
+   * it is handed a mode.
+   *
+   * A mode that is listed is not necessarily the one the compositor runs, which is why this is read
+   * back instead of trusting the tool's exit status.
+   *
+   * @param layout Raw `kscreen-doctor -o` output.
+   * @param name Output name to look for.
+   * @return Width, height and rounded refresh rate of the current mode; an empty optional when the
+   * output is not listed or its block carries no current mode.
+   */
+  std::optional<std::array<int, 3>> kscreen_output_current_mode(std::string_view layout, std::string_view name);
+
+  /**
+   * @brief Whether an output's block already offers a mode of this size and refresh rate.
+   *
+   * Adding a custom mode appends an entry to the compositor's mode list, and that list is persisted
+   * with the output's configuration, so adding one unconditionally grows it once per session:
+   * measured 2026-09-28 on the reference host, a single virtual output carried 225 entries of
+   * 2376x1080 covering 8 distinct rates (257 entries already on 2026-09-26).
+   *
+   * @param layout Raw `kscreen-doctor -o` output.
+   * @param name Output name to look for.
+   * @param width Mode width in pixels.
+   * @param height Mode height in pixels.
+   * @param fps Refresh rate in whole hertz.
+   * @return True when a mode of that size and (rounded) rate is already listed.
+   */
+  bool kscreen_output_has_mode(std::string_view layout, std::string_view name, int width, int height, int fps);
 
   /**
    * @brief Remove ANSI escape sequences from text.
@@ -307,6 +344,16 @@ namespace platf {
   /**
    * @brief Build the kscreen-doctor argument that selects a `widthxheight@fps` mode.
    *
+   * The `mode` operation segment is load bearing: without it kscreen-doctor answers
+   * `Unable to parse arguments: output.<name>.<width>x<height>@<fps>` (reproduced 2026-09-28 on the
+   * reference host), exits successfully and leaves the output on the mode it already had — so the
+   * virtual output served the compositor's own 60 Hz while Sunshine paced its capture at the client's
+   * 165 and padded frames to its minimum-fps target.
+   *
+   * The rate must be whole hertz: a decimal (`@164.64`) is rejected the same way, and
+   * kscreen-doctor matches the whole number against the compositor's own rates, so `@165` selects the
+   * mode it enumerated as 164.64.
+   *
    * @param output Output name as the compositor lists it.
    * @param width Mode width in pixels.
    * @param height Mode height in pixels.
@@ -314,7 +361,7 @@ namespace platf {
    * @return The kscreen-doctor argument.
    */
   inline std::string set_mode_arg(const std::string &output, int width, int height, int fps) {
-    return "output." + output + "." + std::to_string(width) + "x" + std::to_string(height) + "@" + std::to_string(fps);
+    return "output." + output + ".mode." + std::to_string(width) + "x" + std::to_string(height) + "@" + std::to_string(fps);
   }
 
   bool session_virtual_display_start(int width, int height, int fps);

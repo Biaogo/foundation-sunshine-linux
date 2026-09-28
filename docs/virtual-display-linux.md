@@ -486,20 +486,46 @@ KMS 在进程余下生命周期内不可用"）。⇒ 用测试实例做 **KMS �
 或更换 NVIDIA 驱动分支；虚拟输出那条路仍要等 VKMS 的 `supported_colorspaces`/`edid` 补丁合并。
 
 
-## 虚拟屏的刷新率（2026-09-26 修复并实测）
+## 虚拟屏的刷新率（2026-09-26 补回，2026-09-28 修正 —— 之前那条"实测"是错的）
 
 **回归**：从 NixOS hook 切到内置虚拟屏时，只搬了"点亮"，漏了 hook 的另外两步 ——
 `kscreen-doctor output.<名>.addCustomMode.<W>.<H>.<fps*1000>.full` 与
-`output.<名>.<W>x<H>@<fps>`。krfb 的虚拟输出自带的档位只有合成器给的那几档（本机 60/90/120），
+`output.<名>.mode.<W>x<H>@<fps>`。krfb 的虚拟输出自带的档位只有合成器给的那几档（本机 60/90/120），
 所以客户端要 144/165 会静默跑在合成器选的档位上，而日志却打印**请求值**（看起来"成功"了）。
 
-**修复**（`src/platform/linux/virtual_display.{h,cpp}`）：点亮之后补回那两步（best effort ——
-驱动/合成器可能拒绝，hook 当年也是这么写的），并把两个参数构造函数暴露到头文件以便单测；
-日志改成如实报告是否真的切过去（失败时追加 `(the compositor kept its own refresh rate)`）。
+**修正（2026-09-28，实测）**：补回的第二个参数当初写成了 `output.<名>.<W>x<H>@<fps>`，**漏了 `mode`
+操作段**。kscreen-doctor 对它的回答是
 
-**实测（本机，客户端请求 165 Hz）**：
 ```
-Info: Virtual display [Virtual-TestVirt] created at 2376x1080@165      ← 无失败后缀
-kscreen-doctor: Virtual-TestVirt 速率去重 {'60.00': 1, '165.00': 1}，当前(*)档 = 165.00
+Unable to parse arguments: output.Virtual-SunshineVirt.2376x1080@165     ← 退出码 0
 ```
-⇒ 自定义模式被合成器接受且已切换到位，与旧 hook 行为一致。
+
+即：自定义档位确实加上了（所以档位表里能看到一堆 164.6x），但**切换从未生效**，输出一直停在它自己的
+60 Hz 档；而 `apply_client_refresh_rate()` 只把"spawn 抛异常"当失败，于是照样 `return true`，日志就打出
+`created at 2376x1080@165`。后果不止"刷新率不对"：Sunshine 按客户端请求的 165 fps 做帧节奏
+（`Sunshine frame pacing: enabled (6.060606ms)`）并把 `min_fps_target` 设到 ~82 fps（请求值的一半），
+合成器却只产 60 fps ⇒ 编码器吃到的是被补齐/复制过的帧，桌面动画（唯一会动的东西）看起来发涩、发慢。
+
+**修复**（`src/platform/linux/virtual_display.{h,cpp}`）：
+
+1. `set_mode_arg()` 补上 `.mode.` 段；刷新率必须是**整数**（`@164.64` 一样会被拒，kscreen-doctor 用整数
+   去匹配它自己枚举出的档位，`@165` 命中的是它列为 164.64 的那条）。
+2. 切换后**回读**档位表确认（`kscreen_output_current_mode()`），只有当前档真的是请求的尺寸+（四舍五入
+   的）刷新率才算成功；否则打 warning 并写明合成器实际保留的档位，日志里的
+   `(the compositor kept its own refresh rate)` 这才有意义。
+3. 加档位前先看列表里有没有同尺寸同速率的档（`kscreen_output_has_mode()`）。以前是无条件 add，每一场会话
+   都往输出的持久化档位表里追加一条：实测 2026-09-28 单个虚拟输出 268 个档位、其中 2376x1080 占 225 条
+   （只有 8 个不同速率），`kwinoutputconfig.json` 涨到 105 KB。
+
+**实测（本机，2026-09-28）**：
+
+```
+# 修复前：当前档是 60.00，请求 165（旧的错误参数被 kscreen-doctor 拒绝）
+kscreen-doctor -o → Virtual-SunshineVirt: 1:2376x1080@60.00*!
+# 修复后按正确语法手跑一次（当前会话当场生效）
+kscreen-doctor output.Virtual-SunshineVirt.mode.2376x1080@165   → 当前档 252:2376x1080@164.64（四舍五入 165）
+```
+
+之前记在下面的"实测（Virtual-TestVirt 当前档 = 165.00）"没有在真实输出上复现：那次探针的 165.00 来自
+别的步骤，真实会话的输出一直是 60.00（journal 里 kscreen-doctor 自己的报错就是证据）。
+

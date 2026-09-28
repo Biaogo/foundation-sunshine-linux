@@ -568,6 +568,98 @@ TEST(AnsiStrip, HandlesTheTwoCharacterForm) {
   EXPECT_EQ(platf::strip_ansi("\x1b[01;32menabled\x1b[0;0m"), "enabled");
 }
 
+TEST(VirtualDisplayModeArguments, SetModeUsesTheModeOperation) {
+  // Regression: the argument was `output.<name>.<W>x<H>@<rate>`, which kscreen-doctor answers with
+  // `Unable to parse arguments: ...` and exit status 0. The mode was therefore never applied — the
+  // virtual output stayed on its own 60 Hz while Sunshine paced its capture at the client's rate and
+  // padded frames to its minimum-fps target — and, because the child still exited normally, the
+  // caller logged the requested rate as if the compositor had taken it.
+  EXPECT_EQ(platf::set_mode_arg("Virtual-SunshineVirt", 2376, 1080, 165),
+            "output.Virtual-SunshineVirt.mode.2376x1080@165");
+}
+
+TEST(VirtualDisplayModeArguments, AddCustomModeKeepsItsBlankingArgument) {
+  EXPECT_EQ(platf::add_custom_mode_arg("Virtual-SunshineVirt", 2376, 1080, 165),
+            "output.Virtual-SunshineVirt.addCustomMode.2376.1080.165000.full");
+}
+
+TEST(KscreenModeListing, ReadsTheCurrentModeOfTheOutputThatWasAskedAbout) {
+  const std::string layout =
+    "Output: 1 Virtual-SunshineVirt 90d4ef5c-f168-4ff4-ae20-c8d7009864cc\n"
+    "\tModes:  1:2376x1080@60.00*!  2:2376x1080@119.75  3:1280x720@59.25\n"
+    "Output: 2 eDP-1 d0212254-4127-41d2-9894-898eabae7a38\n"
+    "\tModes:  269:2560x1600@165.00*!\n";
+
+  const auto virtual_output = platf::kscreen_output_current_mode(layout, "Virtual-SunshineVirt");
+  ASSERT_TRUE(virtual_output.has_value());
+  EXPECT_EQ((*virtual_output)[0], 2376);
+  EXPECT_EQ((*virtual_output)[1], 1080);
+  EXPECT_EQ((*virtual_output)[2], 60);
+
+  const auto panel = platf::kscreen_output_current_mode(layout, "eDP-1");
+  ASSERT_TRUE(panel.has_value());
+  EXPECT_EQ((*panel)[2], 165);
+}
+
+TEST(KscreenModeListing, RoundsTheCompositorsOwnRateToWholeHertz) {
+  // A requested 165 is enumerated as 164.64; kscreen-doctor is handed whole hertz and matches them
+  // against these values, so the comparison has to round the same way.
+  const std::string layout =
+    "Output: 1 Virtual-SunshineVirt 90d4ef5c\n"
+    "\tModes:  252:2376x1080@164.64*  253:2376x1080@164.70\n";
+
+  const auto current = platf::kscreen_output_current_mode(layout, "Virtual-SunshineVirt");
+  ASSERT_TRUE(current.has_value());
+  EXPECT_EQ((*current)[2], 165);
+  EXPECT_TRUE(platf::kscreen_output_has_mode(layout, "Virtual-SunshineVirt", 2376, 1080, 165));
+}
+
+TEST(KscreenModeListing, HasModeComparesSizeAndRate) {
+  const std::string layout =
+    "Output: 1 Virtual-SunshineVirt 90d4ef5c\n"
+    "\tModes:  1:2376x1080@60.00*!  2:1280x720@59.25\n";
+
+  EXPECT_TRUE(platf::kscreen_output_has_mode(layout, "Virtual-SunshineVirt", 2376, 1080, 60));
+  EXPECT_FALSE(platf::kscreen_output_has_mode(layout, "Virtual-SunshineVirt", 2376, 1080, 120));
+  EXPECT_FALSE(platf::kscreen_output_has_mode(layout, "Virtual-SunshineVirt", 1280, 1080, 60));
+  EXPECT_FALSE(platf::kscreen_output_has_mode(layout, "eDP-1", 2376, 1080, 60));
+}
+
+TEST(KscreenModeListing, ReportsNothingForAListingWithoutThatOutput) {
+  const std::string layout =
+    "Output: 2 eDP-1 d0212254\n"
+    "\tModes:  269:2560x1600@165.00*!\n";
+
+  EXPECT_FALSE(platf::kscreen_output_current_mode(layout, "Virtual-SunshineVirt").has_value());
+  EXPECT_FALSE(platf::kscreen_output_has_mode(layout, "Virtual-SunshineVirt", 2560, 1600, 165));
+  EXPECT_FALSE(platf::kscreen_output_has_mode("", "Virtual-SunshineVirt", 2560, 1600, 165));
+}
+
+TEST(KscreenModeListing, ReadsAColouredListing) {
+  // kscreen-doctor colours its output even through a pipe, so the block and the current-mode marker
+  // both arrive wrapped in escape sequences.
+  const std::string coloured =
+    "\x1b[01;32mOutput: \x1b[0;0m1 Virtual-SunshineVirt 90d4ef5c\n"
+    "\t\x1b[01;34mModes: \x1b[0;0m 1:\x1b[01;32m2376x1080@164.64*\x1b[0;0m!  2:2376x1080@60.00\n";
+
+  const auto current = platf::kscreen_output_current_mode(coloured, "Virtual-SunshineVirt");
+  ASSERT_TRUE(current.has_value());
+  EXPECT_EQ((*current)[0], 2376);
+  EXPECT_EQ((*current)[1], 1080);
+  EXPECT_EQ((*current)[2], 165);
+}
+
+TEST(KscreenModeListing, IgnoresTokensThatAreNotModes) {
+  const std::string layout =
+    "Output: 1 Virtual-SunshineVirt 90d4ef5c\n"
+    "\tModes:  Custom modes:  1:2376x1080@60.00*  nope  2:2376@60\n";
+
+  const auto current = platf::kscreen_output_current_mode(layout, "Virtual-SunshineVirt");
+  ASSERT_TRUE(current.has_value());
+  EXPECT_EQ((*current)[2], 60);
+  EXPECT_EQ((*current)[0], 2376);
+}
+
 TEST(KscreenOutputEnabled, RejectsAnOutputThatIsNotListed) {
   EXPECT_FALSE(platf::kscreen_output_is_enabled("Output: 1 eDP-1 abc\n\tenabled\n", "Virtual-Nope"));
   EXPECT_FALSE(platf::kscreen_output_is_enabled("", "eDP-1"));

@@ -21,6 +21,7 @@
 #include <array>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
@@ -48,6 +49,9 @@ namespace platf {
   namespace {
     /// Poll interval while waiting for the output.
     constexpr auto OUTPUT_POLL = std::chrono::milliseconds {300};
+
+    /// Reads of the listing used to confirm that a requested mode really became the current one.
+    constexpr int MODE_SWITCH_POLLS = 4;
 
     /// Attempts allowed when making a created output live (the listing can lag behind by a moment).
     constexpr int OUTPUT_ENABLE_POLLS = 10;
@@ -423,24 +427,49 @@ namespace platf {
         return false;
       }
 
-      try {
-        boost::process::v1::child add(exe, add_custom_mode_arg(output, width, height, fps));
-        add.wait();
-      }
-      catch (const std::exception &e) {
-        // Not fatal: the mode may already exist, or the driver may refuse it.
-        BOOST_LOG(debug) << "Could not add "sv << width << 'x' << height << '@' << fps << ": "sv << e.what();
+      // Add the mode only when the compositor does not offer this size and rate already: every call
+      // appends an entry to the output's persisted mode list, and an unconditional add had grown one
+      // to 225 entries of a single size (see kscreen_output_has_mode).
+      if (!kscreen_output_has_mode(kscreen_output(), output, width, height, fps)) {
+        try {
+          boost::process::v1::child add(exe, add_custom_mode_arg(output, width, height, fps));
+          add.wait();
+        }
+        catch (const std::exception &e) {
+          // Not fatal: the mode may already exist, or the driver may refuse it.
+          BOOST_LOG(debug) << "Could not add "sv << width << 'x' << height << '@' << fps << ": "sv << e.what();
+        }
       }
 
       try {
         boost::process::v1::child pick(exe, set_mode_arg(output, width, height, fps));
         pick.wait();
-        return true;
       }
       catch (const std::exception &e) {
         BOOST_LOG(warning) << "Could not select "sv << width << 'x' << height << '@' << fps << ": "sv << e.what();
         return false;
       }
+
+      // kscreen-doctor exits successfully for a mode it did not apply — it answered "Unable to parse
+      // arguments" for the argument this function used to build, and it also exits 0 for a rate it
+      // cannot match. The listing is the only place that says which mode the compositor really runs,
+      // so success is read back from it instead of inferred from the tool.
+      std::optional<std::array<int, 3>> current;
+      for (int attempt = 0; attempt < MODE_SWITCH_POLLS; ++attempt) {
+        current = kscreen_output_current_mode(kscreen_output(), output);
+        if (current && (*current)[0] == width && (*current)[1] == height && (*current)[2] == fps) {
+          return true;
+        }
+        std::this_thread::sleep_for(OUTPUT_POLL);
+      }
+
+      std::string kept = "an unlisted mode";
+      if (current) {
+        kept = std::to_string((*current)[0]) + 'x' + std::to_string((*current)[1]) + '@' + std::to_string((*current)[2]);
+      }
+      BOOST_LOG(warning) << "The compositor kept "sv << kept << " instead of "sv << width << 'x' << height << '@' << fps
+                         << " on ["sv << output << ']';
+      return false;
     }
 
     bool enable_output_by_name(const std::string &name) {
@@ -551,6 +580,112 @@ namespace platf {
       }
       if (trimmed == "disabled") {
         return false;
+      }
+    }
+
+    return false;
+  }
+
+  namespace {
+    /**
+     * @brief The `Modes:` line of the block that belongs to an output.
+     *
+     * Plain text, empty when the output is not listed or its block carries no mode table.
+     *
+     * @param layout Raw `kscreen-doctor -o` output.
+     * @param name Output name to look for.
+     * @return The mode table line without its leading white space.
+     */
+    std::string mode_listing(std::string_view layout, std::string_view name) {
+      const std::string plain {strip_ansi(layout)};
+      const std::string needle {name};
+      std::istringstream stream {plain};
+      std::string line;
+      bool in_block = false;
+      while (std::getline(stream, line)) {
+        if (line.rfind("Output: ", 0) == 0) {
+          in_block = line.find(needle) != std::string::npos;
+          continue;
+        }
+        if (!in_block) {
+          continue;
+        }
+
+        auto trimmed = std::string_view {line};
+        while (!trimmed.empty() && (trimmed.front() == ' ' || trimmed.front() == '\t')) {
+          trimmed.remove_prefix(1);
+        }
+        if (trimmed.rfind("Modes:", 0) == 0) {
+          return std::string {trimmed};
+        }
+      }
+
+      return {};
+    }
+
+    /// One `id:WIDTHxHEIGHT@RATE` token of a mode table.
+    struct mode_entry_t {
+      int width = 0;  ///< Mode width in pixels.
+      int height = 0;  ///< Mode height in pixels.
+      int hertz = 0;  ///< Refresh rate rounded to whole hertz.
+      bool current = false;  ///< Whether the compositor marks this one as the mode in use.
+    };
+
+    /**
+     * @brief Parse the mode tokens of a `Modes:` line.
+     *
+     * A token looks like `1:2376x1080@60.00*!`; the trailing flags are `*` for the current mode and
+     * `!` for the preferred one. Anything that does not carry the `id:WxH@rate` shape is skipped, so
+     * a truncated or reworded listing degrades to "no modes" instead of a wrong answer.
+     *
+     * @param modes_line Line as returned by @ref mode_listing.
+     * @return One entry per parsed mode, in listing order.
+     */
+    std::vector<mode_entry_t> mode_entries(std::string_view modes_line) {
+      std::vector<mode_entry_t> entries;
+      std::istringstream stream {std::string {modes_line}};
+      std::string token;
+      stream >> token;  // the `Modes:` label
+      while (stream >> token) {
+        const auto id_end = token.find(':');
+        const auto size_end = token.find('x');
+        const auto rate_begin = token.find('@');
+        if (id_end == std::string::npos || size_end == std::string::npos || rate_begin == std::string::npos ||
+            !(id_end < size_end && size_end < rate_begin)) {
+          continue;
+        }
+
+        const auto to_number = [](std::string_view text, bool whole) {
+          const std::string copy {text};
+          return whole ? std::strtol(copy.c_str(), nullptr, 10) : std::strtod(copy.c_str(), nullptr);
+        };
+
+        mode_entry_t entry;
+        entry.width = static_cast<int>(to_number(std::string_view {token}.substr(id_end + 1, size_end - id_end - 1), true));
+        entry.height = static_cast<int>(to_number(std::string_view {token}.substr(size_end + 1, rate_begin - size_end - 1), true));
+        entry.hertz = static_cast<int>(std::lround(to_number(std::string_view {token}.substr(rate_begin + 1), false)));
+        entry.current = token.find('*') != std::string::npos;
+        entries.push_back(entry);
+      }
+
+      return entries;
+    }
+  }  // namespace
+
+  std::optional<std::array<int, 3>> kscreen_output_current_mode(std::string_view layout, std::string_view name) {
+    for (const auto &entry : mode_entries(mode_listing(layout, name))) {
+      if (entry.current) {
+        return std::array<int, 3> {entry.width, entry.height, entry.hertz};
+      }
+    }
+
+    return std::nullopt;
+  }
+
+  bool kscreen_output_has_mode(std::string_view layout, std::string_view name, int width, int height, int fps) {
+    for (const auto &entry : mode_entries(mode_listing(layout, name))) {
+      if (entry.width == width && entry.height == height && entry.hertz == fps) {
+        return true;
       }
     }
 
