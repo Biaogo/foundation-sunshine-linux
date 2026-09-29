@@ -214,15 +214,16 @@ jobs:
               openssl-devel opus-devel pipewire-devel pulseaudio-libs-devel python3-jinja2 qt6-qtbase-devel \
               qt6-qtsvg-devel rpm-build vulkan-loader-devel wget which xorg-x11-server-Xvfb boost-devel \
               boost-static libva-devel nodejs nodejs22 nodejs24 npm xz
-            # both spellings: the build script asks for gcc-${gcc_version}, cmake for its own names
-            G15=""; for c in gcc-15 gcc15; do p="$(command -v "$c" || true)"; if [ -n "$p" ]; then G15="$p"; break; fi; done
-            GXX15=""; for c in g++-15 g++15; do p="$(command -v "$c" || true)"; if [ -n "$p" ]; then GXX15="$p"; break; fi; done
-            if [ -z "$G15" ] || [ -z "$GXX15" ]; then echo "gcc 15 missing from this image:"; rpm -qa "gcc*"; exit 1; fi
-            ln -sf "$G15" /usr/bin/gcc-15
-            ln -sf "$G15" /usr/bin/gcc15
-            ln -sf "$GXX15" /usr/bin/g++-15
-            ln -sf "$GXX15" /usr/bin/g++15
-            for c in gcc gcc-15 g++ g++-15 cmake ninja node npm rpmbuild; do printf "%-9s %s\n" "$c" "$(command -v $c || echo MISSING)"; done
+            # fedora 44's gcc15 package provides /usr/sbin/gcc-15 and /usr/sbin/g++-15 - exactly the
+            # name linux_build.sh asks for. Do NOT "help" with ln -sf: /usr/sbin is a symlink into
+            # /usr/bin on fedora, so the alias and its target are the same file and ln -f would
+            # replace the real binary with a self-referential symlink (ELOOP), after which cmake
+            # dies with "Could not find the compiler specified in the environment variable
+            # CC: gcc-15" (measured in run 36470699919 - the probe above still passed because it
+            # ran before the alias was built).
+            for c in gcc-15 g++-15 gcc15 g++15; do printf "%-8s %s\n" "$c" "$(command -v $c || echo MISSING)"; done
+            gcc-15 --version > /dev/null || { echo "gcc-15 is not usable:"; ls -l /usr/bin/gcc* /usr/sbin/gcc*; exit 1; }
+            g++-15 --version > /dev/null || { echo "g++-15 is not usable:"; ls -l /usr/bin/g++* /usr/sbin/g++*; exit 1; }
           '
           # CUDA toolkit from NVIDIA's redistributable archives - see scripts/install-cuda-redist.sh
           # for why the monolithic runfile is not used (libxml2.so.2 is gone on fedora:44).
