@@ -96,6 +96,20 @@ jobs:
           echo "tag=$TAG sha=$SHA commit=$COMMIT version=$VERSION"
           { echo "tag=$TAG"; echo "sha=$SHA"; echo "commit=$COMMIT"; echo "version=$VERSION"; } \
             >> "$GITHUB_OUTPUT"
+      - name: Check the selected tag for stray quotes in its docker-exec blocks
+        # The lane commands are single-quoted `bash -lc '...'` strings. One apostrophe inside such a
+        # block (a comment is enough) ends the string early and the rest of the block then runs on
+        # the runner host instead of in the container - the fedora toolchain probe once ran on
+        # ubuntu-latest that way and cost a full run. Cheap to check here, before any lane starts.
+        run: |
+          set -euo pipefail
+          TAG="${{ steps.t.outputs.tag }}"
+          if ! git -C /tmp/fork-tags.git show "$TAG:scripts/check-release-linux-quotes.py" > /tmp/check-quotes.py 2>/dev/null; then
+            echo "tag $TAG carries no quote checker; skipping"
+            exit 0
+          fi
+          git -C /tmp/fork-tags.git show "$TAG:.github/workflows/release-linux.yml" > /tmp/release-linux.yml
+          python3 /tmp/check-quotes.py /tmp/release-linux.yml
 
   deb:
     name: deb on ${{ matrix.slug }}
@@ -214,13 +228,15 @@ jobs:
               openssl-devel opus-devel pipewire-devel pulseaudio-libs-devel python3-jinja2 qt6-qtbase-devel \
               qt6-qtsvg-devel rpm-build vulkan-loader-devel wget which xorg-x11-server-Xvfb boost-devel \
               boost-static libva-devel nodejs nodejs22 nodejs24 npm xz
-            # fedora 44's gcc15 package provides /usr/sbin/gcc-15 and /usr/sbin/g++-15 - exactly the
-            # name linux_build.sh asks for. Do NOT "help" with ln -sf: /usr/sbin is a symlink into
-            # /usr/bin on fedora, so the alias and its target are the same file and ln -f would
+            # fedora 44 ships gcc15, which provides /usr/sbin/gcc-15 and /usr/sbin/g++-15 - exactly
+            # the name linux_build.sh asks for. Do NOT "help" with ln -sf: /usr/sbin is a symlink
+            # into /usr/bin on fedora, so the alias and its target are the same file and ln -f would
             # replace the real binary with a self-referential symlink (ELOOP), after which cmake
             # dies with "Could not find the compiler specified in the environment variable
             # CC: gcc-15" (measured in run 36470699919 - the probe above still passed because it
             # ran before the alias was built).
+            # NOTE: no apostrophes in this block - a single quote ends the bash -lc string above and
+            # silently moves the rest of it onto the runner host (that cost run 3656xxxxx).
             for c in gcc-15 g++-15 gcc15 g++15; do printf "%-8s %s\n" "$c" "$(command -v $c || echo MISSING)"; done
             gcc-15 --version > /dev/null || { echo "gcc-15 is not usable:"; ls -l /usr/bin/gcc* /usr/sbin/gcc*; exit 1; }
             g++-15 --version > /dev/null || { echo "g++-15 is not usable:"; ls -l /usr/bin/g++* /usr/sbin/g++*; exit 1; }
