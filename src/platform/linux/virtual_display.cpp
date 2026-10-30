@@ -44,6 +44,7 @@
 #include "src/logging.h"
 #include "src/config.h"
 #include "src/platform/common.h"
+#include "src/platform/linux/wayland_socket.h"
 
 namespace platf {
   namespace {
@@ -578,6 +579,11 @@ namespace platf {
       if (trimmed == "enabled") {
         return true;
       }
+      if (trimmed == "disable unsupported") {
+        // libkscreen omits enabled/disabled for outputs that cannot be disabled. Such an output is
+        // necessarily enabled, and krfb's virtual output always reports this state on 6.8.
+        return true;
+      }
       if (trimmed == "disabled") {
         return false;
       }
@@ -834,6 +840,13 @@ namespace platf {
   }  // namespace
 
   bool virtual_display_t::start(int width, int height, int fps) {
+    // Resolve before any kscreen call or helper spawn: both must use the compositor's current
+    // socket, not the long-lived service unit's value from an earlier login session.
+    const auto wayland_display = resolve_wayland_socket();
+    if (wayland_display.empty()) {
+      BOOST_LOG(debug) << "No connectable Wayland socket found for the virtual display"sv;
+    }
+
     // A previous session (or a crashed one) may have left a virtual monitor behind; the hook used to
     // clean that up before creating the new one.
     cleanup_stale_helpers();
@@ -1100,6 +1113,10 @@ namespace platf {
 
         const auto value = trimmed(line);
         if (value == "enabled") {
+          current.enabled = true;
+        }
+        else if (value == "disable unsupported") {
+          // libkscreen reports this instead of enabled/disabled when the output cannot be disabled.
           current.enabled = true;
         }
         else if (value == "disabled") {

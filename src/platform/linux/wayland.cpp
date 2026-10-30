@@ -19,6 +19,7 @@
 #include "graphics.h"
 #include "src/logging.h"
 #include "src/platform/common.h"
+#include "src/platform/linux/wayland_socket.h"
 #include "src/round_robin.h"
 #include "src/utility.h"
 #include "wayland.h"
@@ -63,15 +64,16 @@ namespace wl {
   };
 
   int display_t::init(const char *display_name) {
-    std::string env_display_name;
+    std::string resolved_display_name;
     if (!display_name) {
-      if (lizardbyte::common::get_env("WAYLAND_DISPLAY", env_display_name)) {
-        display_name = env_display_name.c_str();
+      resolved_display_name = platf::resolve_wayland_socket();
+      if (!resolved_display_name.empty()) {
+        display_name = resolved_display_name.c_str();
       }
     }
 
     if (!display_name) {
-      BOOST_LOG(error) << "[wayland] Environment variable WAYLAND_DISPLAY has not been defined"sv;
+      BOOST_LOG(error) << "[wayland] No connectable Wayland display found"sv;
       return -1;
     }
 

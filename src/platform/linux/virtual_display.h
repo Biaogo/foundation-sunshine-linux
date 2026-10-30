@@ -133,8 +133,10 @@ namespace platf {
   /**
    * @brief Whether an output reads as enabled in `kscreen-doctor -o` output.
    *
-   * The state is a bare `enabled` token on its own line inside the output's block. A plain search
-   * for the substring is not enough: other lines of the same block carry states of their own
+   * The state is a bare `enabled` or `disabled` token on its own line inside the output's block.
+   * libkscreen 6.8 omits both for an output without the Disable capability and prints `disable
+   * unsupported` instead; such an output cannot be disabled and therefore counts as enabled. A plain
+   * search for the substring is not enough: other lines of the same block carry states of their own
    * (`HDR: enabled`), and a neighbouring output's block must not answer for this one.
    *
    * @param layout Raw `kscreen-doctor -o` output.

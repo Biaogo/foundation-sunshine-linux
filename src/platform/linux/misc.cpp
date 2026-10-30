@@ -66,7 +66,7 @@
 #include "src/entry_handler.h"
 #include "src/logging.h"
 #include "src/platform/common.h"
-#include "src/platform/linux/virtual_display.h"
+#include "src/platform/linux/wayland_socket.h"
 #include "src/platform/linux/virtual_display.h"
 #include "vaapi.h"
 
@@ -1473,14 +1473,15 @@ namespace platf {
     gbm::init();
 
     window_system = window_system_e::NONE;
+    [[maybe_unused]] const bool wayland_available = !platf::resolve_wayland_socket().empty();
 #ifdef SUNSHINE_BUILD_WAYLAND
-    if (std::string v; lizardbyte::common::get_env("WAYLAND_DISPLAY", v)) {
+    if (wayland_available) {
       window_system = window_system_e::WAYLAND;
     }
 #endif
 #if defined(SUNSHINE_BUILD_X11) || defined(SUNSHINE_BUILD_CUDA)
     if (std::string v; lizardbyte::common::get_env("DISPLAY", v) && window_system != window_system_e::WAYLAND) {
-      if (lizardbyte::common::get_env("WAYLAND_DISPLAY", v)) {
+      if (wayland_available) {
         BOOST_LOG(warning) << "Wayland detected, yet sunshine will use X11 for screencasting, screencasting will only work on XWayland applications"sv;
       }
 

@@ -519,6 +519,44 @@ TEST(KscreenOutputEnabled, ReadsTheBlockOfTheOutputThatWasAskedAbout) {
   EXPECT_FALSE(platf::kscreen_output_is_enabled(layout, "Virtual-SunshineVirt"));
 }
 
+TEST(KscreenOutputEnabled, TreatsDisableUnsupportedAsEnabled) {
+  const std::string layout =
+    "Output: 1 Virtual-SunshineVirt 90d4ef5c-f168-4ff4-ae20-c8d7009864cc\n"
+    "\tdisable unsupported\n"
+    "\tconnected\n"
+    "\tpriority 1\n"
+    "\tUnknown\n"
+    "\treplication source:0\n"
+    "\tModes:  1:2560x1440@60.00*!  2:2376x1080@59.25  3:2376x1080@119.00\n"
+    "\tGeometry: 3440,0 2560x1440\n"
+    "\tScale: 1\n";
+
+  EXPECT_TRUE(platf::kscreen_output_is_enabled(layout, "Virtual-SunshineVirt"));
+}
+
+TEST(KscreenOutputEnabled, ReadsAnEnabledBlockFromOlderLibkscreen) {
+  const std::string layout =
+    "Output: 1 Virtual-SunshineVirt 90d4ef5c-f168-4ff4-ae20-c8d7009864cc\n"
+    "\tenabled\n"
+    "\tconnected\n"
+    "\tpriority 1\n"
+    "\tUnknown\n"
+    "\treplication source:0\n"
+    "\tModes:  1:2560x1440@60.00*!\n";
+
+  EXPECT_TRUE(platf::kscreen_output_is_enabled(layout, "Virtual-SunshineVirt"));
+}
+
+TEST(KscreenOutputEnabled, ReadsADisabledBlockAsNotEnabled) {
+  const std::string layout =
+    "Output: 1 Virtual-SunshineVirt 90d4ef5c-f168-4ff4-ae20-c8d7009864cc\n"
+    "\tdisabled\n"
+    "\tconnected\n"
+    "\tpriority 1\n";
+
+  EXPECT_FALSE(platf::kscreen_output_is_enabled(layout, "Virtual-SunshineVirt"));
+}
+
 TEST(KscreenOutputEnabled, DoesNotLetOtherStateLinesAnswerForTheOutput) {
   // The block carries per-feature states of its own (`HDR: disabled` above all); only a bare
   // `enabled` token means the output itself is on.

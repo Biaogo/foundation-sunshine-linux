@@ -36,6 +36,7 @@
 #include "graphics.h"
 #include "pipewire.cpp"
 #include "src/platform/common.h"
+#include "src/platform/linux/wayland_socket.h"
 #include "src/video.h"
 
 using namespace std::literals;
@@ -323,9 +324,9 @@ namespace kwin {
         screencast_permission_helper_t::setup();
       }
 
-      std::string wl_name;
-      if (!lizardbyte::common::get_env("WAYLAND_DISPLAY", wl_name)) {
-        BOOST_LOG(error) << "[kwingrab] WAYLAND_DISPLAY not set"sv;
+      const auto wl_name = platf::resolve_wayland_socket();
+      if (wl_name.empty()) {
+        BOOST_LOG(error) << "[kwingrab] No connectable Wayland display found"sv;
         return -1;
       }
 
