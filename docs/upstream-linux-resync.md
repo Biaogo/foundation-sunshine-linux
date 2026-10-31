@@ -384,3 +384,54 @@ this tree tracks real files under `third-party/`), then a `nix-build` of the pac
 |---|---|---|
 | 7.1.4 / 12-channel surround (#510, fork `d855af34`) | **ported** (commit `c868a5ee`) | speaker enum + `map_surround714`, `SURROUND714`/`HIGH_SURROUND714` stream configs, PulseAudio TOP_FRONT/TOP_REAR positions and `sink-sunshine-surround714`, delimited `surround-params` negotiation (12-channel mapping values no longer fit a single digit), `SUNSHINE_CLIENT_AUDIO_CONFIGURATION=7.1.4`. Compile+link verified. Runtime negotiation still needs a 12-channel-capable client. |
 | Multi-client mic mixing (#929, fork `d80144e7`) | **not portable as-is** | upstream's 2026 audio stack has a different mic model: `platf::mic_t` is a *capture* source (`audio.cpp` pulls `mic->sample()` and encodes it), and there is no client→host mic ingest path anywhere in `src/` (the fork's 502-line `stream.cpp` rewrite, `mic_write.*` and `mic_mixer.*` have no counterpart). Re-applying it means *adding* the client→host direction (Opus decode → per-source jitter queue → mix → virtual mic device) on top of upstream's pipeline, i.e. new code rather than a cherry-pick. Patch kept at `docs/reapply-alkaid/mic-mixing-929.patch` for that work. |
+
+## 10. Upstream sync — merge `68f637a2` (2026-10-31)
+
+* **Merge.** `refork/linux` gained merge commit `03e92882` of `upstream/master@68f637a2`: 143
+  upstream commits since the re-fork base `05350c05`, 13 conflicted files. Every conflict is a
+  keep-both, all of them on the fork's Linux surface:
+  - `src/audio.cpp` / `src/audio.h` — the two 7.1.4 (12 channel) layouts stay; `stream_params_t::mapping`
+    becomes `std::array<std::uint8_t, MAX_SPEAKERS>` (upstream's container, the fork's 12 channel width).
+  - `src/rtsp.cpp` — upstream's iterator form, the fork's rotate bound (`channelCount`, not
+    `MAX_STREAM_CONFIG`; 12 channel layouts need the whole range).
+  - `src/crypto.cpp` — `cbc_t::decrypt` stays (it is what `src/mic_stream.cpp` uses), the renamed
+    constructors come from upstream.
+  - `src/video.cpp` — the bitrate-change loop stays, upstream's `captured_image` name comes in.
+  - `src/platform/linux/misc.cpp` — the fork's `wayland_socket.h`/`virtual_display.h` includes and
+    the portal source probe both stay.
+  - `src/platform/linux/kwingrab.cpp` — the EFFECTIVE-cap probing placeholder stays.
+  - `src/config.cpp`, the web config JSONs/Vue and the two `tests/unit` files — both sides' keys and
+    cases.
+
+* **The fedora:44 rpm lane failure** (`Release-Linux` run 41065251082, tag `v2026.10.30-linux`):
+  the lane configured fine (`step=cmake exit=0`) and died at link time with `ld returned 1`. The
+  pre-merge tree predates three upstream libva commits — `81a677c1` "link matching bundled libva
+  libraries (#5918)", `d2250f24` "use matched system libva libraries (#5943)" and `68f637a2` "fix
+  libva header handling (#6007)" — i.e. it compiled against the bundled FFmpeg's libva headers and
+  linked the host libva (fedora:44 ships libva 1.23.0; the ubuntu 22.04/24.04 lanes do not, which is
+  why only this lane broke). The merge takes all three commits.
+  Measured in `fedora:44` with the workflow's own recipe (`scripts/linux_build.sh --cuda-patches
+  --sudo-off --step=...`, gcc-15, CUDA 13.1.115 from the redistributables):
+  `cmake` exit 0, `build` exit 0 (`build/sunshine`, 135 287 720 bytes, `ldd` reports 0 not found),
+  `package` exit 0 (`build/cpack_artifacts/Sunshine.rpm`, 14 998 135 bytes).
+  Limit of the evidence: the pre-merge failure was not re-run to capture its exact undefined
+  symbols; the cause is read from those three upstream commits, the fix is what the merged lane does.
+
+* **CodeQL alert 3** (`py/incomplete-url-substring-sanitization`, ref `refs/heads/refork/linux`):
+  the finding is on `packaging/linux/flatpak/deps/flatpak-builder-tools/go-get/flatpak-go-vendor-generator.py:98`
+  — vendored third-party code, inside the analysis because the submodule is checked out (`submodules:
+  recursive`). The exclusion list that skips vendored trees lives in the *reusable* workflow
+  `LizardByte/.github/.github/workflows/__call-codeql.yml` (`paths-ignore: build node_modules
+  third-party`) and that call only accepts a `runner` input, so this repo cannot extend it.
+  Fix: patch the vendored line and pin the submodule to the fork —
+  `Biaogo/flatpak-builder-tools`, branch `biaogo/codeql-host-check`, one commit on top of upstream
+  `9d86d33` (the pin upstream master carries since #5995): `go_module_to_flatpak()` compares the
+  first "/"-separated segment instead of `str.startswith("github.com")`, same intent, no substring
+  test on an unparsed path. **On every submodule bump, re-apply that patch on the new pin and move
+  the pin to the fork's branch** (`git -C packaging/linux/flatpak/deps/flatpak-builder-tools log`
+  shows it).
+
+* **Fork-local CI edit.** `.github/workflows/_codeql.yml` gained a `workflow_dispatch` trigger: the
+  upstream file only fires on push to `master`, pull requests and the Sunday cron, and this repo's
+  default branch is `refork/linux`, so without it the alert could only be re-analysed by waiting for
+  the cron. File is centrally managed upstream — re-apply after every sync.

@@ -7,6 +7,7 @@ name: CodeQL
 permissions: {}
 
 on:
+  workflow_dispatch:  # Fork-local: the upstream workflow is centrally managed in LizardByte/.github.
   pull_request:
   push:
     branches:
