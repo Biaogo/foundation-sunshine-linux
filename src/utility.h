@@ -444,18 +444,12 @@ namespace util {
      * @param rev Whether bytes should be emitted in reverse order.
      */
     Hex(const elem_type &elem, bool rev) {
-      if (!rev) {
-        const auto *data = reinterpret_cast<const std::byte *>(&elem) + sizeof(elem_type) - 1;
-        for (auto it = begin(); it < cend();) {
-          *it++ = _bits[std::to_integer<unsigned>(*data) / 16];
-          *it++ = _bits[std::to_integer<unsigned>(*data--) % 16];
-        }
-      } else {
-        const auto *data = reinterpret_cast<const std::byte *>(&elem);
-        for (auto it = begin(); it < cend();) {
-          *it++ = _bits[std::to_integer<unsigned>(*data) / 16];
-          *it++ = _bits[std::to_integer<unsigned>(*data++) % 16];
-        }
+      const auto *data = reinterpret_cast<const std::byte *>(&elem);
+      for (std::size_t i = 0; i < sizeof(elem_type); ++i) {
+        // rev walks the object from its lowest address, otherwise from its highest.
+        const auto byte = std::to_integer<unsigned>(data[rev ? i : sizeof(elem_type) - 1 - i]);
+        _hex[2 * i] = _bits[byte / 16];
+        _hex[2 * i + 1] = _bits[byte % 16];
       }
     }
 

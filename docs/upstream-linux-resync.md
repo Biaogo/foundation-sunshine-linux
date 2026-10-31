@@ -431,6 +431,14 @@ this tree tracks real files under `third-party/`), then a `nix-build` of the pac
   the pin to the fork's branch** (`git -C packaging/linux/flatpak/deps/flatpak-builder-tools log`
   shows it).
 
+* **CodeQL alert 4** (`cpp/suspicious-add-sizeof`, `src/utility.h:448`) showed up on the first scan of
+  the merged tree: upstream's `Hex<T>` constructor reached the object's last byte with
+  `reinterpret_cast<const std::byte *>(&elem) + sizeof(elem_type) - 1`, which the query reads as a
+  suspicious `sizeof` offset in pointer arithmetic. The expression is byte-correct upstream code that
+  the merge brought in (the pre-merge `Hex` used raw `char *`), so it is fixed fork-locally as index
+  arithmetic — `data[rev ? i : sizeof(elem_type) - 1 - i]` — with identical output (old and new header
+  through the same probe: `1234 3412 AABBCCDD DDCCBBAA`).
+
 * **Fork-local CI edit.** `.github/workflows/_codeql.yml` gained a `workflow_dispatch` trigger: the
   upstream file only fires on push to `master`, pull requests and the Sunday cron, and this repo's
   default branch is `refork/linux`, so without it the alert could only be re-analysed by waiting for
