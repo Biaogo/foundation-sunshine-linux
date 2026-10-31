@@ -17,19 +17,29 @@ namespace audio {
 
 using namespace audio;
 
-TEST(AudioLayoutTest, CustomMappingRemainsContiguousAndUsesAllEightChannels) {
+TEST(AudioLayoutTest, CustomMappingRemainsContiguousAndUsesEveryChannel) {
   const stream_params_t params {8, 6, 2, {0, 1, 4, 5, 2, 3, 6, 7}};
   auto copy = params;
   EXPECT_EQ(copy.channelCount, 8);
   EXPECT_EQ(copy.streams, 6);
   EXPECT_EQ(copy.coupledStreams, 2);
-  EXPECT_EQ(copy.mapping.size(), 8U);
-  EXPECT_EQ(copy.mapping.back(), 7);
+  // The table is sized for the widest layout the fork advertises (7.1.4, 12 channels).
+  // An 8 channel custom layout fills the first eight entries.
+  // The remaining entries are left zeroed.
+  EXPECT_EQ(copy.mapping.size(), static_cast<std::size_t>(platf::speaker::MAX_SPEAKERS));
+  EXPECT_EQ(copy.mapping[copy.channelCount - 1], 7);
   EXPECT_EQ(copy.mapping.data() + 7, &copy.mapping[7]);
   copy.mapping[0] = 7;
   EXPECT_EQ(params.mapping[0], 0);
   EXPECT_EQ(stream_configs.size(), MAX_STREAM_CONFIG);
   EXPECT_EQ(stream_configs[HIGH_SURROUND71].channelCount, 8);
+}
+
+TEST(AudioLayoutTest, AdvertisesBothSevenOneFourLayouts) {
+  EXPECT_EQ(stream_configs[SURROUND714].channelCount, 12);
+  EXPECT_EQ(stream_configs[HIGH_SURROUND714].channelCount, 12);
+  EXPECT_EQ(stream_configs[SURROUND714].streams, 8);
+  EXPECT_EQ(stream_configs[SURROUND714].coupledStreams, 4);
 }
 
 TEST(AudioPacketSessionTest, EncoderPreservesTheReceivingSession) {
