@@ -1,7 +1,11 @@
 [submodule "packaging/linux/flatpak/deps/flatpak-builder-tools"]
 	path = packaging/linux/flatpak/deps/flatpak-builder-tools
-	url = https://github.com/flatpak/flatpak-builder-tools.git
-	branch = master
+	# Fork of flatpak/flatpak-builder-tools with one patch: go-get/flatpak-go-vendor-generator.py
+	# compares the host segment instead of str.startswith("github.com"), which is what CodeQL flags
+	# as py/incomplete-url-substring-sanitization (alert 3). Pinned on a branch because the patch
+	# has to be re-applied on every upstream bump of this submodule.
+	url = https://github.com/Biaogo/flatpak-builder-tools.git
+	branch = biaogo/codeql-host-check
 [submodule "third-party/build-deps"]
 	path = third-party/build-deps
 	url = https://github.com/LizardByte/build-deps.git
