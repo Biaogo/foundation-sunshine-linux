@@ -292,7 +292,7 @@ namespace cuda {
       texture {INVALID_TEXTURE, INVALID_TEXTURE} {
   }
 
-  tex_t::tex_t(tex_t &&other):
+  tex_t::tex_t(tex_t &&other) noexcept:
       array {other.array},
       texture {other.texture} {
     other.array = 0;
@@ -300,7 +300,7 @@ namespace cuda {
     other.texture.linear = INVALID_TEXTURE;
   }
 
-  tex_t &tex_t::operator=(tex_t &&other) {
+  tex_t &tex_t::operator=(tex_t &&other) noexcept {
     std::swap(array, other.array);
     std::swap(texture, other.texture);
 
@@ -330,22 +330,7 @@ namespace cuda {
   sws_t::sws_t(int in_width, int in_height, int out_width, int out_height, int pitch, int threadsPerBlock, ptr_t &&color_matrix):
       threadsPerBlock {threadsPerBlock},
       color_matrix {std::move(color_matrix)} {
-    // Ensure aspect ratio is maintained
-    auto scalar = std::fminf(out_width / (float) in_width, out_height / (float) in_height);
-    auto out_width_f = in_width * scalar;
-    auto out_height_f = in_height * scalar;
-
-    // result is always positive
-    auto offsetX_f = (out_width - out_width_f) / 2;
-    auto offsetY_f = (out_height - out_height_f) / 2;
-
-    viewport.width = out_width_f;
-    viewport.height = out_height_f;
-
-    viewport.offsetX = offsetX_f;
-    viewport.offsetY = offsetY_f;
-
-    scale = 1.0f / scalar;
+    viewport = make_viewport(in_width, in_height, out_width, out_height, scale);
   }
 
   std::optional<sws_t> sws_t::make(int in_width, int in_height, int out_width, int out_height, int pitch) {

@@ -9,7 +9,12 @@
 #include "thread_safe.h"
 #include "utility.h"
 
+#include <array>
 #include <bitset>
+
+namespace stream {
+  struct session_t;
+}
 
 namespace audio {
   /**
@@ -46,10 +51,13 @@ namespace audio {
     int channelCount;  ///< Number of audio channels in the Opus layout.
     int streams;  ///< Number of Opus streams in the custom layout.
     int coupledStreams;  ///< Number of stereo-coupled Opus streams.
-    std::uint8_t mapping[platf::speaker::MAX_SPEAKERS];  ///< Channel mapping table for every supported speaker.
+    std::array<std::uint8_t, platf::speaker::MAX_SPEAKERS> mapping;  ///< Channel mapping table for every supported speaker.
   };
 
-  extern opus_stream_config_t stream_configs[MAX_STREAM_CONFIG];
+  /**
+   * @brief Opus layouts and bitrates advertised for each supported stream mode.
+   */
+  extern const std::array<opus_stream_config_t, MAX_STREAM_CONFIG> stream_configs;
 
   /**
    * @brief Audio capture and encoder settings for a stream.
@@ -93,9 +101,9 @@ namespace audio {
    */
   using buffer_t = util::buffer_t<std::uint8_t>;
   /**
-   * @brief Encoded audio packet paired with platform channel metadata.
+   * @brief Encoded audio packet paired with its owning stream session.
    */
-  using packet_t = std::pair<void *, buffer_t>;
+  using packet_t = std::pair<stream::session_t *, buffer_t>;
   /**
    * @brief Shared mailbox reference to the global audio context.
    */
@@ -106,9 +114,9 @@ namespace audio {
    *
    * @param mail Mailbox used to publish encoded audio packets.
    * @param config Audio capture and encoder settings.
-   * @param channel_data Platform-specific capture channel pointer.
+   * @param channel_data Stream session that receives the encoded packets.
    */
-  void capture(safe::mail_t mail, config_t config, void *channel_data);
+  void capture(safe::mail_t mail, config_t config, stream::session_t *channel_data);
 
   /**
    * @brief Get the reference to the audio context.

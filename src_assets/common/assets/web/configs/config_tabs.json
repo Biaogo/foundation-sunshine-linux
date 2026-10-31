@@ -43,6 +43,7 @@
       "stream_audio": "enabled",
       "stream_mic": "enabled",
       "install_steam_audio_drivers": "enabled",
+      "external_audio": "disabled",
       "adapter_name": "",
       "output_name": "",
       "dd_configuration_option": "disabled",
@@ -102,6 +103,7 @@
       "hevc_mode": 0,
       "av1_mode": 0,
       "capture": "",
+      "fp16_sdr_gamma_encoded": "disabled",
       "encoder": "",
       "virtual_display_helper": "",
       "kscreen_helper": ""
@@ -169,7 +171,8 @@
     "nameKey": "config.category_vulkan_encoder",
     "options": {
       "vk_tune": 2,
-      "vk_rc_mode": 2
+      "vk_rc_mode": 2,
+      "vk_quality": "balanced"
     }
   },
   {
